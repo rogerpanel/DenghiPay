@@ -1,0 +1,187 @@
+import { Module } from '@nestjs/common';
+import { APP_GUARD, Reflector } from '@nestjs/core';
+import { JwtModule } from '@nestjs/jwt';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { asCorridorId } from '@morapay/domain';
+import { LedgerService } from '@morapay/ledger';
+import {
+  MockKycProvider,
+  MockScreeningProvider,
+  PayinSimulator,
+  ProviderRegistry,
+  SimulatedRateSource,
+  createGhanaPayoutSimulator,
+  createNigeriaPayoutSimulator,
+} from '@morapay/adapters';
+
+import { AppConfig, loadConfig } from './config/config';
+import { APP_CONFIG, KYC_PROVIDER, RATE_SOURCE, SCREENING_PROVIDER } from './config/tokens';
+import { PrismaService } from './common/prisma.service';
+import { MetricsService } from './common/metrics.service';
+import { AuditService } from './audit/audit.service';
+import { OutboxService } from './notifications/outbox.service';
+import { AuthService } from './auth/auth.service';
+import { AuthController } from './auth/auth.controller';
+import {
+  JwtAuthGuard,
+  RolesGuard,
+  StaffAuthGuard,
+  StaffRolesGuard,
+  VerifiedUserGuard,
+} from './auth/guards';
+import { StaffAuthService } from './staff/staff-auth.service';
+import { PrismaLedgerStore } from './ledger/prisma-ledger-store';
+import { PartitionGateway } from './partitions/partition-gateway.service';
+import { SenderProfileRuRepository } from './partitions/ru/sender-profile.repository';
+import { RecipientProfileNgRepository } from './partitions/ng/recipient-profile.repository';
+import { RecipientProfileGhRepository } from './partitions/gh/recipient-profile.repository';
+import { CorridorsService } from './quoting/corridors.service';
+import { RatesService } from './quoting/rates.service';
+import { QuotesService } from './quoting/quotes.service';
+import { QuotingController } from './quoting/quoting.controller';
+import { RecipientsService } from './recipients/recipients.service';
+import { InstitutionsController, RecipientsController } from './recipients/recipients.controller';
+import { ScreeningService } from './compliance/screening.service';
+import { LimitsService } from './compliance/limits.service';
+import { ComplianceService } from './compliance/compliance.service';
+import { KycService } from './kyc/kyc.service';
+import { KycController } from './kyc/kyc.controller';
+import { TransfersService } from './transfers/transfers.service';
+import { TransfersController } from './transfers/transfers.controller';
+import { TransferSagaService } from './transfers/transfer-saga.service';
+import { ProviderCallbackController } from './webhooks/provider-callback.controller';
+import { SimulatorController } from './simulator/simulator.controller';
+import { TreasuryService } from './treasury/treasury.service';
+import { ReconciliationService } from './reconciliation/reconciliation.service';
+import { AdminAuthController, AdminController } from './admin/admin.controller';
+import { HealthController } from './health/health.controller';
+
+const config = loadConfig();
+
+/**
+ * Provider wiring.
+ *
+ * Every rail is a simulator today. The contracted adapters — Paycrest and
+ * Fincra for payout, a Russian licensed partner for pay-in — register here
+ * behind their feature flags when they exist. Guardrail G1 keeps them disabled
+ * until there is a signed agreement and a written legal opinion, and
+ * `enabled: false` keeps a registered-but-unproven rail out of routing entirely.
+ *
+ * The Russian pay-in partner is the open commercial item
+ * (TECHNICAL_ARCHITECTURE §1.1). Until it is closed, `PayinSimulator` is the
+ * only implementation, and that is enough to build and test everything above it.
+ */
+function buildRegistry(cfg: AppConfig): ProviderRegistry {
+  const allCorridors = [
+    asCorridorId('RU-NG'),
+    asCorridorId('RU-GH'),
+    asCorridorId('BY-NG'),
+    asCorridorId('BY-GH'),
+  ];
+  const ngCorridors = allCorridors.filter((id) => String(id).endsWith('-NG'));
+  const ghCorridors = allCorridors.filter((id) => String(id).endsWith('-GH'));
+
+  return new ProviderRegistry()
+    .registerPayin({
+      provider: new PayinSimulator(allCorridors, {
+        autoConfirmAfterSeconds:
+          cfg.SIMULATOR_AUTOCONFIRM_SECONDS === 0 ? null : cfg.SIMULATOR_AUTOCONFIRM_SECONDS,
+      }),
+      priority: 100,
+      enabled: !cfg.PAYIN_RU_PARTNER_ENABLED,
+    })
+    .registerPayout({
+      provider: createNigeriaPayoutSimulator(ngCorridors),
+      priority: 100,
+      enabled: !cfg.PAYCREST_ENABLED && !cfg.FINCRA_ENABLED,
+    })
+    .registerPayout({
+      provider: createGhanaPayoutSimulator(ghCorridors),
+      priority: 100,
+      enabled: !cfg.FINCRA_ENABLED,
+    });
+}
+
+@Module({
+  imports: [
+    ScheduleModule.forRoot(),
+    JwtModule.register({
+      secret: config.JWT_ACCESS_SECRET,
+      signOptions: { expiresIn: config.JWT_ACCESS_TTL_SECONDS },
+    }),
+    // BUILD_PLAN 11.3 — per-IP rate limiting, applied globally.
+    ThrottlerModule.forRoot([
+      { ttl: config.RATE_LIMIT_WINDOW_SECONDS * 1000, limit: config.RATE_LIMIT_MAX_REQUESTS },
+    ]),
+  ],
+  controllers: [
+    AuthController,
+    QuotingController,
+    RecipientsController,
+    InstitutionsController,
+    KycController,
+    TransfersController,
+    ProviderCallbackController,
+    SimulatorController,
+    AdminAuthController,
+    AdminController,
+    HealthController,
+  ],
+  providers: [
+    { provide: APP_CONFIG, useValue: config },
+    PrismaService,
+    MetricsService,
+    AuditService,
+    OutboxService,
+
+    // Ledger: the Postgres implementation of the port, and the only writer of
+    // financial state (guardrail G5).
+    PrismaLedgerStore,
+    {
+      provide: LedgerService,
+      useFactory: (store: PrismaLedgerStore) => new LedgerService(store),
+      inject: [PrismaLedgerStore],
+    },
+
+    // Residency partitions. Reached only through the gateway.
+    SenderProfileRuRepository,
+    RecipientProfileNgRepository,
+    RecipientProfileGhRepository,
+    PartitionGateway,
+
+    // Adapter ports.
+    { provide: ProviderRegistry, useFactory: () => buildRegistry(config) },
+    { provide: SCREENING_PROVIDER, useFactory: () => new MockScreeningProvider() },
+    { provide: KYC_PROVIDER, useFactory: () => new MockKycProvider() },
+    { provide: RATE_SOURCE, useFactory: () => new SimulatedRateSource() },
+
+    // Application services.
+    AuthService,
+    StaffAuthService,
+    CorridorsService,
+    RatesService,
+    QuotesService,
+    RecipientsService,
+    ScreeningService,
+    LimitsService,
+    ComplianceService,
+    KycService,
+    TransfersService,
+    TransferSagaService,
+    TreasuryService,
+    ReconciliationService,
+
+    // Guards. The customer and staff guards read different signing keys from
+    // the configuration, so a customer token presented to an admin endpoint
+    // fails signature verification rather than merely an authorisation check.
+    JwtAuthGuard,
+    StaffAuthGuard,
+    RolesGuard,
+    StaffRolesGuard,
+    VerifiedUserGuard,
+    Reflector,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
+})
+export class AppModule {}

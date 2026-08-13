@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# End-to-end smoke test against a running API.
+#
+# Drives the full journey the way the web app does — sign in, quote, name
+# enquiry, confirm, pay, poll — and asserts the outcome at each step. This is
+# the evidence for BUILD_PLAN 6.1 ("full transfer lifecycle runs locally with
+# zero external dependencies") and 7.1 ("both corridors complete end to end").
+#
+#   usage: infra/scripts/smoke-transfer.sh [account-number] [expected-final-state]
+set -euo pipefail
+
+API="${API:-http://localhost:4000}"
+EMAIL="${EMAIL:-chidi@demo.morapay.local}"
+PASSWORD="${PASSWORD:-morapay-demo-2026}"
+ACCOUNT="${1:-0123456789}"
+EXPECT="${2:-COMPLETED}"
+BANK_CODE="${BANK_CODE:-058}"
+
+say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
+fail() { printf '\033[31mFAIL: %s\033[0m\n' "$*" >&2; exit 1; }
+
+# Tiny JSON reader: jqr "accessToken" or jqr "sendAmount.formatted"
+jqr() {
+  python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+for key in sys.argv[1].split("."):
+    d = d[key]
+print(d)
+' "$1"
+}
+
+say "1. Sign in as $EMAIL"
+TOKEN=$(curl -sS -X POST "$API/auth/login" -H 'content-type: application/json' \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" | jqr "accessToken")
+[ -n "$TOKEN" ] || fail "no access token"
+AUTH="authorization: Bearer $TOKEN"
+echo "   signed in"
+
+say "2. Name enquiry for account $ACCOUNT"
+ENQUIRY=$(curl -sS -X POST "$API/recipients/name-enquiry" -H "$AUTH" -H 'content-type: application/json' \
+  -d "{\"details\":{\"method\":\"BANK_ACCOUNT\",\"country\":\"NG\",\"accountNumber\":\"$ACCOUNT\",\"bankCode\":\"$BANK_CODE\",\"declaredName\":\"ADEBAYO OKONKWO\"}}")
+STATUS=$(echo "$ENQUIRY" | jqr "status")
+echo "   $STATUS"
+if [ "$STATUS" != "RESOLVED" ]; then
+  echo "   $(echo "$ENQUIRY" | jqr "reason")"
+  [ "$EXPECT" = "NAME_NOT_FOUND" ] && { echo "   expected — the sender is stopped before committing"; exit 0; }
+  fail "name enquiry did not resolve"
+fi
+RESOLVED=$(echo "$ENQUIRY" | jqr "resolvedName")
+echo "   resolved to: $RESOLVED"
+
+say "3. Save the recipient"
+RECIPIENT_ID=$(curl -sS -X POST "$API/recipients" -H "$AUTH" -H 'content-type: application/json' \
+  -d "{\"details\":{\"method\":\"BANK_ACCOUNT\",\"country\":\"NG\",\"accountNumber\":\"$ACCOUNT\",\"bankCode\":\"$BANK_CODE\",\"declaredName\":\"$RESOLVED\"},\"nickname\":\"Smoke test\"}" \
+  | jqr "id")
+echo "   $RECIPIENT_ID"
+
+say "4. Quote 100 000,00 RUB on RU-NG"
+QUOTE=$(curl -sS -X POST "$API/quotes" -H "$AUTH" -H 'content-type: application/json' \
+  -d '{"corridorId":"RU-NG","sendMinorUnits":"10000000"}')
+QUOTE_ID=$(echo "$QUOTE" | jqr "id")
+[ -n "$QUOTE_ID" ] || fail "no quote: $QUOTE"
+echo "   send        $(echo "$QUOTE" | jqr "sendAmount.formatted")"
+echo "   fixed fee   $(echo "$QUOTE" | jqr "fixedFee.formatted")"
+echo "   fx margin   $(echo "$QUOTE" | jqr "fxMargin.formatted")  ($(echo "$QUOTE" | jqr "fxMarginBps") bps)"
+echo "   total cost  $(echo "$QUOTE" | jqr "totalCost.formatted")"
+echo "   mid rate    $(echo "$QUOTE" | jqr "midRate")"
+echo "   our rate    $(echo "$QUOTE" | jqr "effectiveRate")"
+echo "   recipient   $(echo "$QUOTE" | jqr "recipientAmount.formatted")"
+
+say "5. Confirm the transfer"
+TRANSFER=$(curl -sS -X POST "$API/transfers" -H "$AUTH" -H 'content-type: application/json' \
+  -H "idempotency-key: smoke-$(date +%s)-$RANDOM" \
+  -d "{\"quoteId\":\"$QUOTE_ID\",\"recipientId\":\"$RECIPIENT_ID\",\"payinMethod\":\"SBP\",\"purpose\":\"FAMILY_SUPPORT\",\"confirmedRecipientName\":\"$RESOLVED\"}")
+REFERENCE=$(echo "$TRANSFER" | jqr "reference")
+[ -n "$REFERENCE" ] || fail "no transfer: $TRANSFER"
+echo "   $REFERENCE  state=$(echo "$TRANSFER" | jqr "state")  ($(echo "$TRANSFER" | jqr "senderStatus"))"
+
+if [ "$EXPECT" = "ON_HOLD" ]; then
+  STATE=$(echo "$TRANSFER" | jqr "state")
+  [ "$STATE" = "ON_HOLD" ] || fail "expected ON_HOLD, got $STATE"
+  echo "   blocked by the compliance gate, as expected (guardrail G3)"
+  exit 0
+fi
+
+say "6. Sender pays (simulator)"
+sleep 2
+PAY=$(curl -sS -X POST "$API/simulator/payin/$REFERENCE/pay" -H "$AUTH")
+echo "   $PAY"
+
+say "7. Poll to a terminal state"
+for i in $(seq 1 30); do
+  STATE=$(curl -sS "$API/transfers" -H "$AUTH" | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+t=[x for x in d['transfers'] if x['reference']=='$REFERENCE'][0]
+print(t['state'])")
+  printf '   %-2s %s\n' "$i" "$STATE"
+  case "$STATE" in
+    COMPLETED|REFUNDED|FAILED) break ;;
+  esac
+  sleep 2
+done
+
+say "Result"
+if [ "$STATE" = "$EXPECT" ]; then
+  echo "   $REFERENCE reached $STATE as expected"
+else
+  fail "$REFERENCE reached $STATE, expected $EXPECT"
+fi
+
+say "Ledger invariant"
+curl -sS "$API/health/ledger"
+echo

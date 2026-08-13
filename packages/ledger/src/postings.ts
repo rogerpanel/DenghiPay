@@ -1,5 +1,5 @@
 import { CurrencyCode, Money, PayoutOutcome, TransferId } from '@morapay/domain';
-import { DraftEntry, DraftTransaction } from './transaction';
+import { DraftEntry, DraftTransaction, PostingReason } from './transaction';
 import { LedgerError } from './errors';
 
 /**
@@ -273,6 +273,43 @@ export function floatPrefunding(input: PrefundingInput): DraftTransaction {
     entries: [
       { accountId: input.floatAccountId, direction: 'DEBIT', amount: input.amount },
       { accountId: input.treasuryAccountId, direction: 'CREDIT', amount: input.amount },
+    ],
+  };
+}
+
+export interface TwoSidedInput {
+  readonly reason: PostingReason;
+  readonly description: string;
+  readonly occurredAt: Date;
+  readonly reference: string | null;
+  readonly debitAccountId: string;
+  readonly creditAccountId: string;
+  readonly amount: Money<CurrencyCode>;
+  readonly metadata?: Readonly<Record<string, string>>;
+}
+
+/**
+ * A single-currency, two-entry posting.
+ *
+ * The transfer saga composes cross-currency movement out of these, one per
+ * currency, rather than writing a mixed-currency transaction. See the posting
+ * sequence in docs/TECHNICAL_ARCHITECTURE.md §2.4: rubles and naira never meet
+ * inside one transaction, because such a transaction balances in no currency
+ * at all.
+ */
+export function twoSided(input: TwoSidedInput): DraftTransaction {
+  if (!input.amount.isPositive) {
+    throw new LedgerError('Refusing to post a zero or negative amount', 'ZERO_POSTING');
+  }
+  return {
+    reason: input.reason,
+    description: input.description,
+    occurredAt: input.occurredAt,
+    reference: input.reference,
+    ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+    entries: [
+      { accountId: input.debitAccountId, direction: 'DEBIT', amount: input.amount },
+      { accountId: input.creditAccountId, direction: 'CREDIT', amount: input.amount },
     ],
   };
 }

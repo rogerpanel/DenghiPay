@@ -282,8 +282,12 @@ describe('ledger — a complete transfer lifecycle balances to zero (DoD 5.3)', 
     const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
     const floatNgn = await ledger.accountByCode(accountCode('FLOAT_NGN', 'NGN'));
     const feeRevenue = await ledger.accountByCode(accountCode('FEE_REVENUE', 'RUB'));
-    const prRub = await ledger.accountByCode(accountCode('PARTNER_RECEIVABLE', 'RUB', 'PAYIN_RU'));
-    const prNgn = await ledger.accountByCode(accountCode('PARTNER_RECEIVABLE', 'NGN', 'PAYOUT_NG'));
+    const prRub = await ledger.accountByCode(
+      accountCode('PARTNER_RECEIVABLE', 'RUB', 'SETTLEMENT'),
+    );
+    const prNgn = await ledger.accountByCode(
+      accountCode('PARTNER_RECEIVABLE', 'NGN', 'SETTLEMENT'),
+    );
     const fxPnlNgn = await ledger.accountByCode(accountCode('FX_PNL', 'NGN'));
 
     const sendAmount = Money.fromDecimalString('100000.00', 'RUB');
@@ -510,7 +514,9 @@ describe('chart of accounts', () => {
   it('seeds a reproducible, balanced account tree (DoD 1.5)', async () => {
     const { store, ledger } = await setup();
     const accounts = await store.listAccounts();
-    expect(accounts.length).toBe(SYSTEM_ACCOUNTS.length + 1);
+    expect(accounts.length).toBe(
+      new Set(SYSTEM_ACCOUNTS.map((s) => accountCode(s.type, s.currency, s.scope))).size + 1,
+    );
 
     // A freshly seeded ledger has no entries, so it trivially balances — and
     // every account resolves by its code.

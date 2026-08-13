@@ -1,0 +1,807 @@
+// MoraPay data model.
+//
+// Three things about this schema are deliberate and load-bearing:
+//
+//  1. Money is BigInt minor units. There is no Float or Decimal anywhere near
+//     an amount. Guardrail: floating point money is a bug, always.
+//  2. Personal data lives in partition schemas (partition_ru / partition_ng /
+//     partition_gh); the neutral tier holds only tokenised references
+//     (BUILD_PLAN 12.1, guardrail G8). Locally these are schemas in one
+//     database; in production they are separate instances in separate
+//     jurisdictions and only the connection string changes.
+//  3. There is no mutable balance column. Balances are derived from entries;
+//     ledger_balance_snapshot is a cache the drift detector verifies.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["public", "partition_ru", "partition_ng", "partition_gh"]
+}
+
+// =============================================================================
+// Identity and access (Phase 2)
+// =============================================================================
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  CLOSED
+
+  @@schema("public")
+}
+
+enum CustomerRole {
+  SENDER
+  RECIPIENT
+
+  @@schema("public")
+}
+
+/// Back-office roles. Held on a separate table with a separate session store:
+/// the admin application never shares a session with the customer app
+/// (BUILD_PLAN Phase 9).
+enum StaffRole {
+  SUPPORT
+  COMPLIANCE_OFFICER
+  TREASURY_OPERATOR
+  ADMIN
+
+  @@schema("public")
+}
+
+model User {
+  id            String     @id @default(uuid())
+  email         String     @unique
+  passwordHash  String     @map("password_hash")
+  status        UserStatus @default(PENDING_VERIFICATION)
+  roles         CustomerRole[]
+  /// KYC tier 0-3. Tier 0 can hold an account and move nothing.
+  kycTier       Int        @default(0) @map("kyc_tier")
+  /// Which residency partition this user's personal data belongs to.
+  piiPartition  String     @default("RU") @map("pii_partition")
+  /// Opaque handle used to address this user's row in the partition store.
+  /// The neutral tier never holds the personal data itself.
+  piiToken      String     @unique @map("pii_token")
+  locale        String     @default("ru")
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  lastLoginAt   DateTime?  @map("last_login_at")
+  failedLoginCount Int     @default(0) @map("failed_login_count")
+  lockedUntil   DateTime?  @map("locked_until")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  sessions          Session[]
+  verificationTokens EmailVerificationToken[]
+  recipients        Recipient[]
+  quotes            Quote[]
+  transfers         Transfer[]
+  kycCases          KycCase[]
+
+  @@map("app_user")
+  @@schema("public")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  /// Only the hash is stored. A database read never yields a usable token.
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_token")
+  @@schema("public")
+}
+
+/// One row per issued refresh token. Rotation writes a new row and marks the
+/// old one used; presenting a used token revokes the whole family
+/// (BUILD_PLAN 2.2).
+model Session {
+  id           String    @id @default(uuid())
+  userId       String    @map("user_id")
+  familyId     String    @map("family_id")
+  tokenHash    String    @unique @map("token_hash")
+  issuedAt     DateTime  @default(now()) @map("issued_at")
+  expiresAt    DateTime  @map("expires_at")
+  usedAt       DateTime? @map("used_at")
+  revokedAt    DateTime? @map("revoked_at")
+  revokedReason String?  @map("revoked_reason")
+  replacedById String?   @map("replaced_by_id")
+  /// Hashed so a leaked database does not yield a browsing history.
+  userAgentHash String?  @map("user_agent_hash")
+  ipHash        String?  @map("ip_hash")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("session")
+  @@schema("public")
+}
+
+model StaffUser {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  passwordHash String     @map("password_hash")
+  displayName  String     @map("display_name")
+  roles        StaffRole[]
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  sessions StaffSession[]
+
+  @@map("staff_user")
+  @@schema("public")
+}
+
+model StaffSession {
+  id        String    @id @default(uuid())
+  staffId   String    @map("staff_id")
+  familyId  String    @map("family_id")
+  tokenHash String    @unique @map("token_hash")
+  issuedAt  DateTime  @default(now()) @map("issued_at")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  revokedAt DateTime? @map("revoked_at")
+  revokedReason String? @map("revoked_reason")
+
+  staff StaffUser @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId])
+  @@index([familyId])
+  @@map("staff_session")
+  @@schema("public")
+}
+
+// =============================================================================
+// Audit log (Phase 2.5) — append-only, hash-chained
+// =============================================================================
+
+model AuditEvent {
+  /// Monotonic position in the chain.
+  sequence   BigInt   @id @default(autoincrement())
+  actorType  String   @map("actor_type")
+  actorId    String?  @map("actor_id")
+  action     String
+  subjectType String  @map("subject_type")
+  subjectId  String?  @map("subject_id")
+  reason     String?
+  beforeState Json?   @map("before_state")
+  afterState Json?    @map("after_state")
+  ipHash     String?  @map("ip_hash")
+  createdAt  DateTime @default(now()) @map("created_at")
+  /// Hash of the previous row. Genesis is 64 zeroes.
+  prevHash   String   @map("prev_hash")
+  /// SHA-256 over the canonical serialisation of this row plus prevHash.
+  hash       String   @unique
+
+  @@index([subjectType, subjectId])
+  @@index([actorId])
+  @@map("audit_event")
+  @@schema("public")
+}
+
+// =============================================================================
+// KYC and screening (Phase 3)
+// =============================================================================
+
+enum KycStatus {
+  NOT_STARTED
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+
+  @@schema("public")
+}
+
+model KycCase {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  targetTier    Int       @map("target_tier")
+  status        KycStatus @default(PENDING)
+  provider      String
+  providerRef   String?   @map("provider_ref")
+  /// Document types submitted, e.g. PASSPORT, MIGRATION_CARD, WORK_PERMIT.
+  documentTypes String[]  @map("document_types")
+  submittedAt   DateTime  @default(now()) @map("submitted_at")
+  decidedAt     DateTime? @map("decided_at")
+  decidedBy     String?   @map("decided_by")
+  rejectionReason String? @map("rejection_reason")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("kyc_case")
+  @@schema("public")
+}
+
+enum ScreeningStatus {
+  CLEAR
+  HIT
+  ERROR
+
+  @@schema("public")
+}
+
+enum ScreeningSubject {
+  SENDER
+  RECIPIENT
+  COUNTERPARTY
+
+  @@schema("public")
+}
+
+/// Guardrail G3. No transfer reaches SETTLING without a CLEAR record here.
+model ScreeningRecord {
+  id          String           @id @default(uuid())
+  subjectType ScreeningSubject @map("subject_type")
+  /// Tokenised subject reference — never a name.
+  subjectRef  String           @map("subject_ref")
+  transferId  String?          @map("transfer_id")
+  provider    String
+  status      ScreeningStatus
+  /// 0-100. At or above the configured threshold the transfer is blocked.
+  score       Int              @default(0)
+  matches     Json             @default("[]")
+  listVersion String           @map("list_version")
+  screenedAt  DateTime         @default(now()) @map("screened_at")
+
+  transfer Transfer? @relation(fields: [transferId], references: [id])
+
+  @@index([transferId])
+  @@index([subjectRef])
+  @@map("screening_record")
+  @@schema("public")
+}
+
+enum ComplianceCaseType {
+  SCREENING_HIT
+  VELOCITY
+  STRUCTURING
+  ENHANCED_DUE_DILIGENCE
+  MANUAL_REVIEW
+
+  @@schema("public")
+}
+
+enum ComplianceCaseStatus {
+  OPEN
+  IN_REVIEW
+  CLEARED
+  REJECTED
+
+  @@schema("public")
+}
+
+model ComplianceCase {
+  id          String               @id @default(uuid())
+  type        ComplianceCaseType
+  status      ComplianceCaseStatus @default(OPEN)
+  userId      String?              @map("user_id")
+  transferId  String?              @map("transfer_id")
+  summary     String
+  detail      Json                 @default("{}")
+  assignedTo  String?              @map("assigned_to")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  decidedAt   DateTime?            @map("decided_at")
+  decidedBy   String?              @map("decided_by")
+  decisionReason String?           @map("decision_reason")
+
+  transfer Transfer?             @relation(fields: [transferId], references: [id])
+  notes    ComplianceCaseNote[]
+
+  @@index([status])
+  @@index([transferId])
+  @@map("compliance_case")
+  @@schema("public")
+}
+
+model ComplianceCaseNote {
+  id        String   @id @default(uuid())
+  caseId    String   @map("case_id")
+  authorId  String   @map("author_id")
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  case ComplianceCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("compliance_case_note")
+  @@schema("public")
+}
+
+// =============================================================================
+// Corridors, rates and quotes (Phase 4)
+// =============================================================================
+
+model Corridor {
+  id                  String   @id
+  sourceCountry       String   @map("source_country")
+  sourceCurrency      String   @map("source_currency")
+  destinationCountry  String   @map("destination_country")
+  destinationCurrency String   @map("destination_currency")
+  payinMethods        String[] @map("payin_methods")
+  payoutMethods       String[] @map("payout_methods")
+  minSendMinorUnits   BigInt   @map("min_send_minor_units")
+  maxSendMinorUnits   BigInt   @map("max_send_minor_units")
+  fixedFeeMinorUnits  BigInt   @map("fixed_fee_minor_units")
+  fxMarginBps         Int      @map("fx_margin_bps")
+  openUtcHour         Int      @default(0) @map("open_utc_hour")
+  closeUtcHour        Int      @default(24) @map("close_utc_hour")
+  weekdays            Int[]    @default([1, 2, 3, 4, 5, 6, 7])
+  enabled             Boolean  @default(true)
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  quotes    Quote[]
+  transfers Transfer[]
+
+  @@map("corridor")
+  @@schema("public")
+}
+
+/// A rate observation from a feed. Rates are exact rationals: numerator / 10^scale.
+model RateObservation {
+  id           String   @id @default(uuid())
+  baseCurrency String   @map("base_currency")
+  quoteCurrency String  @map("quote_currency")
+  numerator    BigInt
+  scale        Int
+  source       String
+  observedAt   DateTime @map("observed_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([baseCurrency, quoteCurrency, observedAt])
+  @@map("rate_observation")
+  @@schema("public")
+}
+
+/// A signed, short-lived, single-use promise to the sender.
+model Quote {
+  id                   String   @id @default(uuid())
+  userId               String   @map("user_id")
+  corridorId           String   @map("corridor_id")
+  sendMinorUnits       BigInt   @map("send_minor_units")
+  sendCurrency         String   @map("send_currency")
+  fixedFeeMinorUnits   BigInt   @map("fixed_fee_minor_units")
+  fxMarginMinorUnits   BigInt   @map("fx_margin_minor_units")
+  totalToPayMinorUnits BigInt   @map("total_to_pay_minor_units")
+  recipientMinorUnits  BigInt   @map("recipient_minor_units")
+  recipientCurrency    String   @map("recipient_currency")
+  midRateNumerator     BigInt   @map("mid_rate_numerator")
+  midRateScale         Int      @map("mid_rate_scale")
+  effectiveRateNumerator BigInt @map("effective_rate_numerator")
+  effectiveRateScale   Int      @map("effective_rate_scale")
+  fxMarginBps          Int      @map("fx_margin_bps")
+  /// HMAC over the canonical quote payload. Checked on confirmation.
+  signature            String
+  createdAt            DateTime @default(now()) @map("created_at")
+  expiresAt            DateTime @map("expires_at")
+  consumedAt           DateTime? @map("consumed_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  corridor Corridor  @relation(fields: [corridorId], references: [id])
+  transfer Transfer?
+
+  @@index([userId])
+  @@map("quote")
+  @@schema("public")
+}
+
+// =============================================================================
+// Recipients — neutral tier holds tokens and masks only
+// =============================================================================
+
+model Recipient {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  method       String
+  country      String
+  /// Points at the row in the destination partition holding the real details.
+  piiToken     String   @unique @map("pii_token")
+  piiPartition String   @map("pii_partition")
+  /// Last four digits only. Safe to render, safe to log.
+  maskedAccount String  @map("masked_account")
+  /// Name the institution returned at name enquiry, as shown to the sender.
+  resolvedName String?  @map("resolved_name")
+  nickname     String?
+  createdAt    DateTime @default(now()) @map("created_at")
+  archivedAt   DateTime? @map("archived_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transfers Transfer[]
+
+  @@index([userId])
+  @@map("recipient")
+  @@schema("public")
+}
+
+// =============================================================================
+// Transfers (Phase 5)
+// =============================================================================
+
+model Transfer {
+  id                  String    @id @default(uuid())
+  reference           String    @unique
+  userId              String    @map("user_id")
+  quoteId             String    @unique @map("quote_id")
+  corridorId          String    @map("corridor_id")
+  recipientId         String    @map("recipient_id")
+  state               String
+  purpose             String
+  sendMinorUnits      BigInt    @map("send_minor_units")
+  sendCurrency        String    @map("send_currency")
+  totalToPayMinorUnits BigInt   @map("total_to_pay_minor_units")
+  feeMinorUnits       BigInt    @map("fee_minor_units")
+  recipientMinorUnits BigInt    @map("recipient_minor_units")
+  recipientCurrency   String    @map("recipient_currency")
+  payinMethod         String    @map("payin_method")
+  payinProviderId     String?   @map("payin_provider_id")
+  payinProviderRef    String?   @map("payin_provider_ref")
+  payinInstructions   Json?     @map("payin_instructions")
+  payoutProviderId    String?   @map("payout_provider_id")
+  payoutProviderRef   String?   @map("payout_provider_ref")
+  payoutInstitutionRef String?  @map("payout_institution_ref")
+  failureCode         String?   @map("failure_code")
+  failureReason       String?   @map("failure_reason")
+  /// Number of status polls made. Feeds the stuck-transfer alert.
+  pollAttempts        Int       @default(0) @map("poll_attempts")
+  nextPollAt          DateTime? @map("next_poll_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  completedAt         DateTime? @map("completed_at")
+
+  user       User             @relation(fields: [userId], references: [id])
+  quote      Quote            @relation(fields: [quoteId], references: [id])
+  corridor   Corridor         @relation(fields: [corridorId], references: [id])
+  recipient  Recipient        @relation(fields: [recipientId], references: [id])
+  events     TransferEvent[]
+  screenings ScreeningRecord[]
+  cases      ComplianceCase[]
+  positions  FxPosition[]
+
+  @@index([userId])
+  @@index([state])
+  @@index([nextPollAt])
+  @@map("transfer")
+  @@schema("public")
+}
+
+/// Append-only. Every state change has exactly one row, so no state is
+/// reachable without a recorded event (BUILD_PLAN 5.1 DoD).
+model TransferEvent {
+  id         String   @id @default(uuid())
+  transferId String   @map("transfer_id")
+  fromState  String   @map("from_state")
+  toState    String   @map("to_state")
+  event      String
+  actorType  String   @map("actor_type")
+  actorId    String?  @map("actor_id")
+  detail     Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([transferId])
+  @@map("transfer_event")
+  @@schema("public")
+}
+
+/// Open FX exposure created when a quote is locked (BUILD_PLAN 4.4).
+model FxPosition {
+  id             String    @id @default(uuid())
+  transferId     String    @map("transfer_id")
+  sellCurrency   String    @map("sell_currency")
+  sellMinorUnits BigInt    @map("sell_minor_units")
+  buyCurrency    String    @map("buy_currency")
+  buyMinorUnits  BigInt    @map("buy_minor_units")
+  openedAt       DateTime  @default(now()) @map("opened_at")
+  closedAt       DateTime? @map("closed_at")
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([closedAt])
+  @@map("fx_position")
+  @@schema("public")
+}
+
+// =============================================================================
+// Idempotency and webhook replay protection
+// =============================================================================
+
+model IdempotencyRecord {
+  id                 String   @id @default(uuid())
+  scope              String
+  key                String
+  requestFingerprint String   @map("request_fingerprint")
+  responseSnapshot   Json?    @map("response_snapshot")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@unique([scope, key])
+  @@map("idempotency_record")
+  @@schema("public")
+}
+
+/// Callback dedup table (TECHNICAL_ARCHITECTURE §4.1). A second delivery of the
+/// same event id returns 200 without reprocessing.
+model WebhookEvent {
+  id         String   @id @default(uuid())
+  providerId String   @map("provider_id")
+  eventId    String   @map("event_id")
+  receivedAt DateTime @default(now()) @map("received_at")
+  expiresAt  DateTime @map("expires_at")
+
+  @@unique([providerId, eventId])
+  @@index([expiresAt])
+  @@map("webhook_event")
+  @@schema("public")
+}
+
+// =============================================================================
+// Ledger (Phase 1) — the only writer of financial state
+// =============================================================================
+
+model LedgerAccount {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  type      String
+  currency  String
+  partition String
+  ownerRef  String?  @map("owner_ref")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  entries  LedgerEntry[]
+  snapshot LedgerBalanceSnapshot?
+
+  @@index([type, currency])
+  @@map("ledger_account")
+  @@schema("public")
+}
+
+model LedgerTransaction {
+  id             String   @id @default(uuid())
+  reason         String
+  description    String
+  occurredAt     DateTime @map("occurred_at")
+  recordedAt     DateTime @default(now()) @map("recorded_at")
+  reference      String?
+  idempotencyKey String   @unique @map("idempotency_key")
+  fingerprint    String
+  metadata       Json     @default("{}")
+
+  entries LedgerEntry[]
+
+  @@index([reference])
+  @@index([reason])
+  @@map("ledger_transaction")
+  @@schema("public")
+}
+
+model LedgerEntry {
+  id            String   @id @default(uuid())
+  transactionId String   @map("transaction_id")
+  accountId     String   @map("account_id")
+  direction     String
+  /// Integer minor units. Always positive; the direction carries the sign.
+  amountMinorUnits BigInt @map("amount_minor_units")
+  currency      String
+  /// Global, monotonic. Snapshots record how far they have folded.
+  sequence      BigInt   @default(autoincrement())
+  memo          String?
+
+  transaction LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  account     LedgerAccount     @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, sequence])
+  @@index([transactionId])
+  @@map("ledger_entry")
+  @@schema("public")
+}
+
+/// A cache, not a source of truth. The drift detector recomputes from genesis
+/// and alerts when the two disagree.
+model LedgerBalanceSnapshot {
+  accountId       String   @id @map("account_id")
+  minorUnits      BigInt   @map("minor_units")
+  throughSequence BigInt   @map("through_sequence")
+  computedAt      DateTime @map("computed_at")
+
+  account LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("ledger_balance_snapshot")
+  @@schema("public")
+}
+
+// =============================================================================
+// Treasury and reconciliation (Phase 8)
+// =============================================================================
+
+enum PrefundingStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  EXECUTED
+
+  @@schema("public")
+}
+
+/// Four-eyes is enforced server-side: requestedBy may never equal approvedBy
+/// (guardrail G6), and the database refuses it too.
+model PrefundingRequest {
+  id                  String           @id @default(uuid())
+  currency            String
+  amountMinorUnits    BigInt           @map("amount_minor_units")
+  floatAccountCode    String           @map("float_account_code")
+  treasuryAccountCode String           @map("treasury_account_code")
+  status              PrefundingStatus @default(REQUESTED)
+  reason              String
+  requestedBy         String           @map("requested_by")
+  requestedAt         DateTime         @default(now()) @map("requested_at")
+  approvedBy          String?          @map("approved_by")
+  approvedAt          DateTime?        @map("approved_at")
+  rejectedReason      String?          @map("rejected_reason")
+  executedAt          DateTime?        @map("executed_at")
+  ledgerTransactionId String?          @map("ledger_transaction_id")
+
+  @@index([status])
+  @@map("prefunding_request")
+  @@schema("public")
+}
+
+model FloatThreshold {
+  currency            String   @id
+  lowWatermarkMinorUnits BigInt @map("low_watermark_minor_units")
+  targetMinorUnits    BigInt   @map("target_minor_units")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("float_threshold")
+  @@schema("public")
+}
+
+model PartnerStatement {
+  id          String   @id @default(uuid())
+  providerId  String   @map("provider_id")
+  windowStart DateTime @map("window_start")
+  windowEnd   DateTime @map("window_end")
+  receivedAt  DateTime @default(now()) @map("received_at")
+
+  lines StatementLine[]
+  runs  ReconciliationRun[]
+
+  @@map("partner_statement")
+  @@schema("public")
+}
+
+model StatementLine {
+  id               String   @id @default(uuid())
+  statementId      String   @map("statement_id")
+  providerRef      String   @map("provider_ref")
+  amountMinorUnits BigInt   @map("amount_minor_units")
+  currency         String
+  valueDate        DateTime @map("value_date")
+  description      String
+
+  statement PartnerStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@index([statementId])
+  @@index([providerRef])
+  @@map("statement_line")
+  @@schema("public")
+}
+
+model ReconciliationRun {
+  id           String   @id @default(uuid())
+  statementId  String   @map("statement_id")
+  ranAt        DateTime @default(now()) @map("ran_at")
+  matchedCount Int      @map("matched_count")
+  breakCount   Int      @map("break_count")
+  findings     Json     @default("[]")
+
+  statement PartnerStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@map("reconciliation_run")
+  @@schema("public")
+}
+
+model SuspenseItem {
+  id                  String    @id @default(uuid())
+  reference           String
+  currency            String
+  amountMinorUnits    BigInt    @map("amount_minor_units")
+  note                String
+  ledgerTransactionId String?   @map("ledger_transaction_id")
+  openedAt            DateTime  @default(now()) @map("opened_at")
+  resolvedAt          DateTime? @map("resolved_at")
+  resolvedBy          String?   @map("resolved_by")
+
+  @@index([resolvedAt])
+  @@map("suspense_item")
+  @@schema("public")
+}
+
+// =============================================================================
+// Notifications
+// =============================================================================
+
+/// Outbound mail is written here first and delivered by a worker, so a failed
+/// SMTP call never loses a verification link. In local development the outbox
+/// *is* the mailbox.
+model OutboxMessage {
+  id          String    @id @default(uuid())
+  channel     String
+  recipient   String
+  subject     String
+  body        String
+  kind        String
+  metadata    Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  sentAt      DateTime? @map("sent_at")
+  failedAt    DateTime? @map("failed_at")
+  failureReason String? @map("failure_reason")
+
+  @@index([sentAt])
+  @@map("outbox_message")
+  @@schema("public")
+}
+
+// =============================================================================
+// Partition stores — personal data, addressed only through the partition gateway
+// =============================================================================
+
+/// Russian-resident sender personal data. 152-FZ.
+model SenderProfileRu {
+  piiToken     String    @id @map("pii_token")
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  middleName   String?   @map("middle_name")
+  dateOfBirth  DateTime  @map("date_of_birth")
+  nationality  String
+  phone        String?
+  addressLine  String?   @map("address_line")
+  city         String?
+  postcode     String?
+  /// Documents realistic for African students and workers in Russia
+  /// (BUILD_PLAN 3.3): passport, migration card, registration, work permit.
+  documents    Json      @default("[]")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ru")
+}
+
+/// Nigerian recipient personal data. CBN localisation.
+model RecipientProfileNg {
+  piiToken      String   @id @map("pii_token")
+  accountNumber String   @map("account_number")
+  bankCode      String   @map("bank_code")
+  accountName   String   @map("account_name")
+  phone         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ng")
+}
+
+/// Ghanaian recipient personal data.
+model RecipientProfileGh {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_gh")
+}
