@@ -98,9 +98,10 @@ be once anything real is in the database.
 
 ## 4 · A server, reachable by IP
 
-You do not need a domain to rent a server. A Hetzner CX22 is a few euros a month
-and answers on its IP address immediately, which is enough to keep a preview up
-between sessions instead of tied to a laptop:
+You do not need a domain to rent a server. A Hetzner box answers on its IP
+address immediately, which is enough to keep a preview up between sessions
+instead of tied to a laptop. See [`HOSTING.md`](HOSTING.md) for which size to
+buy — the short version is CX32, and not on CPU grounds:
 
 ```bash
 infra/scripts/harden-host.sh                 # firewall, ssh, unattended upgrades
