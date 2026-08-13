@@ -1,0 +1,147 @@
+# Whole stack on one server, built from source, reachable by IP address.
+#
+# This is the file for a demonstration server that has no domain yet.
+# `production.yml` is the one to use once there is a domain: it pulls tagged
+# images from the registry, terminates TLS in nginx and expects PostgreSQL to
+# be provided. This file makes the opposite trade deliberately — it builds
+# locally, includes its own database, and publishes plain HTTP — because those
+# are the things that let it run on a bare IP an hour after the server is
+# created.
+#
+#   infra/scripts/server-deploy.sh
+#
+# Two properties make it work without DNS:
+#
+#   NEXT_PUBLIC_API_URL=/api  is baked into both front ends, so the browser
+#   calls whatever origin served the page rather than a hard-coded host. The
+#   same image therefore works on the IP today and on the domain later.
+#
+#   API_PROXY_TARGET  points each front end at the API over the compose
+#   network. The API publishes no port at all: it is reachable only through the
+#   front ends, so the server exposes two ports rather than three.
+
+name: morapay
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: morapay
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: morapay
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../scripts/init-partitions.sql:/docker-entrypoint-initdb.d/10-partitions.sql:ro
+    # No published port. The database is reachable only from this network.
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U morapay -d morapay']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'no']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks: [internal]
+
+  # One-shot: migrate, then seed the chart of accounts, corridors and rates.
+  # Runs to completion before the API starts. The runtime image cannot do this
+  # itself — prisma and tsx are development dependencies and are pruned out of
+  # it — which is why the tooling target exists.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+      target: tooling
+    restart: 'no'
+    env_file: [../../.env]
+    environment:
+      DATABASE_URL: postgresql://morapay:${POSTGRES_PASSWORD:?}@postgres:5432/morapay?schema=public
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        pnpm --filter @morapay/api exec prisma migrate deploy
+        pnpm --filter @morapay/api run seed
+        if [ "${SEED_DEMO:-true}" = "true" ]; then
+          pnpm --filter @morapay/api run demo:seed
+        fi
+    depends_on:
+      postgres: { condition: service_healthy }
+    networks: [internal]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/api.Dockerfile
+      target: runtime
+    restart: unless-stopped
+    env_file: [../../.env]
+    environment:
+      NODE_ENV: production
+      # Guardrail G1. Not overridable from this file by accident.
+      LIVE_FUNDS_ENABLED: 'false'
+      API_PORT: '4000'
+      DATABASE_URL: postgresql://morapay:${POSTGRES_PASSWORD:?}@postgres:5432/morapay?schema=public
+      REDIS_URL: redis://redis:6379
+      # Same-origin: the browser never talks to the API directly, so these are
+      # the front-end origins as the browser sees them.
+      API_CORS_ORIGINS: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN in .env},${ADMIN_ORIGIN:?set ADMIN_ORIGIN in .env}
+      API_PUBLIC_URL: ${PUBLIC_ORIGIN}/api
+      WEB_PUBLIC_URL: ${PUBLIC_ORIGIN}
+      ADMIN_PUBLIC_URL: ${ADMIN_ORIGIN}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    networks: [internal]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        APP: web
+        # Relative on purpose. See the header.
+        NEXT_PUBLIC_API_URL: /api
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      API_PROXY_TARGET: http://api:4000
+    ports:
+      - '${WEB_PUBLIC_PORT:-80}:3000'
+    depends_on:
+      api: { condition: service_started }
+    networks: [internal]
+
+  admin:
+    build:
+      context: ../..
+      dockerfile: infra/docker/web.Dockerfile
+      args:
+        APP: admin
+        NEXT_PUBLIC_API_URL: /api
+    restart: unless-stopped
+    environment:
+      PORT: '3000'
+      API_PROXY_TARGET: http://api:4000
+    ports:
+      - '${ADMIN_PUBLIC_PORT:-8080}:3000'
+    depends_on:
+      api: { condition: service_started }
+    networks: [internal]
+
+volumes:
+  pgdata:
+
+networks:
+  internal:

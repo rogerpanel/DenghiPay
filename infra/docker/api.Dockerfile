@@ -33,7 +33,22 @@ RUN pnpm --filter @morapay/domain build \
  && pnpm --filter @morapay/api exec prisma generate \
  && pnpm --filter @morapay/api exec nest build
 
-# Strip development dependencies from the tree we are about to copy.
+# ------------------------------------------------------------- tooling
+# Migrations and seeds, which the runtime image deliberately cannot run.
+#
+# `prisma` and `tsx` are development dependencies, so the pruned tree below has
+# neither — a runtime image cannot migrate itself, and on a fresh server that is
+# discovered at the least convenient moment. This target keeps the unpruned tree
+# and exists to be run as a one-shot before the API starts. Building it costs
+# nothing extra: it is the same layers the runtime image is already built from.
+FROM build AS tooling
+WORKDIR /app
+CMD ["pnpm", "--filter", "@morapay/api", "exec", "prisma", "migrate", "deploy"]
+
+# ---------------------------------------------------------------- prune
+# Strip development dependencies from the tree the runtime stage copies. In its
+# own stage so that `build` above keeps them for `tooling`.
+FROM build AS prune
 RUN pnpm install --frozen-lockfile --prod
 
 # ------------------------------------------------------------ runtime
@@ -48,12 +63,12 @@ ENV LIVE_FUNDS_ENABLED=false
 RUN mkdir -p /app && chown -R node:node /app
 USER node
 
-COPY --from=build --chown=node:node /app/node_modules ./node_modules
-COPY --from=build --chown=node:node /app/packages ./packages
-COPY --from=build --chown=node:node /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=build --chown=node:node /app/apps/api/dist ./apps/api/dist
-COPY --from=build --chown=node:node /app/apps/api/prisma ./apps/api/prisma
-COPY --from=build --chown=node:node /app/apps/api/package.json ./apps/api/
+COPY --from=prune --chown=node:node /app/node_modules ./node_modules
+COPY --from=prune --chown=node:node /app/packages ./packages
+COPY --from=prune --chown=node:node /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=prune --chown=node:node /app/apps/api/dist ./apps/api/dist
+COPY --from=prune --chown=node:node /app/apps/api/prisma ./apps/api/prisma
+COPY --from=prune --chown=node:node /app/apps/api/package.json ./apps/api/
 
 WORKDIR /app/apps/api
 EXPOSE 4000

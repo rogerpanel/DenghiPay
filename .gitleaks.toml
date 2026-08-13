@@ -32,4 +32,9 @@ regexes = [
   '''change-me''',
   '''replace-in-vault''',
   '''ci-only-[a-z-]+-not-a-real-key''',     # CI fixtures, meaningless outside a runner
+  # A connection string whose password is a variable reference — `${VAR}`,
+  # `${VAR:?}`, `$(cmd)` — holds no secret, it holds the instruction to fetch
+  # one at runtime. Deliberately narrow: the password portion must be entirely
+  # an interpolation, so a literal alongside a variable is still caught.
+  '''postgres(ql)?:\/\/[^:\s]+:\$[{(][^@\s]*[})]@''',
 ]
