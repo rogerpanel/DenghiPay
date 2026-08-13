@@ -1,7 +1,8 @@
 # What to buy
 
-Sizing for the Hetzner box. Prices are approximate and exclude VAT — check the
-current list before ordering, because Hetzner revises it.
+Sizing for the Hetzner box. Prices below are USD per month excluding VAT, read
+from the Hetzner console for Helsinki on 2026-08-13. They change; the reasoning
+does not.
 
 ## What actually runs on it
 
@@ -40,54 +41,94 @@ write.
 
 ## The recommendation
 
-**CX32 — 4 vCPU, 8 GB, 80 GB, around €7/month.** That is the direct answer to
-"a little better than CX22", and it is the right shape: 4 GB would swap under
-the list above, and swapping a database is how a healthy system starts looking
-mysteriously slow.
+**CX33 — 4 vCPU, 8 GB, 80 GB, $9.99 plus $0.60 for the IPv4 address.**
 
-`CPX31` (4 AMD vCPU, 8 GB, 160 GB, around €9) is the same money for twice the
-disk and a faster core. Take it if the €2 is irrelevant — the extra disk is
-worth more than it sounds, because the ledger and the audit chain are
-append-only and never shrink.
+It is the smallest box that fits the list above without swapping, and swapping a
+database is how a healthy system starts looking mysteriously slow. CX23's 4 GB
+does not fit.
+
+### CX33 against CPX32, at list price
+
+Both are 4 vCPU and 8 GB. The relevant lines, Helsinki:
+
+| Type     | vCPU | RAM   | SSD    | Per month | Notes                            |
+| -------- | ---- | ----- | ------ | --------- | -------------------------------- |
+| CX23     | 2    | 4 GB  | 40 GB  | $6.49     | Too little memory                |
+| **CX33** | 4    | 8 GB  | 80 GB  | **$9.99** | **Buy this**                     |
+| CX43     | 8    | 16 GB | 160 GB | $18.49    | If you want to stop thinking     |
+| CPX32    | 4    | 8 GB  | 160 GB | $41.99    | Same cores and RAM, 4× the price |
+
+CPX32 costs **four times** CX33 for the same core count and the same memory. The
+differences are 160 GB of disk instead of 80 GB, and newer AMD silicon.
+
+Neither is worth $32 a month here. Disk is the weaker argument: at pilot volume
+the neutral tier writes on the order of tens of megabytes a day, so 80 GB is
+comfortably more than a year, and a Hetzner volume attaches later without
+downtime if that changes. The faster core is the weaker argument still — see
+below.
+
+If the extra money is genuinely available, **CX43 is the better spend than
+CPX32**: double the cores and double the memory of CPX32, for less than half the
+price. But it is headroom you have no measurement suggesting you need.
 
 **Do not size this on CPU.** The measured ledger benchmark is 938 writes per
-second on four shared vCPUs against a peak pilot demand under ten per second
-(`docs/benchmarks/ledger.md`). CPU is roughly a hundred times oversupplied at
-pilot volume. Memory and disk are the binding constraints, and the reason to buy
-4 vCPU is `pnpm build` and the odd Prometheus query, not transfers.
+second on four shared vCPUs, against a peak pilot demand under ten per second
+(`docs/benchmarks/ledger.md`). CPU is about a hundred times oversupplied at
+pilot volume, so paying a premium for faster cores buys nothing this workload
+can use. Memory and disk are the binding constraints; the reason to have 4 vCPU
+at all is `pnpm build` and the occasional Prometheus query.
+
+One caveat on the Cost-Optimized line, which the console states plainly: it runs
+on older hardware generations with **limited availability**. That is fine for a
+single pilot server. It is worth remembering if the plan later calls for several
+identical machines, because the type may not be orderable when you want the
+second one.
 
 ### When live funds are switched on, move to dedicated vCPU
 
-**CCX23 — 4 dedicated vCPU, 16 GB, 160 GB, around €30/month.**
-
 The shared-vCPU lines are genuinely fine for staging and a pilot. The argument
-for dedicated at go-live is not throughput, it is variance: a shared vCPU can
-lose time to a neighbour, and two things here care about that. The p99 on a
-money path is one. The other is `BUILD_PLAN` 13.4, which requires the ledger
-benchmark re-run on production hardware — and a number that moves depending on
-what someone else's server is doing is not a number you can hold anyone to.
+for a dedicated-vCPU type at go-live is not throughput, it is variance: a shared
+vCPU loses time to whoever else is on the host, and two things here care. The
+p99 on a money path is one. The other is `BUILD_PLAN` 13.4, which requires the
+ledger benchmark re-run on production hardware — and a number that moves with
+someone else's neighbour is not a number you can hold anyone to.
 
-This is a resize, not a migration: Hetzner rebuilds in place from a snapshot,
-and the CX and CCX lines are compatible. So starting on CX32 costs nothing in
+That is a resize rather than a migration, so starting on CX33 costs nothing in
 rework.
+
+## The operating system
+
+Pick **Ubuntu 24.04 LTS** unless something specifically requires newer.
+
+`infra/scripts/harden-host.sh` is written and tested against 24.04. It now
+detects the case where Docker has not yet published an apt repository for a
+brand-new Ubuntu codename and falls back automatically, so a newer release will
+not leave you with a half-hardened host — but 24.04 is the path that has
+actually been exercised, and a server is not where you want to be the first
+person to try something.
 
 ## Also buy
 
-- **Backups, +20% of the server price.** Hetzner's own snapshots are for
-  rebuilding a host, not for the ledger. `DISASTER_RECOVERY.md` requires
-  encrypted `age` dumps off the host as well — a Storage Box is about €4/month
-  and `infra/scripts/backup.sh` already targets one.
-- **A volume, later, not now.** 80 GB is comfortable for a pilot. Volumes attach
-  and grow without downtime, so there is no reason to pre-buy.
+- **Backups — tick the box.** It is 20% of the server price, so about $2 a month
+  on CX33, and it is unticked by default in the create form. Hetzner's snapshots
+  are for rebuilding a host rather than for the ledger, so they are in addition
+  to, not instead of, the encrypted `age` dumps `DISASTER_RECOVERY.md` requires;
+  `infra/scripts/backup.sh` writes those to a Storage Box for a few dollars more.
+- **A volume, later, not now.** 80 GB is comfortable for a pilot, and volumes
+  attach and grow without downtime, so there is no reason to pre-buy.
+- **The Hetzner firewall,** to restrict port 22 to known addresses. It is free,
+  it sits in front of the host rather than on it, and it is the last item the
+  hardening script deliberately leaves to a human.
 
 ## Where
 
-**Falkenstein or Nuremberg (Germany), or Helsinki (Finland).** All three are EU,
-so GDPR is one regime, and all three sit reasonably between Russia and West
-Africa. Helsinki is marginally closer to Russian senders; Falkenstein is the
-largest and most likely to have capacity in the size you want. Do not pick
-Singapore or the US locations for this corridor — both are worse for both ends,
-and the US adds an unhelpful jurisdiction to a platform whose whole
+**Helsinki, Falkenstein or Nuremberg.** All three are EU, so data protection is
+one regime, and all three sit reasonably between Russia and West Africa.
+Helsinki is the closest to Russian senders and is a good default. Falkenstein is
+the largest and the most likely to have capacity in an awkward size.
+
+Do not pick Singapore or the US locations for this corridor. Both are worse for
+both ends, and the US adds an unhelpful jurisdiction to a platform whose
 sanctions posture is already the hard part.
 
 ## What this does not cover

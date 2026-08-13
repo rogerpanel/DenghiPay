@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Host hardening for the neutral tier (BUILD_PLAN 12.4).
 #
-# Run once, as root, on a fresh Ubuntu 24.04 server:
+# Run once, as root, on a fresh Ubuntu server. Tested against 24.04 LTS; newer
+# releases work, and the Docker repository step falls back automatically when
+# Docker has not yet published for that codename.
 #   ssh root@<ip> 'bash -s' < infra/scripts/harden-host.sh
 #
 # Idempotent: running it twice changes nothing.
@@ -92,8 +94,23 @@ if ! command -v docker >/dev/null 2>&1; then
   install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
   chmod a+r /etc/apt/keyrings/docker.asc
+
+  # Docker publishes per-codename, and a freshly released Ubuntu can be weeks or
+  # months ahead of them. Without this check the repository 404s, apt fails, and
+  # `set -e` aborts a script that has already rewritten the ssh configuration —
+  # leaving a half-hardened host and a confusing error. Probe first, and fall
+  # back to the last LTS Docker definitely publishes for, which installs and
+  # runs correctly on newer releases.
+  CODENAME="$(. /etc/os-release && echo "$VERSION_CODENAME")"
+  FALLBACK_CODENAME="${DOCKER_REPO_CODENAME:-noble}"
+  if ! curl -fsI "https://download.docker.com/linux/ubuntu/dists/${CODENAME}/Release" >/dev/null 2>&1; then
+    echo "    note: Docker has no repository for '${CODENAME}' yet; using '${FALLBACK_CODENAME}'."
+    echo "    Override with DOCKER_REPO_CODENAME=<codename> if that is wrong."
+    CODENAME="$FALLBACK_CODENAME"
+  fi
+
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+https://download.docker.com/linux/ubuntu ${CODENAME} stable" \
     > /etc/apt/sources.list.d/docker.list
   apt-get update -qq
   apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
