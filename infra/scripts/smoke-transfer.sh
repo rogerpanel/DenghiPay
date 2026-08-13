@@ -6,7 +6,15 @@
 # the evidence for BUILD_PLAN 6.1 ("full transfer lifecycle runs locally with
 # zero external dependencies") and 7.1 ("both corridors complete end to end").
 #
-#   usage: infra/scripts/smoke-transfer.sh [account-number] [expected-final-state]
+#   usage: infra/scripts/smoke-transfer.sh [recipient-identifier] [expected-final-state]
+#
+# CORRIDOR selects the leg. RU-NG (the default) sends to a ten-digit Nigerian
+# NUBAN; RU-GH sends to a Ghanaian mobile-money number (233 then nine digits).
+# In both cases the simulator picks its behaviour from the last four digits of
+# the identifier, so the same scenario suffixes work on either corridor:
+#
+#   CORRIDOR=RU-NG infra/scripts/smoke-transfer.sh 0123456789 COMPLETED
+#   CORRIDOR=RU-GH infra/scripts/smoke-transfer.sh 233241116666 REFUNDED
 #
 # Sending limits aggregate over real transfer history, so repeated runs against
 # one database eventually exhaust the sender's daily cap and the script stops
@@ -17,11 +25,35 @@ set -euo pipefail
 API="${API:-http://localhost:4000}"
 EMAIL="${EMAIL:-chidi@demo.morapay.local}"
 PASSWORD="${PASSWORD:-morapay-demo-2026}"
-ACCOUNT="${1:-0123456789}"
+CORRIDOR="${CORRIDOR:-RU-NG}"
 EXPECT="${2:-COMPLETED}"
 BANK_CODE="${BANK_CODE:-058}"
+NETWORK="${NETWORK:-MTN}"
 # Minor units. 100 000,00 ₽ by default — the amount used in the walkthrough.
 AMOUNT="${AMOUNT:-10000000}"
+
+case "$CORRIDOR" in
+  RU-NG)
+    ACCOUNT="${1:-0123456789}"
+    DECLARED="ADEBAYO OKONKWO"
+    DETAILS_FOR() {
+      printf '{"method":"BANK_ACCOUNT","country":"NG","accountNumber":"%s","bankCode":"%s","declaredName":"%s"}' \
+        "$ACCOUNT" "$BANK_CODE" "$1"
+    }
+    ;;
+  RU-GH)
+    ACCOUNT="${1:-233241234567}"
+    DECLARED="KWAME MENSAH"
+    DETAILS_FOR() {
+      printf '{"method":"MOBILE_MONEY","country":"GH","msisdn":"%s","network":"%s","declaredName":"%s"}' \
+        "$ACCOUNT" "$NETWORK" "$1"
+    }
+    ;;
+  *)
+    echo "unknown CORRIDOR '$CORRIDOR' (expected RU-NG or RU-GH)" >&2
+    exit 64
+    ;;
+esac
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 fail() { printf '\033[31mFAIL: %s\033[0m\n' "$*" >&2; exit 1; }
@@ -53,9 +85,9 @@ TOKEN=$(curl -sS -X POST "$API/auth/login" -H 'content-type: application/json' \
 AUTH="authorization: Bearer $TOKEN"
 echo "   signed in"
 
-say "2. Name enquiry for account $ACCOUNT"
+say "2. Name enquiry on $CORRIDOR for $ACCOUNT"
 ENQUIRY=$(curl -sS -X POST "$API/recipients/name-enquiry" -H "$AUTH" -H 'content-type: application/json' \
-  -d "{\"details\":{\"method\":\"BANK_ACCOUNT\",\"country\":\"NG\",\"accountNumber\":\"$ACCOUNT\",\"bankCode\":\"$BANK_CODE\",\"declaredName\":\"ADEBAYO OKONKWO\"}}")
+  -d "{\"details\":$(DETAILS_FOR "$DECLARED")}")
 STATUS=$(echo "$ENQUIRY" | jqr "status")
 echo "   $STATUS"
 if [ "$STATUS" != "RESOLVED" ]; then
@@ -68,13 +100,13 @@ echo "   resolved to: $RESOLVED"
 
 say "3. Save the recipient"
 RECIPIENT_ID=$(curl -sS -X POST "$API/recipients" -H "$AUTH" -H 'content-type: application/json' \
-  -d "{\"details\":{\"method\":\"BANK_ACCOUNT\",\"country\":\"NG\",\"accountNumber\":\"$ACCOUNT\",\"bankCode\":\"$BANK_CODE\",\"declaredName\":\"$RESOLVED\"},\"nickname\":\"Smoke test\"}" \
+  -d "{\"details\":$(DETAILS_FOR "$RESOLVED"),\"nickname\":\"Smoke test\"}" \
   | jqr "id")
 echo "   $RECIPIENT_ID"
 
-say "4. Quote $AMOUNT minor units on RU-NG"
+say "4. Quote $AMOUNT minor units on $CORRIDOR"
 QUOTE=$(curl -sS -X POST "$API/quotes" -H "$AUTH" -H 'content-type: application/json' \
-  -d "{\"corridorId\":\"RU-NG\",\"sendMinorUnits\":\"$AMOUNT\"}")
+  -d "{\"corridorId\":\"$CORRIDOR\",\"sendMinorUnits\":\"$AMOUNT\"}")
 QUOTE_ID=$(echo "$QUOTE" | jqr "id")
 [ -n "$QUOTE_ID" ] || fail "no quote: $QUOTE"
 echo "   send        $(echo "$QUOTE" | jqr "sendAmount.formatted")"
