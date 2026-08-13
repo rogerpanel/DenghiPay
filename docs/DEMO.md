@@ -52,6 +52,12 @@ because it went wrong once.
 > `pnpm dev` is the development alternative — same URLs, hot reload, slower
 > pages and a development overlay. Use it while working, not while presenting.
 
+**To put it in front of other people** — testers on their own phones, rather
+than a walkthrough on your screen — use `pnpm demo:preview` and see
+[`docs/PREVIEW.md`](PREVIEW.md). It builds the front ends to call the API
+through their own origin, which is what lets a device other than this one use
+the application at all.
+
 | Screen                    | URL                                    |
 | ------------------------- | -------------------------------------- |
 | Sender app                | http://localhost:3000                  |

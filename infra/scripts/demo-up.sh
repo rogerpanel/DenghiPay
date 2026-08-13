@@ -25,12 +25,47 @@ LOG_DIR="${LOG_DIR:-/tmp/morapay}"
 ACTION="${1:-up}"
 
 case "$ACTION" in
-  up | reset | down) ;;
+  up | reset | preview | down) ;;
   *)
-    echo "usage: $0 [up|reset|down]" >&2
+    echo "usage: $0 [up|reset|preview|down]" >&2
     exit 64
     ;;
 esac
+
+# `preview` is `up`, reachable from other devices.
+#
+# The difference is one build-time value. NEXT_PUBLIC_API_URL is inlined into
+# the client bundle, so the usual `http://localhost:4000` means a phone opening
+# the app calls *itself* on port 4000 and every request fails. Building with
+# `/api` makes the browser call whatever origin served the page, and the
+# rewrite in next.config.js forwards it to the API server-side.
+#
+# The API is deliberately not exposed. Only the two front-end ports need to be
+# reachable; the API stays on the loopback interface and is reached through the
+# proxy, so a preview opened to a network exposes two ports rather than three.
+if [ "$ACTION" = "preview" ]; then
+  export NEXT_PUBLIC_API_URL="/api"
+  export API_PROXY_TARGET="http://127.0.0.1:${API_PORT}"
+  BIND="0.0.0.0"
+else
+  BIND="127.0.0.1"
+fi
+
+# Best-effort LAN address, for printing. Several ways because none of them work
+# everywhere: `hostname -I` is Linux-only, `ip route` needs iproute2, and a
+# machine behind a VPN can report an address nobody else can reach — which is
+# why the script prints it as something to try rather than as a fact.
+lan_address() {
+  local ip=""
+  ip="$( (hostname -I 2>/dev/null || true) | tr ' ' '\n' | grep -E '^(192\.168|10\.|172\.(1[6-9]|2[0-9]|3[01]))\.' | head -1)"
+  if [ -z "$ip" ] && command -v ip >/dev/null 2>&1; then
+    ip="$( (ip -4 route get 1.1.1.1 2>/dev/null || true) | grep -oE 'src [0-9.]+' | awk '{print $2}' | head -1)"
+  fi
+  if [ -z "$ip" ] && command -v ipconfig >/dev/null 2>&1; then
+    ip="$(ipconfig getifaddr en0 2>/dev/null || true)"
+  fi
+  printf '%s' "$ip"
+}
 
 mkdir -p "$LOG_DIR"
 
@@ -182,8 +217,8 @@ done
 
 echo "→ starting"
 (cd "$ROOT/apps/api" && nohup node dist/main.js >"$LOG_DIR/api.log" 2>&1 & echo $! >"$LOG_DIR/api.pid")
-(cd "$ROOT/apps/web" && nohup pnpm exec next start -p "$WEB_PORT" >"$LOG_DIR/web.log" 2>&1 & echo $! >"$LOG_DIR/web.pid")
-(cd "$ROOT/apps/admin" && nohup pnpm exec next start -p "$ADMIN_PORT" >"$LOG_DIR/admin.log" 2>&1 & echo $! >"$LOG_DIR/admin.pid")
+(cd "$ROOT/apps/web" && nohup pnpm exec next start -H "$BIND" -p "$WEB_PORT" >"$LOG_DIR/web.log" 2>&1 & echo $! >"$LOG_DIR/web.pid")
+(cd "$ROOT/apps/admin" && nohup pnpm exec next start -H "$BIND" -p "$ADMIN_PORT" >"$LOG_DIR/admin.log" 2>&1 & echo $! >"$LOG_DIR/admin.pid")
 
 # Confirm the process we launched is still alive before trusting the port. A
 # server that died on startup leaves the port to whatever held it before, and
@@ -208,6 +243,67 @@ if curl -s -m 10 "http://localhost:$API_PORT/health/ledger" | grep -q '"balanced
 else
   echo "✗ ledger reports an imbalance — do not demonstrate until this is understood." >&2
   exit 1
+fi
+
+if [ "$ACTION" = "preview" ]; then
+  # The check that decides whether anyone else can actually use this. A page
+  # that renders proves nothing here: the failure is that the bundle calls an
+  # API host the visitor's device cannot reach, and the page renders perfectly
+  # right up until the first request. So ask the API a real question through
+  # the front end's own origin, exactly as a visitor's browser will.
+  for entry in "sender app:$WEB_PORT" "back office:$ADMIN_PORT"; do
+    port="${entry##*:}"
+    if curl -s -m 10 "http://localhost:$port/api/health" | grep -q '"status"'; then
+      echo "✓ ${entry%%:*} reaches the API through its own origin (/api)"
+    else
+      echo "✗ ${entry%%:*} cannot reach the API through /api — visitors would see" >&2
+      echo "  a page that loads and then fails on every request. The build may" >&2
+      echo "  predate this mode; remove .next and run again." >&2
+      exit 1
+    fi
+  done
+
+  LAN="$(lan_address)"
+  cat <<EOF
+
+  On this machine
+    Sender app        http://localhost:$WEB_PORT
+    Back office       http://localhost:$ADMIN_PORT
+
+EOF
+  if [ -n "$LAN" ]; then
+    cat <<EOF
+  From a phone or another device on the same network
+    Sender app        http://$LAN:$WEB_PORT
+    Back office       http://$LAN:$ADMIN_PORT
+
+  If those do not open, the machine's firewall is blocking the ports, or the
+  network isolates clients from each other — guest and corporate wi-fi usually
+  do. Tether the phone to the machine's hotspot, or use a tunnel.
+
+EOF
+  else
+    cat <<EOF
+  A local network address could not be determined automatically. Find it with
+  'hostname -I' (Linux), 'ipconfig getifaddr en0' (macOS) or 'ipconfig'
+  (Windows), then open http://<that-address>:$WEB_PORT from the other device.
+
+EOF
+  fi
+  cat <<EOF
+  For testers who are not on this network, put a tunnel in front of port
+  $WEB_PORT. Any of these work, and none of them need a domain:
+
+    cloudflared tunnel --url http://localhost:$WEB_PORT
+    ngrok http $WEB_PORT
+    ssh -R 80:localhost:$WEB_PORT nokey@localhost.run
+
+  The API is deliberately not exposed — it stays on the loopback interface and
+  is reached through the front end, so the tunnel only ever needs one port.
+
+  Logs in $LOG_DIR · stop with: pnpm demo:down
+EOF
+  exit 0
 fi
 
 cat <<EOF

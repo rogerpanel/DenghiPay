@@ -6,6 +6,17 @@ const nextConfig = {
   transpilePackages: ['@morapay/ui'],
   poweredByHeader: false,
   eslint: { ignoreDuringBuilds: true },
+  // Same-origin API proxy — see the note in apps/web/next.config.js. The back
+  // office needs it for the same reason: a build with an absolute API host in
+  // the bundle can only be opened from that host.
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${process.env.API_PROXY_TARGET ?? 'http://127.0.0.1:4000'}/:path*`,
+      },
+    ];
+  },
   async headers() {
     return [
       {

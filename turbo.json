@@ -1,6 +1,7 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": ["NODE_ENV", "LIVE_FUNDS_ENABLED"],
+  "//": "NEXT_PUBLIC_* values are inlined into the client bundle at build time, so they are part of the build's identity. Leaving them out of globalEnv means a build for one API URL is served from cache for another — the bundle keeps calling the previous host, and nothing about the failure points at the cache.",
+  "globalEnv": ["NODE_ENV", "LIVE_FUNDS_ENABLED", "NEXT_PUBLIC_API_URL", "API_PROXY_TARGET"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
