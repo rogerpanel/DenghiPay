@@ -32,10 +32,7 @@ import {
 } from './auth/guards';
 import { StaffAuthService } from './staff/staff-auth.service';
 import { PrismaLedgerStore } from './ledger/prisma-ledger-store';
-import { PartitionGateway } from './partitions/partition-gateway.service';
-import { SenderProfileRuRepository } from './partitions/ru/sender-profile.repository';
-import { RecipientProfileNgRepository } from './partitions/ng/recipient-profile.repository';
-import { RecipientProfileGhRepository } from './partitions/gh/recipient-profile.repository';
+import { PartitionsModule } from './partitions/partitions.module';
 import { CorridorsService } from './quoting/corridors.service';
 import { RatesService } from './quoting/rates.service';
 import { QuotesService } from './quoting/quotes.service';
@@ -114,6 +111,9 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
     ThrottlerModule.forRoot([
       { ttl: config.RATE_LIMIT_WINDOW_SECONDS * 1000, limit: config.RATE_LIMIT_MAX_REQUESTS },
     ]),
+    // Residency partitions. This module exports the gateway and nothing else,
+    // so no other module can reach a partition repository (guardrail G8).
+    PartitionsModule,
   ],
   controllers: [
     AuthController,
@@ -143,12 +143,6 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
       useFactory: (store: PrismaLedgerStore) => new LedgerService(store),
       inject: [PrismaLedgerStore],
     },
-
-    // Residency partitions. Reached only through the gateway.
-    SenderProfileRuRepository,
-    RecipientProfileNgRepository,
-    RecipientProfileGhRepository,
-    PartitionGateway,
 
     // Adapter ports.
     { provide: ProviderRegistry, useFactory: () => buildRegistry(config) },

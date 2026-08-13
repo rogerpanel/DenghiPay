@@ -21,6 +21,8 @@ export class MetricsService {
   private readonly floatBalance: Gauge<'currency'>;
   private readonly openExposure: Gauge<'currency'>;
   private readonly reconciliationBreaks: Gauge<'provider'>;
+  private readonly ledgerBalanced: Gauge<string>;
+  private readonly ledgerDrift: Gauge<string>;
 
   constructor() {
     this.registry.setDefaultLabels({ service: 'morapay-api' });
@@ -89,6 +91,20 @@ export class MetricsService {
       labelNames: ['provider'],
       registers: [this.registry],
     });
+
+    // The whole-ledger invariant as a number, so it can be alerted on rather
+    // than only inspected. 1 means debits equal credits in every currency.
+    this.ledgerBalanced = new Gauge({
+      name: 'morapay_ledger_balanced',
+      help: '1 when debits equal credits in every currency, 0 otherwise',
+      registers: [this.registry],
+    });
+
+    this.ledgerDrift = new Gauge({
+      name: 'morapay_ledger_drifting_accounts',
+      help: 'Accounts whose snapshot disagrees with a recomputation from genesis',
+      registers: [this.registry],
+    });
   }
 
   callbackReceived(
@@ -133,6 +149,14 @@ export class MetricsService {
 
   setReconciliationBreaks(provider: string, count: number): void {
     this.reconciliationBreaks.set({ provider }, count);
+  }
+
+  setLedgerBalanced(balanced: boolean): void {
+    this.ledgerBalanced.set(balanced ? 1 : 0);
+  }
+
+  setLedgerDrift(count: number): void {
+    this.ledgerDrift.set(count);
   }
 
   async scrape(): Promise<string> {

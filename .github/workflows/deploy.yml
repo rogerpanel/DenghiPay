@@ -1,0 +1,171 @@
+name: Deploy
+
+# BUILD_PLAN 12.6 — merge to main builds an image, pushes it to GHCR, deploys
+# to staging automatically, and stops at a manual approval gate before
+# production. The gate is a GitHub Environment with required reviewers; it is
+# the same gate that guardrail G1 depends on.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Image tag to deploy (defaults to the current SHA)'
+        required: false
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/morapay
+
+jobs:
+  build:
+    name: build and push images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: meta
+        run: echo "tag=${{ github.event.inputs.tag || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}-api:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/web.Dockerfile
+          push: true
+          build-args: |
+            APP=web
+            NEXT_PUBLIC_API_URL=${{ vars.STAGING_API_URL }}
+          tags: ${{ env.IMAGE_PREFIX }}-web:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Admin image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/web.Dockerfile
+          push: true
+          build-args: |
+            APP=admin
+            NEXT_PUBLIC_API_URL=${{ vars.STAGING_API_URL }}
+          tags: ${{ env.IMAGE_PREFIX }}-admin:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan the API image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}-api:${{ steps.meta.outputs.tag }}
+          format: sarif
+          output: trivy.sarif
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+      - if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: trivy.sarif }
+
+  staging:
+    name: deploy to staging
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://staging.morapay.example
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: deploy
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/morapay
+            git fetch --all && git checkout ${{ github.sha }}
+            export IMAGE_TAG=${{ needs.build.outputs.tag }}
+            docker compose -f infra/compose/production.yml pull
+            docker compose -f infra/compose/production.yml run --rm api pnpm db:migrate
+            docker compose -f infra/compose/production.yml up -d --wait
+            # Health-check gating: if the API does not come up, the deploy fails
+            # here rather than being discovered by a customer.
+            curl -fsS https://staging-api.morapay.example/health | tee /dev/stderr | grep -q '"status":"ok"'
+
+      - name: Smoke test the corridor end to end
+        run: API=https://staging-api.morapay.example bash infra/scripts/smoke-transfer.sh
+
+  production:
+    name: deploy to production
+    needs: [build, staging]
+    runs-on: ubuntu-latest
+    # The manual approval gate. Configure `production` in GitHub Environments
+    # with required reviewers; the deploy waits here until a human approves.
+    environment:
+      name: production
+      url: https://morapay.example
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy with a rollback point
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PRODUCTION_HOST }}
+          username: deploy
+          key: ${{ secrets.PRODUCTION_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/morapay
+
+            # Record what is running now, so rollback is one command.
+            docker compose -f infra/compose/production.yml config \
+              | grep 'image:' > /opt/morapay/.rollback-images
+
+            git fetch --all && git checkout ${{ github.sha }}
+            export IMAGE_TAG=${{ needs.build.outputs.tag }}
+            docker compose -f infra/compose/production.yml pull
+
+            # Migrations run before the new image serves traffic. They are
+            # expand-only: no destructive migration ships in the same release as
+            # the code that stops using a column.
+            docker compose -f infra/compose/production.yml run --rm api pnpm db:migrate
+
+            docker compose -f infra/compose/production.yml up -d --wait
+            curl -fsS https://api.morapay.example/health | grep -q '"status":"ok"'
+
+            # And the invariant that matters more than uptime.
+            curl -fsS https://api.morapay.example/health/ledger | grep -q '"balanced":true'
+
+      - name: Record the deployment
+        run: |
+          echo "Deployed ${{ needs.build.outputs.tag }} to production at $(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"

@@ -96,6 +96,46 @@ export class TreasuryService {
     }
   }
 
+  /**
+   * The ledger invariant, checked on a schedule and published as a metric.
+   *
+   * The database already makes an unbalanced transaction impossible, so this
+   * should never fire. It runs anyway: the value of a control you believe is
+   * airtight is knowing the moment it is not (BUILD_PLAN 1.4, 11.5).
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async verifyLedgerIntegrity(): Promise<void> {
+    const rows = await this.prisma.$queryRaw<Array<{ currency: string; net: bigint }>>`
+      SELECT currency,
+             SUM(CASE WHEN direction = 'DEBIT' THEN amount_minor_units ELSE -amount_minor_units END) AS net
+        FROM ledger_entry GROUP BY currency`;
+
+    const balanced = rows.every((row) => BigInt(row.net) === 0n);
+    this.metrics.setLedgerBalanced(balanced);
+
+    const drift = (await this.ledger.detectDrift()).filter((d) => !d.ok);
+    this.metrics.setLedgerDrift(drift.length);
+
+    if (!balanced) {
+      await this.audit.record({
+        actorType: 'SYSTEM',
+        action: 'LEDGER_IMBALANCE_DETECTED',
+        subjectType: 'LEDGER',
+        reason: rows.map((r) => `${r.currency}=${r.net}`).join(', '),
+      });
+    }
+
+    for (const account of drift) {
+      await this.audit.record({
+        actorType: 'SYSTEM',
+        action: 'BALANCE_DRIFT_DETECTED',
+        subjectType: 'LEDGER_ACCOUNT',
+        subjectId: account.accountId,
+        reason: `snapshot ${account.snapshotMinorUnits} vs derived ${account.derivedMinorUnits}`,
+      });
+    }
+  }
+
   /** Open FX exposure per currency (BUILD_PLAN 4.4). */
   async fxExposure(): Promise<
     Array<{ currency: CurrencyCode; openExposure: Money<CurrencyCode>; positionCount: number }>

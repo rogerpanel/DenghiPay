@@ -29,3 +29,5 @@ Thumbs.db
 
 # generated
 apps/api/prisma/generated/
+dump.rdb
+*.rdb
