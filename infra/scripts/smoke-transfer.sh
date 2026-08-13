@@ -7,6 +7,11 @@
 # zero external dependencies") and 7.1 ("both corridors complete end to end").
 #
 #   usage: infra/scripts/smoke-transfer.sh [account-number] [expected-final-state]
+#
+# Sending limits aggregate over real transfer history, so repeated runs against
+# one database eventually exhaust the sender's daily cap and the script stops
+# with LIMIT_EXCEEDED — the limits engine working, not a regression. Either
+# lower AMOUNT, or start from a clean database with `pnpm demo:reset`.
 set -euo pipefail
 
 API="${API:-http://localhost:4000}"
@@ -15,17 +20,28 @@ PASSWORD="${PASSWORD:-morapay-demo-2026}"
 ACCOUNT="${1:-0123456789}"
 EXPECT="${2:-COMPLETED}"
 BANK_CODE="${BANK_CODE:-058}"
+# Minor units. 100 000,00 ₽ by default — the amount used in the walkthrough.
+AMOUNT="${AMOUNT:-10000000}"
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 fail() { printf '\033[31mFAIL: %s\033[0m\n' "$*" >&2; exit 1; }
 
 # Tiny JSON reader: jqr "accessToken" or jqr "sendAmount.formatted"
+#
+# Prints nothing when the key is absent, rather than raising. The API answers
+# errors with a different shape ({"code": "LIMIT_EXCEEDED", ...}), and a
+# traceback about a missing 'reference' key tells you nothing about why; an
+# empty result lets the caller's own `fail` print the response the API actually
+# sent.
 jqr() {
   python3 -c '
 import sys, json
-d = json.load(sys.stdin)
-for key in sys.argv[1].split("."):
-    d = d[key]
+try:
+    d = json.load(sys.stdin)
+    for key in sys.argv[1].split("."):
+        d = d[key]
+except (ValueError, KeyError, TypeError, IndexError):
+    sys.exit(0)
 print(d)
 ' "$1"
 }
@@ -56,9 +72,9 @@ RECIPIENT_ID=$(curl -sS -X POST "$API/recipients" -H "$AUTH" -H 'content-type: a
   | jqr "id")
 echo "   $RECIPIENT_ID"
 
-say "4. Quote 100 000,00 RUB on RU-NG"
+say "4. Quote $AMOUNT minor units on RU-NG"
 QUOTE=$(curl -sS -X POST "$API/quotes" -H "$AUTH" -H 'content-type: application/json' \
-  -d '{"corridorId":"RU-NG","sendMinorUnits":"10000000"}')
+  -d "{\"corridorId\":\"RU-NG\",\"sendMinorUnits\":\"$AMOUNT\"}")
 QUOTE_ID=$(echo "$QUOTE" | jqr "id")
 [ -n "$QUOTE_ID" ] || fail "no quote: $QUOTE"
 echo "   send        $(echo "$QUOTE" | jqr "sendAmount.formatted")"

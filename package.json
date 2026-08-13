@@ -28,6 +28,7 @@
     "stack:down": "bash infra/scripts/local-stack.sh down",
     "demo:up": "bash infra/scripts/demo-up.sh up",
     "demo:down": "bash infra/scripts/demo-up.sh down",
+    "demo:reset": "bash infra/scripts/demo-up.sh reset",
     "openapi": "pnpm --filter @morapay/api run openapi",
     "prepare": "husky || true"
   },

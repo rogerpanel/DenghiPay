@@ -24,7 +24,58 @@ ADMIN_PORT="${ADMIN_PORT:-3001}"
 LOG_DIR="${LOG_DIR:-/tmp/morapay}"
 ACTION="${1:-up}"
 
+case "$ACTION" in
+  up | reset | down) ;;
+  *)
+    echo "usage: $0 [up|reset|down]" >&2
+    exit 64
+    ;;
+esac
+
 mkdir -p "$LOG_DIR"
+
+# Is anything answering HTTP on this port?
+#
+# Deliberately not `lsof` or `ss`. Both are unavailable or blind in enough
+# environments — containers with a restricted /proc among them — that a check
+# built on either reports "nothing is listening" about a server that is happily
+# serving traffic. A TCP connection is the portable question, and it is also
+# the question that matters: not "does a process exist" but "does this port
+# answer".
+port_answers() {
+  local port="$1"
+  curl -s -o /dev/null -m 2 "http://localhost:$port/" 2>/dev/null
+  # 0 = answered, 7 = connection refused, 28 = timed out. Anything else (a 404,
+  # a redirect, a hang-up mid-body) still means something is on the other end.
+  [ "$?" != 7 ]
+}
+
+# Free a port, whoever holds it.
+#
+# Killing only the PIDs this script recorded is not enough, and the failure is
+# a quiet one: a server left over from an earlier session keeps the port, the
+# new one exits with EADDRINUSE into a log nobody reads, and every check below
+# passes — against the stale process. The verification then certifies the wrong
+# build. Ports are the resource that matters, so ports are what we clear.
+free_port() {
+  local port="$1"
+  port_answers "$port" || return 0
+  local pids
+  pids="$( (lsof -t -i ":$port" -sTCP:LISTEN 2>/dev/null || true) | tr '\n' ' ')"
+  if [ -n "$pids" ]; then
+    # shellcheck disable=SC2086
+    kill $pids 2>/dev/null || true
+  fi
+  for _ in $(seq 20); do
+    port_answers "$port" || return 0
+    sleep 0.5
+  done
+  if [ -n "$pids" ]; then
+    # shellcheck disable=SC2086
+    kill -9 $pids 2>/dev/null || true
+  fi
+  sleep 1
+}
 
 stop_all() {
   for name in api web admin; do
@@ -38,6 +89,9 @@ stop_all() {
     fi
     rm -f "$pidfile"
   done
+  free_port "$API_PORT"
+  free_port "$WEB_PORT"
+  free_port "$ADMIN_PORT"
   echo "→ stopped"
 }
 
@@ -88,6 +142,19 @@ stop_all
 echo "→ dependencies"
 bash "$ROOT/infra/scripts/local-stack.sh" up
 
+if [ "$ACTION" = "reset" ]; then
+  # Sending limits are aggregated over real transfer history, which persists.
+  # Rehearse the walkthrough three times on one database and the fourth run
+  # meets "above your tier 2 limit" partway through the main thread — the
+  # limits engine working exactly as designed, at the worst possible moment.
+  # Resetting is the only way to start from a known position.
+  echo "→ resetting the database (transfer history and ledger will be discarded)"
+  pnpm db:reset >"$LOG_DIR/reset.log" 2>&1 || {
+    echo "✗ reset failed; see $LOG_DIR/reset.log" >&2
+    exit 1
+  }
+fi
+
 echo "→ migrations and seed"
 pnpm db:migrate >"$LOG_DIR/migrate.log" 2>&1
 pnpm seed >"$LOG_DIR/seed.log" 2>&1
@@ -99,14 +166,38 @@ pnpm build >"$LOG_DIR/build.log" 2>&1 || {
   exit 1
 }
 
+# Nothing may still hold a port at this point. If something does, `next start`
+# fails with EADDRINUSE at the bottom of a log file while the old server keeps
+# answering, and every check below then certifies whatever was already running.
+# Refusing here, by name, is worth more than the seconds it costs.
+for entry in "sender app:$WEB_PORT" "back office:$ADMIN_PORT" "API:$API_PORT"; do
+  port="${entry##*:}"
+  if port_answers "$port"; then
+    echo "✗ port $port (${entry%%:*}) is still answering after the stop step." >&2
+    echo "  Another instance is probably running. Stop it with 'pnpm demo:down'," >&2
+    echo "  or set WEB_PORT / ADMIN_PORT / API_PORT to use different ports." >&2
+    exit 1
+  fi
+done
+
 echo "→ starting"
 (cd "$ROOT/apps/api" && nohup node dist/main.js >"$LOG_DIR/api.log" 2>&1 & echo $! >"$LOG_DIR/api.pid")
 (cd "$ROOT/apps/web" && nohup pnpm exec next start -p "$WEB_PORT" >"$LOG_DIR/web.log" 2>&1 & echo $! >"$LOG_DIR/web.pid")
 (cd "$ROOT/apps/admin" && nohup pnpm exec next start -p "$ADMIN_PORT" >"$LOG_DIR/admin.log" 2>&1 & echo $! >"$LOG_DIR/admin.pid")
 
-wait_for "http://localhost:$API_PORT/health" 200 90 || { echo "✗ API did not come up; see $LOG_DIR/api.log" >&2; exit 1; }
-wait_for "http://localhost:$WEB_PORT/login" 200 90 || { echo "✗ sender app did not come up; see $LOG_DIR/web.log" >&2; exit 1; }
-wait_for "http://localhost:$ADMIN_PORT/login" 200 90 || { echo "✗ back office did not come up; see $LOG_DIR/admin.log" >&2; exit 1; }
+# Confirm the process we launched is still alive before trusting the port. A
+# server that died on startup leaves the port to whatever held it before, and
+# an HTTP check alone cannot tell the two apart.
+#
+# There is no separate "is the process alive" check, and that is deliberate.
+# `pnpm exec` hands off to a child, so the launcher's PID stops meaning
+# anything within seconds — a PID check calls a healthy server dead. The
+# guarantee comes from the step above instead: every port was proven silent
+# before anything was started, so whatever answers now is what this run
+# started. The HTTP checks below are then sufficient on their own.
+wait_for "http://localhost:$API_PORT/health" 200 120 || { echo "✗ API did not come up; see $LOG_DIR/api.log" >&2; tail -5 "$LOG_DIR/api.log" >&2; exit 1; }
+wait_for "http://localhost:$WEB_PORT/login" 200 120 || { echo "✗ sender app did not come up; see $LOG_DIR/web.log" >&2; tail -5 "$LOG_DIR/web.log" >&2; exit 1; }
+wait_for "http://localhost:$ADMIN_PORT/login" 200 120 || { echo "✗ back office did not come up; see $LOG_DIR/admin.log" >&2; tail -5 "$LOG_DIR/admin.log" >&2; exit 1; }
 
 echo "→ verifying"
 verify_styled "sender app" "http://localhost:$WEB_PORT/login"

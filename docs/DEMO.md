@@ -16,21 +16,38 @@ credentials, no live funds, no real money.
 ```bash
 pnpm install
 cp .env.example .env
-pnpm demo:up           # everything below, in order, then verified
+pnpm demo:reset        # first run, and before the meeting — see below
 ```
 
-`demo:up` starts PostgreSQL and Redis, migrates, seeds, builds, serves the
-production build of both front ends, and then checks the three things that
-decide whether a demonstration goes well: that every service answers, that each
-page's stylesheet actually loads, and that the ledger reports `balanced: true`.
-It exits non-zero and says why if any of those fail, so a problem surfaces now
-rather than on the screen. `pnpm demo:down` stops it.
+`demo:reset` and `demo:up` do the same thing, in this order: start PostgreSQL
+and Redis, migrate, seed, build, serve the production build of both front ends,
+and then check the three things that decide whether a demonstration goes well —
+that every service answers, that each page's stylesheet actually loads, and
+that the ledger reports `balanced: true`. Either exits non-zero and says why if
+a check fails, so a problem surfaces now rather than on the screen.
+`pnpm demo:down` stops everything.
 
-Run it fresh before the meeting even if the stack is already up. Rebuilding
-underneath a running server leaves it serving HTML that points at stylesheet
-chunks that no longer exist — the pages still return 200 and render as
-unstyled text. `demo:up` rebuilds and restarts in the right order, and the
-stylesheet check is there precisely to catch that.
+**Use `demo:reset` before the meeting; `demo:up` for everything else.** The
+difference is that `reset` drops the database first. It matters because sending
+limits are aggregated over real transfer history, and that history persists:
+`chidi@demo.morapay.local` is tier 2, capped at ₽ 300 000,00 a day, so after
+three rehearsals of the ₽ 100 000,00 main thread the fourth run is refused with
+_"above your tier 2 limit"_ partway through. That is the limits engine working
+exactly as designed, at the worst possible moment. Starting from a clean
+database is the only way to know where you are.
+
+> `demo:reset` destroys all local data — transfers, ledger, everything. It is
+> for the local demonstration database and nothing else. `prisma migrate reset`
+> will ask an AI agent for explicit human consent before running, which is
+> deliberate; run it yourself.
+
+Run one of them fresh before the meeting even if the stack is already up.
+Rebuilding underneath a running server leaves it serving HTML that points at
+stylesheet chunks that no longer exist — the pages still return 200 and render
+as unstyled text. Both scripts rebuild and restart in the right order, free the
+ports of anything left over from an earlier session, confirm the process they
+started is the one answering, and check the stylesheets. Each of those exists
+because it went wrong once.
 
 > `pnpm dev` is the development alternative — same URLs, hot reload, slower
 > pages and a development overlay. Use it while working, not while presenting.
