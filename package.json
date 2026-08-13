@@ -1,0 +1,58 @@
+{
+  "name": "morapay",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "description": "MoraPay — cross-border remittance platform (Russia/CIS → Nigeria & Ghana)",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:cov": "turbo run test:cov",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css,yml,yaml}\"",
+    "db:migrate": "pnpm --filter @morapay/api exec prisma migrate deploy",
+    "db:migrate:dev": "pnpm --filter @morapay/api exec prisma migrate dev",
+    "db:generate": "pnpm --filter @morapay/api exec prisma generate",
+    "db:reset": "pnpm --filter @morapay/api exec prisma migrate reset --force",
+    "seed": "pnpm --filter @morapay/api run seed",
+    "demo:seed": "pnpm --filter @morapay/api run demo:seed",
+    "stack:up": "bash infra/scripts/local-stack.sh up",
+    "stack:down": "bash infra/scripts/local-stack.sh down",
+    "openapi": "pnpm --filter @morapay/api run openapi",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0",
+    "@types/node": "^22.10.5",
+    "@typescript-eslint/eslint-plugin": "^8.20.0",
+    "@typescript-eslint/parser": "^8.20.0",
+    "@vitest/coverage-v8": "^2.1.8",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^9.1.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.3.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.8"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,css,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}

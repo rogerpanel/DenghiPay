@@ -1,0 +1,24 @@
+# Every PR needs an owner's review. Money code needs a careful one.
+#
+# Replace the placeholder handles below with real GitHub usernames or teams
+# before enabling branch protection.
+
+*                       @rogerpanel
+
+# Money-critical. BUILD_PLAN Part 6: reject any PR that touches financial state
+# outside the ledger service.
+/packages/ledger/       @rogerpanel
+/packages/domain/       @rogerpanel
+/apps/api/src/transfers/ @rogerpanel
+/apps/api/src/ledger/   @rogerpanel
+/apps/api/src/treasury/ @rogerpanel
+
+# Compliance gates.
+/apps/api/src/compliance/ @rogerpanel
+/docs/compliance/       @rogerpanel
+
+# Guardrails themselves.
+/CLAUDE.md              @rogerpanel
+/docs/BUILD_PLAN.md     @rogerpanel
+/.github/               @rogerpanel
+/infra/                 @rogerpanel

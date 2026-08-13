@@ -1,0 +1,35 @@
+# Guardrail G7 — no secrets in the repository, ever.
+# Run locally by the pre-commit hook and in CI; CI fails the build on any hit.
+
+title = "MoraPay gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "morapay-generic-signing-secret"
+description = "A provider signing secret assigned inline"
+regex = '''(?i)(signing_?secret|webhook_?secret|hmac_?key)\s*[:=]\s*['"][A-Za-z0-9+/=_\-]{16,}['"]'''
+tags = ["secret", "webhook"]
+
+[[rules]]
+id = "morapay-database-url"
+description = "A database URL with an embedded password"
+regex = '''(?i)postgres(ql)?:\/\/[^:\s]+:[^@\s]{6,}@'''
+tags = ["secret", "database"]
+
+[allowlist]
+description = "Documented placeholders only — these must never hold real values"
+# Match against the whole line, not just the captured secret: the local
+# development credential is only recognisable in context.
+regexTarget = "line"
+paths = [
+  '''\.env\.example$''',
+  '''pnpm-lock\.yaml$''',
+]
+regexes = [
+  '''postgres(ql)?:\/\/morapay:morapay@''', # the local-only development credential
+  '''change-me''',
+  '''replace-in-vault''',
+  '''ci-only-[a-z-]+-not-a-real-key''',     # CI fixtures, meaningless outside a runner
+]
