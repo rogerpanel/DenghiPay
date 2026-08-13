@@ -16,13 +16,24 @@ credentials, no live funds, no real money.
 ```bash
 pnpm install
 cp .env.example .env
-pnpm stack:up          # PostgreSQL + Redis
-pnpm db:migrate
-pnpm seed              # chart of accounts, corridors, rates, staff accounts
-pnpm demo:seed         # demo senders and recipients
-pnpm build
-pnpm dev               # API :4000 · sender app :3000 · back office :3001
+pnpm demo:up           # everything below, in order, then verified
 ```
+
+`demo:up` starts PostgreSQL and Redis, migrates, seeds, builds, serves the
+production build of both front ends, and then checks the three things that
+decide whether a demonstration goes well: that every service answers, that each
+page's stylesheet actually loads, and that the ledger reports `balanced: true`.
+It exits non-zero and says why if any of those fail, so a problem surfaces now
+rather than on the screen. `pnpm demo:down` stops it.
+
+Run it fresh before the meeting even if the stack is already up. Rebuilding
+underneath a running server leaves it serving HTML that points at stylesheet
+chunks that no longer exist — the pages still return 200 and render as
+unstyled text. `demo:up` rebuilds and restarts in the right order, and the
+stylesheet check is there precisely to catch that.
+
+> `pnpm dev` is the development alternative — same URLs, hot reload, slower
+> pages and a development overlay. Use it while working, not while presenting.
 
 | Screen                    | URL                                    |
 | ------------------------- | -------------------------------------- |

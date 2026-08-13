@@ -158,6 +158,7 @@ _DoD:_ `pnpm seed` produces a balanced, reproducible ledger.
 
 **1.6 Ledger engine ADR.** Benchmark Postgres double-entry vs TigerBeetle at realistic volume. Decide and record.
 _DoD:_ ADR merged with benchmark numbers, not vibes.
+_Status: done._ `docs/adr/0003-postgres-double-entry-ledger.md`, with measured results in `docs/benchmarks/ledger.md` — 938 tx/s at the throughput knee against peak pilot demand under 10 tx/s. Reproduce with `pnpm --filter @morapay/api run bench:ledger`. Must be re-run on production hardware before the go-live gate (13.4).
 
 **1.7 Reconciliation primitives.** Interfaces for external-statement ingestion and matching; unmatched items land in `SUSPENSE` and raise an alert.
 _DoD:_ Simulated partner statement with one missing and one duplicate line is correctly flagged.
@@ -419,3 +420,4 @@ Each becomes a phase when the preceding gate is cleared. Adding any of them earl
 | ------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | v0.1    | —          | Initial build plan                                                                                                                                                                                                                 |
 | v0.2    | 2026-08-13 | Committed to repository. Working name set to MoraPay. Step 6.3 marked as commercial blocker, 7.3 split into 7.3a/7.3b, step 11.7 added — all per Technical Architecture §7. Divergence notes recorded in `docs/DIVERGENCE_LOG.md`. |
+| v0.3    | 2026-08-13 | Step 1.6 closed with a real benchmark (`docs/benchmarks/ledger.md`) rather than a reasoned estimate. Production-hardware re-run folded into the 13.4 gate.                                                                         |

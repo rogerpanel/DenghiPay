@@ -14,7 +14,15 @@
 
 const CACHE = 'morapay-shell-v1';
 
-const SHELL = ['/', '/home', '/send', '/transfers', '/settings', '/manifest.webmanifest', '/icon.svg'];
+const SHELL = [
+  '/',
+  '/home',
+  '/send',
+  '/transfers',
+  '/settings',
+  '/manifest.webmanifest',
+  '/icon.svg',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -30,7 +38,9 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) =>
+        Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))),
+      )
       .then(() => self.clients.claim()),
   );
 });
@@ -45,14 +55,24 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
 
   // Next.js build assets are content-hashed, so cache-first is safe and fast.
+  //
+  // Only successful same-origin responses are stored. Caching indiscriminately
+  // is how a transient failure becomes a permanent one: a stylesheet request
+  // that returns 400 during a deployment would be written to the cache under a
+  // URL that never changes, and every later visit would be served the failure
+  // from disk without ever asking the network again. The visible symptom is an
+  // application that renders with no styling at all and cannot recover on
+  // reload. A response we do not understand is passed through, not kept.
   if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(
       caches.match(request).then(
         (hit) =>
           hit ??
           fetch(request).then((response) => {
-            const copy = response.clone();
-            void caches.open(CACHE).then((cache) => cache.put(request, copy));
+            if (response.ok && response.type === 'basic') {
+              const copy = response.clone();
+              void caches.open(CACHE).then((cache) => cache.put(request, copy));
+            }
             return response;
           }),
       ),

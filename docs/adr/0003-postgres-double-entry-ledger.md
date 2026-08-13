@@ -36,15 +36,20 @@ validation exists to produce a good error message, not to be the guarantee.
 
 Run with `pnpm --filter @morapay/api run bench:ledger`, which writes balanced
 transactions through the same `PrismaLedgerStore` code path the API uses,
-including the database balance trigger. Results are recorded in
-`docs/benchmarks/ledger.md` and must be refreshed on production hardware before
-the go-live gate (BUILD_PLAN 13.4).
+including the database balance trigger. Full results, method and caveats are in
+[`docs/benchmarks/ledger.md`](../benchmarks/ledger.md).
 
-The decision does not hinge on a close call. Peak pilot demand — roughly 30 000
-ledger transactions a day, with a peak-hour multiple of ten, so under 10 tx/s —
-sits orders of magnitude below what a single Postgres node sustains for
-small balanced inserts. The benchmark exists to confirm that gap and to catch a
-regression in the write path, not to choose between two plausible options.
+On a 4-vCPU development container with PostgreSQL 16 on the same host, the write
+path sustained **938 transactions per second** at its throughput knee (16
+concurrent writers, p99 26 ms), and 242 tx/s single-threaded at p99 6.9 ms.
+
+Peak pilot demand is under 10 tx/s — roughly 30 000 ledger transactions a day
+with a peak-hour multiple of ten. Measured capacity is about a hundred times
+that, on hardware smaller than anything we would run in production. The decision
+does not hinge on a close call; the benchmark exists to confirm the gap and to
+catch a regression in the write path, not to choose between two plausible
+options. It must be re-run on production hardware before the go-live gate
+(BUILD_PLAN 13.4).
 
 ## Alternatives considered
 

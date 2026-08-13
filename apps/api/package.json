@@ -14,6 +14,7 @@
     "test:e2e": "jest --config jest-e2e.json --runInBand",
     "seed": "tsx prisma/seed.ts",
     "demo:seed": "tsx prisma/demo-seed.ts",
+    "bench:ledger": "tsx prisma/bench-ledger.ts",
     "openapi": "tsx src/openapi/generate.ts"
   },
   "dependencies": {
