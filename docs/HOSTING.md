@@ -107,6 +107,69 @@ not leave you with a half-hardened host — but 24.04 is the path that has
 actually been exercised, and a server is not where you want to be the first
 person to try something.
 
+## Filling in the create form
+
+Most fields are safe to leave alone. These are the ones that matter, in the
+order the console presents them.
+
+| Field            | What to put                                                                  |
+| ---------------- | ---------------------------------------------------------------------------- |
+| Location         | Helsinki                                                                     |
+| Image            | Ubuntu 24.04 LTS                                                             |
+| Type             | CX33, or CX43 for headroom                                                   |
+| Networking       | IPv4 **and** IPv6. Keep the IPv4 — $0.60 and Let's Encrypt needs it          |
+| SSH keys         | **Select one. Not optional** — see below                                     |
+| Volumes          | Skip. Add later without downtime if the disk fills                           |
+| Firewall         | Create one: 80 and 443 from anywhere, 22 from your address only              |
+| Backups          | **Tick.** Unticked by default; 20% of the server price                       |
+| Placement groups | Skip. They spread multiple servers across hosts, and there is one server     |
+| Labels           | `project=morapay`, `env=staging`. Free, and they make the bill legible later |
+| Cloud config     | Leave empty. Run `harden-host.sh` by hand the first time so you see it work  |
+| Name             | Something the brand cannot invalidate — see below                            |
+
+### The SSH key is the one that can ruin your afternoon
+
+`harden-host.sh` disables root login and password authentication. If no key
+reaches the server, that combination locks everyone out the moment the session
+ends, and the only way back is Hetzner's rescue console.
+
+The script now refuses to touch the ssh configuration unless the deploy user
+holds a key, and copies root's `authorized_keys` — where Hetzner puts the key
+you select on this form — across automatically. So selecting a key here is what
+makes the normal path work. Being explicit is still better:
+
+```bash
+SSH_PUBLIC_KEY="$(cat ~/.ssh/id_ed25519.pub)" \
+  ssh root@<ip> 'bash -s' < infra/scripts/harden-host.sh
+```
+
+Keep that first session open until you have proved a second one works as
+`deploy@<ip>`. That habit costs ten seconds and has saved more servers than any
+other.
+
+### The firewall, and the way it locks you out
+
+Hetzner's firewall sits in front of the host, so it stops traffic before the
+machine sees it. That is worth having in addition to the `ufw` rules the script
+sets on the host itself.
+
+Restricting port 22 to your own address is right, and it is also how people
+lock themselves out, because most home connections have a dynamic IP that
+changes without warning. Either use a range your ISP will keep you inside, or
+accept 22 from anywhere and rely on the key-only configuration, which is not a
+weak position. The Hetzner firewall is editable from the console without
+touching the server, so this is recoverable either way.
+
+### Naming it
+
+The domain may change. Name the server for what it does, not what the product
+is called: `neutral-1`, `app-hel1`, `morapay-neutral-1`. A name tied to a brand
+becomes wrong the moment the brand does, and it turns up in your ssh config,
+your monitoring, your invoices and your muscle memory.
+
+Renaming in Hetzner is cosmetic and instant, so this is a small thing. It is
+just easier to not need it.
+
 ## Also buy
 
 - **Backups — tick the box.** It is 20% of the server price, so about $2 a month

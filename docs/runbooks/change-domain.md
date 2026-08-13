@@ -7,6 +7,27 @@ change request on someone else's schedule.
 Deploy on whatever name you have. Move to the kept one later. Just do it before
 step 3 below becomes true.
 
+## First: is it a new domain, or a new name?
+
+These are very different jobs and it is worth being sure which one is being
+asked for.
+
+**A new domain** — the product is still MoraPay, it just lives at a different
+address. Everything in this runbook covers it, and it is an afternoon.
+
+**A new name** — the product is called something else. That is a rebrand, and
+this runbook covers almost none of it. The name is in the package namespace
+(`@morapay/*`), the database role, the container images, the design tokens, the
+logo mark, the PWA manifest, the seed data, the email templates, every document
+in `docs/`, and the guardrails file the whole system is built against. None of
+it is hard; there is simply a lot of it, and doing it halfway leaves a codebase
+that answers to two names.
+
+If the new name is settled, do the rebrand as one deliberate change before there
+are users, partners or an audit trail referring to the old one. If it is not
+settled, keep shipping as MoraPay: a codename that outlives its usefulness costs
+far less than a rename done twice.
+
 ## What the cost depends on
 
 | When you change it                      | What it costs                                           |

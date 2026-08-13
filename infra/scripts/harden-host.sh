@@ -25,11 +25,45 @@ if ! id -u "$DEPLOY_USER" >/dev/null 2>&1; then
 fi
 usermod -aG docker "$DEPLOY_USER" 2>/dev/null || true
 
+DEPLOY_KEYS="/home/$DEPLOY_USER/.ssh/authorized_keys"
+
 if [ -n "$SSH_PUBLIC_KEY" ]; then
   install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh"
-  echo "$SSH_PUBLIC_KEY" > "/home/$DEPLOY_USER/.ssh/authorized_keys"
-  chmod 600 "/home/$DEPLOY_USER/.ssh/authorized_keys"
-  chown "$DEPLOY_USER:$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh/authorized_keys"
+  echo "$SSH_PUBLIC_KEY" > "$DEPLOY_KEYS"
+  chmod 600 "$DEPLOY_KEYS"
+  chown "$DEPLOY_USER:$DEPLOY_USER" "$DEPLOY_KEYS"
+elif [ -s /root/.ssh/authorized_keys ]; then
+  # The common case on a cloud host: the provider planted the key chosen at
+  # creation time in root's authorized_keys. Copy it across, because the next
+  # step takes root's own login away and the deploy user is then the only way in.
+  echo "    no SSH_PUBLIC_KEY given; copying root's authorized_keys to $DEPLOY_USER"
+  install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh"
+  cp /root/.ssh/authorized_keys "$DEPLOY_KEYS"
+  chmod 600 "$DEPLOY_KEYS"
+  chown "$DEPLOY_USER:$DEPLOY_USER" "$DEPLOY_KEYS"
+fi
+
+# Refuse to lock the door before checking someone holds a key.
+#
+# The next step sets PermitRootLogin no and PasswordAuthentication no. If the
+# deploy user has no authorized_keys at that moment, nobody can log in at all —
+# the current session survives until it is closed, and after that the only way
+# back is the provider's rescue console. Fail here instead, having changed
+# nothing.
+if [ ! -s "$DEPLOY_KEYS" ]; then
+  cat >&2 <<MSG
+✗ Refusing to harden ssh: $DEPLOY_USER has no authorized_keys.
+
+  Disabling root login and password authentication now would lock everyone out
+  of this server as soon as this session ends. Nothing has been changed.
+
+  Re-run with a key:
+    SSH_PUBLIC_KEY="\$(cat ~/.ssh/id_ed25519.pub)" bash -s < harden-host.sh
+
+  Or add the key to /root/.ssh/authorized_keys first and run again — it will be
+  copied across automatically.
+MSG
+  exit 78
 fi
 
 echo "==> ssh: keys only, no root"
