@@ -53,6 +53,7 @@ import { TreasuryService } from './treasury/treasury.service';
 import { ReconciliationService } from './reconciliation/reconciliation.service';
 import { AdminAuthController, AdminController } from './admin/admin.controller';
 import { HealthController } from './health/health.controller';
+import { DocsController } from './openapi/docs.controller';
 
 const config = loadConfig();
 
@@ -127,6 +128,7 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
     AdminAuthController,
     AdminController,
     HealthController,
+    DocsController,
   ],
   providers: [
     { provide: APP_CONFIG, useValue: config },
