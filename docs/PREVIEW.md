@@ -104,14 +104,21 @@ instead of tied to a laptop. See [`HOSTING.md`](HOSTING.md) for which size to
 buy — the short version is CX33, and not on CPU grounds:
 
 ```bash
-infra/scripts/harden-host.sh                 # firewall, ssh, unattended upgrades
-IMAGE_TAG=<tag> docker compose -f infra/compose/production.yml up -d
+infra/scripts/harden-host.sh      # firewall, ssh, unattended upgrades
+infra/scripts/server-deploy.sh    # build, migrate, seed, start, verify
 ```
 
+The full walkthrough, from a Windows terminal, is in
+[`DEPLOY_SERVER.md`](DEPLOY_SERVER.md). It uses `infra/compose/server.yml`
+rather than `production.yml`: the production file expects a database to be
+provided and terminates TLS for a domain, neither of which a bare box has on
+its first afternoon.
+
 Reached by IP over plain HTTP it is not a secure context, so it has option 2's
-limitation. It becomes the real thing the moment a domain points at it: the
-compose file, nginx configuration and certificate renewal are already written
-and committed, and issuing certificates is the only remaining step.
+limitation — but that one is fixable without a domain. An `sslip.io` hostname
+resolves an IP-shaped name to that IP, Let's Encrypt will issue a real
+certificate for it, and the padlock, the install prompt and the offline shell
+all come back. `DEPLOY_SERVER.md` covers it.
 
 If you are going to buy the server anyway, buying it now and pointing a cheap
 domain at it later costs nothing extra and skips options 2 and 3 entirely.

@@ -1,10 +1,15 @@
 # Deploying to the Hetzner server from Windows
 
-For the demonstration server that has no domain yet. Every command below runs
-in Windows `cmd` — no WSL, no extra tooling. Windows 10 and 11 ship OpenSSH, so
-`ssh` and `ssh-keygen` are already there.
+For the demonstration server that has no domain yet. No WSL and no extra
+tooling: Windows 10 and 11 ship OpenSSH, so `ssh` and `ssh-keygen` are already
+there.
 
 Substitute your server's address for `<IP>` throughout.
+
+> **PowerShell or `cmd`?** Both work, but they are not interchangeable.
+> PowerShell rejects `<` for input redirection — _"The '<' operator is reserved
+> for future use"_ — so every command that pipes a file into ssh is written
+> twice below. `cmd` behaves the way the examples on the internet assume.
 
 ## 1 · Reach the server
 
@@ -12,20 +17,74 @@ Substitute your server's address for `<IP>` throughout.
 ssh root@<IP>
 ```
 
-If that refuses your key, the key you selected when creating the server is not
-the one `ssh` is offering. Point at it explicitly:
+### If it asks for a password and then refuses it
+
+This is the normal outcome, not a fault, and resetting the root password does
+not fix it. **Selecting an SSH key when the server was created makes Hetzner
+disable password authentication for ssh.** The password you set through the
+console is real — it works in the console, and nowhere else. sshd will only
+accept the key.
+
+So use the key:
 
 ```cmd
 ssh -i %USERPROFILE%\.ssh\id_ed25519 root@<IP>
 ```
 
+```powershell
+ssh -i $env:USERPROFILE\.ssh\id_ed25519 root@<IP>
+```
+
+**If you do not have that private key** — a different machine, or it was never
+downloaded — recover through the Hetzner console rather than fighting ssh. The
+console is a screen attached to the machine, so it is not subject to sshd's
+rules, and the root password you set does work there.
+
+First get your public key. If you have one:
+
+```powershell
+Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
+```
+
+If that file does not exist, make one, pressing Enter at each prompt:
+
+```powershell
+ssh-keygen -t ed25519 -C "denghipay-deploy"
+Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
+```
+
+Then in the Hetzner console (**Servers → your server → Console**), log in as
+`root` and paste it in — the console's toolbar has a paste button, which is
+easier than typing a key by hand:
+
+```bash
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+echo "ssh-ed25519 AAAA...your key here..." >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+`ssh root@<IP>` from your own terminal now works, and everything after this is
+comfortable again. Do this rather than running the whole deployment inside the
+console: the console has no scrollback worth the name and no reliable copy out
+of it, which turns any error into a transcription exercise.
+
 ## 2 · Harden it, before anything else is on it
 
-Still in `cmd`, from your clone of the repository:
+From your clone of the repository:
 
 ```cmd
 ssh root@<IP> "bash -s" < infra\scripts\harden-host.sh
 ```
+
+```powershell
+Get-Content infra\scripts\harden-host.sh -Raw | ssh root@<IP> "bash -s"
+```
+
+`-Raw` matters: without it PowerShell splits the file into lines and rejoins
+them with CRLF, and the script dies on `$'\r': command not found`. The
+repository forces LF on shell scripts through `.gitattributes` for the same
+reason, so a fresh clone is already correct — `-Raw` covers the case where an
+older clone still has CRLF on disk.
 
 This creates a `deploy` user, installs Docker, turns on the firewall and
 `fail2ban`, and disables root login and password authentication.
@@ -41,6 +100,8 @@ minutes ago.
 ```cmd
 ssh deploy@<IP>
 ```
+
+(Identical in PowerShell — only the redirection syntax differs between them.)
 
 Only close the root session once that succeeds.
 
