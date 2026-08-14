@@ -101,9 +101,23 @@ wait_for "http://localhost:${ADMIN_PORT}/login" || {
 # to reach the API through its own origin. If this fails the pages still render
 # and every action fails, which is the confusing failure this whole arrangement
 # exists to prevent.
+#
+# It retries, because the front ends answer well before the API finishes
+# booting — Nest maps every route and connects to PostgreSQL first, which takes
+# a few seconds longer than serving a login page. Asking once, immediately
+# after the front ends come up, reports a healthy stack as broken.
+wait_for_body() {
+  local url="$1" needle="$2" tries="${3:-60}"
+  for _ in $(seq "$tries"); do
+    curl -s -m 5 "$url" 2>/dev/null | grep -q "$needle" && return 0
+    sleep 2
+  done
+  return 1
+}
+
 for entry in "sender app:$WEB_PORT" "back office:$ADMIN_PORT"; do
   port="${entry##*:}"
-  if curl -s -m 10 "http://localhost:${port}/api/health" | grep -q '"status"'; then
+  if wait_for_body "http://localhost:${port}/api/health" '"status"'; then
     echo "✓ ${entry%%:*} reaches the API through its own origin"
   else
     echo "✗ ${entry%%:*} cannot reach the API through /api" >&2
@@ -112,7 +126,7 @@ for entry in "sender app:$WEB_PORT" "back office:$ADMIN_PORT"; do
   fi
 done
 
-if curl -s -m 10 "http://localhost:${WEB_PORT}/api/health/ledger" | grep -q '"balanced":true'; then
+if wait_for_body "http://localhost:${WEB_PORT}/api/health/ledger" '"balanced":true' 30; then
   echo "✓ ledger balanced"
 else
   echo "✗ the ledger does not report itself balanced — do not demonstrate this" >&2
