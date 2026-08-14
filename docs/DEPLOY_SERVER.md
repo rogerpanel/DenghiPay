@@ -103,20 +103,31 @@ refuses to load. Pressing Enter twice is unambiguous in every shell.
 > `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5`. Use `Set-Clipboard` above and the
 > question does not arise.
 
-### The reliable way: rebuild with the key
+### The reliable way: recreate the server with the key
 
-Do not fight the console. A server with nothing deployed on it can be rebuilt in
-about two minutes, and Hetzner installs the project's SSH keys for you as part
-of that — which is the mechanism that was supposed to work in the first place.
+Do not fight the console. A server with nothing deployed on it can be replaced
+in about three minutes, and creating one is the only operation where choosing an
+SSH key is guaranteed.
 
-1. **Security → SSH Keys → Add SSH Key**, and paste the key you just copied.
-2. **Servers → your server → Rebuild**, choose the same image (Ubuntu 24.04),
-   confirm.
-3. `ssh -i "$env:USERPROFILE\.ssh\denghipay" root@<IP>` — straight in, nothing
+1. **Security → SSH Keys → Add SSH Key**, paste the key, and confirm it appears
+   in the list with a fingerprint.
+2. **Delete the old server.** It holds nothing.
+3. **Create a new one**, ticking the new key in the SSH keys section — the same
+   type, image and location as before.
+4. `ssh -i "$env:USERPROFILE\.ssh\<name>" root@<NEW-IP>` — straight in, nothing
    typed into a console at all.
 
-Rebuilding wipes the disk. Before any deployment exists that costs nothing; the
-window in which it is free is exactly now.
+**Rebuild is not the same thing and will not help here.** Its dialog offers only
+an image, because it re-applies the keys the server was _created_ with rather
+than whatever is in the project now. Adding a key to the project and then
+rebuilding leaves you exactly where you started, minus the disk.
+
+The new server gets a new IP address. Before DNS exists that costs nothing, and
+the deployment does not care: the front ends call `/api` on whatever origin
+served them, so no build, image or configuration references the address.
+
+Rebuild does earn its place later — same key, fresh disk, when a server needs
+resetting rather than re-keying.
 
 ### If you would rather not rebuild
 
