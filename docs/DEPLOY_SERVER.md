@@ -122,9 +122,24 @@ an image, because it re-applies the keys the server was _created_ with rather
 than whatever is in the project now. Adding a key to the project and then
 rebuilding leaves you exactly where you started, minus the disk.
 
-The new server gets a new IP address. Before DNS exists that costs nothing, and
-the deployment does not care: the front ends call `/api` on whatever origin
-served them, so no build, image or configuration references the address.
+The new server may or may not get a new IP address. A Primary IP is a separate
+resource in Hetzner and survives the server it was attached to unless you delete
+it too, so a replacement often lands on the same address. Either outcome is
+fine, and the deployment does not care: the front ends call `/api` on whatever
+origin served them, so no build, image or configuration references the address.
+
+> **If the address is reused, ssh will refuse to connect.** `known_hosts` still
+> holds the deleted server's host key for that IP, and a new machine answering
+> on a known address with a different key is indistinguishable from an
+> interception — so ssh stops with `REMOTE HOST IDENTIFICATION HAS CHANGED` and
+> declines. That is the check working. Drop the stale entry:
+>
+> ```powershell
+> ssh-keygen -R <IP>
+> ```
+>
+> The next connection asks you to accept the new fingerprint, which is the
+> expected prompt for a machine you have genuinely just created.
 
 Rebuild does earn its place later — same key, fresh disk, when a server needs
 resetting rather than re-keying.
