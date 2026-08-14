@@ -195,7 +195,6 @@ const en = {
   'error.RATE_UNAVAILABLE':
     'We cannot price this right now — our rate feed is stale and we will not guess. Try again shortly.',
 
-  'compliance.note': 'Personal transfers only. Every transfer is screened against sanctions lists.',
   'demo.banner': 'Demonstration environment — no real money moves.',
 } as const;
 
@@ -377,7 +376,6 @@ const ru: Record<TranslationKey, string> = {
   'error.RATE_UNAVAILABLE':
     'Сейчас не можем назвать цену — курс устарел, а гадать мы не будем. Попробуйте чуть позже.',
 
-  'compliance.note': 'Только личные переводы. Каждый перевод проверяется по санкционным спискам.',
   'demo.banner': 'Демонстрационная среда — реальные деньги не двигаются.',
 };
 
@@ -559,8 +557,6 @@ const fr: Record<TranslationKey, string> = {
   'error.RATE_UNAVAILABLE':
     'Nous ne pouvons pas fixer de prix maintenant — notre flux de taux est périmé et nous ne devinerons pas. Réessayez bientôt.',
 
-  'compliance.note':
-    'Transferts personnels uniquement. Chaque transfert est contrôlé face aux listes de sanctions.',
   'demo.banner': 'Environnement de démonstration — aucun argent réel ne circule.',
 };
 

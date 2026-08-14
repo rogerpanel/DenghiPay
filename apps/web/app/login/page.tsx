@@ -86,8 +86,6 @@ export default function LoginPage() {
         <p className="mp-center mp-small">
           {t('auth.noAccount')} <Link href="/register">{t('action.signUp')}</Link>
         </p>
-
-        <p className="mp-small mp-muted mp-center">{t('compliance.note')}</p>
       </div>
     </AppShell>
   );

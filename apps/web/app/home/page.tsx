@@ -123,8 +123,6 @@ function HomeInner() {
           </ul>
         )}
       </section>
-
-      <p className="mp-small mp-muted mp-center">{t('compliance.note')}</p>
     </div>
   );
 }
