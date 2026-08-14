@@ -40,28 +40,58 @@ downloaded — recover through the Hetzner console rather than fighting ssh. The
 console is a screen attached to the machine, so it is not subject to sshd's
 rules, and the root password you set does work there.
 
-First get your public key. If you have one:
+First make a key **at the default path**, and copy it to the clipboard rather
+than reading it off the screen:
 
 ```powershell
-Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
+ssh-keygen -t ed25519 -C "denghipay-deploy" -f "$env:USERPROFILE\.ssh\id_ed25519" -N '""'
+Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub" | Set-Clipboard
 ```
 
-If that file does not exist, make one, pressing Enter at each prompt:
+`-f` is not optional. Without it `ssh-keygen` asks where to save and takes
+whatever is typed — including a path somewhere unhelpful, at which point every
+later command that looks in `.ssh` finds nothing and silently falls back to
+password authentication, which then fails. `-N '""'` sets an empty passphrase so
+the key is usable unattended.
 
-```powershell
-ssh-keygen -t ed25519 -C "denghipay-deploy"
-Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub
-```
+> ### The two things ssh-keygen shows you, only one of which is the key
+>
+> After generating, `ssh-keygen` prints a **fingerprint** and a randomart
+> picture. Neither is the key.
+>
+> |                | Looks like                                                  | Use                               |
+> | -------------- | ----------------------------------------------------------- | --------------------------------- |
+> | Fingerprint    | `SHA256:b0dVTpOjna9YqS6...`                                 | Comparing keys. Useless for login |
+> | **Public key** | `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... denghipay-deploy` | **This is the one**               |
+>
+> A fingerprint is a hash **of** the key, so it cannot authenticate anything.
+> Pasting one into `authorized_keys` produces exactly the symptom it looks
+> least like: the server ignores the unusable line, finds no valid key, and
+> falls back to asking for a password it will then refuse.
+>
+> The real key lives in the `.pub` file, is one line, and always starts
+> `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5`. Use `Set-Clipboard` above and the
+> question does not arise.
 
 Then in the Hetzner console (**Servers → your server → Console**), log in as
-`root` and paste it in — the console's toolbar has a paste button, which is
-easier than typing a key by hand:
+`root` and paste with the console toolbar's paste button. This **replaces**
+`authorized_keys` rather than appending, so a bad line from an earlier attempt
+cannot survive:
 
 ```bash
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
-echo "ssh-ed25519 AAAA...your key here..." >> ~/.ssh/authorized_keys
+cat > ~/.ssh/authorized_keys
+```
+
+Paste the key, press **Enter**, then **Ctrl-D**. Check it took:
+
+```bash
+cat ~/.ssh/authorized_keys        # one line, starts ssh-ed25519 AAAAC3Nza
 chmod 600 ~/.ssh/authorized_keys
 ```
+
+Rewriting the file is safe here: the console does not go through sshd, so it
+stays available whatever the file contains.
 
 `ssh root@<IP>` from your own terminal now works, and everything after this is
 comfortable again. Do this rather than running the whole deployment inside the
