@@ -48,7 +48,17 @@ CMD ["pnpm", "--filter", "@morapay/api", "exec", "prisma", "migrate", "deploy"]
 # ---------------------------------------------------------------- prune
 # Strip development dependencies from the tree the runtime stage copies. In its
 # own stage so that `build` above keeps them for `tooling`.
+#
+# CI=true is required, not decorative. Switching an existing install to --prod
+# means pnpm has to delete node_modules, and it asks before doing that. A
+# Docker build has no TTY to answer with, so pnpm aborts:
+#
+#   ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY
+#
+# CI=true is pnpm's documented way to say "nobody is watching, proceed", and it
+# is true here in the sense that matters.
 FROM build AS prune
+ENV CI=true
 RUN pnpm install --frozen-lockfile --prod
 
 # ------------------------------------------------------------ runtime
