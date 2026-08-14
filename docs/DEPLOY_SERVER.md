@@ -180,9 +180,31 @@ ssh -i "$env:USERPROFILE\.ssh\denghipay" root@<IP>
 
 It should let you in without asking for anything.
 
-### Stop typing `-i` every time
+### Optional: stop typing `-i` every time
 
-Once it works, record it. Create or append to `%USERPROFILE%\.ssh\config`:
+Skip this if you are in a hurry — `-i` works, and a malformed config file blocks
+**every** ssh command on the machine, including ones that do not name a host in
+it. Overwrite rather than append, and use ASCII: PowerShell's default UTF-16
+produces a file OpenSSH cannot parse, and appending twice leaves a duplicate
+block whose second copy reports as a syntax error on a line you did not write.
+
+```powershell
+Set-Content -Encoding ascii "$env:USERPROFILE\.ssh\config" @"
+Host denghipay
+  HostName <IP>
+  User root
+  IdentityFile ~/.ssh/denghipay
+"@
+```
+
+If ssh starts refusing everything with `bad configuration options`, delete the
+file and carry on with `-i`:
+
+```powershell
+Remove-Item "$env:USERPROFILE\.ssh\config"
+```
+
+For reference, the block itself is:
 
 ```
 Host denghipay
@@ -253,7 +275,7 @@ ssh-keygen -t ed25519 -C "denghipay-server" -f ~/.ssh/id_ed25519 -N ""
 cat ~/.ssh/id_ed25519.pub
 ```
 
-Copy the line it prints. In GitHub: **rogerpanel/MoraPay → Settings → Deploy
+Copy the line it prints. In GitHub: **rogerpanel/DenghiPay → Settings → Deploy
 keys → Add deploy key**. Give it a name, paste the key, and **leave "Allow write
 access" unticked** — the server only ever reads.
 
@@ -261,8 +283,8 @@ Then, still on the server:
 
 ```bash
 ssh -o StrictHostKeyChecking=accept-new -T git@github.com   # expect: "successfully authenticated"
-git clone git@github.com:rogerpanel/MoraPay.git
-cd MoraPay
+git clone git@github.com:rogerpanel/DenghiPay.git
+cd DenghiPay
 git checkout claude/morapay-development-t9e1ga
 ```
 
@@ -286,7 +308,7 @@ that loads perfectly and then fails every request.
 To redeploy after a change:
 
 ```bash
-cd ~/MoraPay && git pull && infra/scripts/server-deploy.sh
+cd ~/DenghiPay && git pull && infra/scripts/server-deploy.sh
 ```
 
 Safe to repeat. The database survives; transfer history and the ledger are not
