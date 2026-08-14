@@ -103,25 +103,48 @@ refuses to load. Pressing Enter twice is unambiguous in every shell.
 > `ssh-ed25519 AAAAC3NzaC1lZDI1NTE5`. Use `Set-Clipboard` above and the
 > question does not arise.
 
-Then in the Hetzner console (**Servers → your server → Console**), log in as
-`root` and paste with the console toolbar's paste button. This **replaces**
-`authorized_keys` rather than appending, so a bad line from an earlier attempt
-cannot survive:
+### The reliable way: rebuild with the key
+
+Do not fight the console. A server with nothing deployed on it can be rebuilt in
+about two minutes, and Hetzner installs the project's SSH keys for you as part
+of that — which is the mechanism that was supposed to work in the first place.
+
+1. **Security → SSH Keys → Add SSH Key**, and paste the key you just copied.
+2. **Servers → your server → Rebuild**, choose the same image (Ubuntu 24.04),
+   confirm.
+3. `ssh -i "$env:USERPROFILE\.ssh\denghipay" root@<IP>` — straight in, nothing
+   typed into a console at all.
+
+Rebuilding wipes the disk. Before any deployment exists that costs nothing; the
+window in which it is free is exactly now.
+
+### If you would rather not rebuild
+
+Log into the console as `root` and use **one line**, so the shell either gets a
+whole command or nothing:
 
 ```bash
-mkdir -p ~/.ssh && chmod 700 ~/.ssh
-cat > ~/.ssh/authorized_keys
+mkdir -p ~/.ssh && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys 2>/dev/null
+echo 'PASTE_THE_KEY_HERE' > ~/.ssh/authorized_keys
 ```
 
-Paste the key, press **Enter**, then **Ctrl-D**. Check it took:
+Paste over `PASTE_THE_KEY_HERE`, keeping the single quotes, then press Enter.
+Confirm it took:
 
 ```bash
-cat ~/.ssh/authorized_keys        # one line, starts ssh-ed25519 AAAAC3Nza
-chmod 600 ~/.ssh/authorized_keys
+cat ~/.ssh/authorized_keys
 ```
 
-Rewriting the file is safe here: the console does not go through sshd, so it
-stays available whatever the file contains.
+> **Do not use `cat > file` for this.** The redirection empties the file the
+> moment the shell opens it, before you have typed anything — so pressing Ctrl-C
+> because a paste did not arrive leaves you with an empty `authorized_keys`,
+> having also destroyed the key that was already in it. The symptom is a
+> password prompt that refuses every password, which looks like the problem you
+> started with. `echo '…' > file` cannot fail that way: nothing is written until
+> the command runs.
+
+Rewriting the file is safe: the console does not go through sshd, so it stays
+available whatever the file ends up containing.
 
 Now connect, naming the key you just made:
 
