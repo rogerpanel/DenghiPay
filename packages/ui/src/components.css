@@ -79,6 +79,12 @@
   color: var(--heading);
   text-decoration: none;
   font-size: var(--text-lg);
+  /* The mark is 28px, which made the whole link 31px tall — under the 44px
+     minimum touch target in WCAG 2.5.5, and the only element in the sender app
+     that was. It is a link home, so a miss costs a tap rather than money, but
+     44px is the floor for a reason and thumbs on a 360px phone are the users
+     we have. The extra height is hit area, not visible padding. */
+  min-height: 44px;
 }
 
 /* The mark is the one place the signature orange appears at full strength:

@@ -4,10 +4,39 @@ A scripted twenty-minute run through the platform in a browser, for showing to
 the CEO. Everything below works today against simulators; no partner
 credentials, no live funds, no real money.
 
-> The orange banner across the top of every screen says **"Demonstration
-> environment — no real money moves."** It is driven by `LIVE_FUNDS_ENABLED`
-> and disappears on its own when that flag is flipped. Nobody has to remember
-> to remove it.
+## The two things that say "demo", and how to present them
+
+Everything in the application is the real product. Two things on screen are
+not, and rather than hiding them, point at them — they are the answer to the
+question the CEO is actually asking, which is _what is left_.
+
+**The orange banner: "Demonstration environment — no real money moves."**
+
+Say: _"That banner is not decoration and I did not put it there for today. It
+is driven by a single flag, `LIVE_FUNDS_ENABLED`, which is false and cannot be
+turned on by a deployment, a configuration file or an engineer in a hurry. It
+is flipped once, by a person, in production, after the legal opinions and the
+partner agreements exist. When that happens the banner removes itself — nobody
+has to remember."_
+
+It is worth being seen. A platform that cannot tell you whether it is handling
+real money is a platform nobody should trust with any.
+
+**The "Simulate the payment" button on the transfer screen.**
+
+Say: _"This is where the Russian pay-in partner plugs in. Today the sender sees
+real payment instructions — an SBP deep link, or a QR code, or an account and a
+reference — and this button stands in for the bank telling us the money
+arrived. It is the one place in the sender's journey that is not the finished
+thing, and the API refuses that endpoint outright once live funds are enabled."_
+
+Then the useful follow-up: everything downstream of that button — screening,
+the ledger postings, settlement, the payout, the poll schedule, the refund on
+failure — is finished and is what you are about to watch.
+
+Those two are the whole gap on the sender's side. Not a list of unbuilt
+features: two named integrations, both blocked on commercial agreements rather
+than on engineering (`docs/OPEN_ITEMS.md` B1 and B3).
 
 ---
 
