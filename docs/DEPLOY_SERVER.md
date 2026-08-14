@@ -40,19 +40,49 @@ downloaded — recover through the Hetzner console rather than fighting ssh. The
 console is a screen attached to the machine, so it is not subject to sshd's
 rules, and the root password you set does work there.
 
-First make a key **at the default path**, and copy it to the clipboard rather
-than reading it off the screen:
+Make a key with **its own name**, then copy it to the clipboard rather than
+reading it off the screen:
 
 ```powershell
-ssh-keygen -t ed25519 -C "denghipay-deploy" -f "$env:USERPROFILE\.ssh\id_ed25519" -N '""'
-Get-Content "$env:USERPROFILE\.ssh\id_ed25519.pub" | Set-Clipboard
+ssh-keygen -t ed25519 -C "denghipay-deploy" -f "$env:USERPROFILE\.ssh\denghipay"
 ```
 
-`-f` is not optional. Without it `ssh-keygen` asks where to save and takes
-whatever is typed — including a path somewhere unhelpful, at which point every
-later command that looks in `.ssh` finds nothing and silently falls back to
-password authentication, which then fails. `-N '""'` sets an empty passphrase so
-the key is usable unattended.
+Press **Enter twice** at the passphrase prompts to leave it empty. Then:
+
+```powershell
+Get-Content "$env:USERPROFILE\.ssh\denghipay.pub" | Set-Clipboard
+```
+
+Two deliberate choices there, both of which avoid a wasted afternoon.
+
+**`-f` with a distinct name, not `id_ed25519`.** Without `-f`, `ssh-keygen`
+prompts for a location and accepts whatever is typed — a key saved to the
+Desktop leaves every later command looking in `.ssh`, finding nothing, and
+silently falling back to password authentication. And if `id_ed25519` already
+exists, overwriting it can fail with `Permission denied` (see below) or quietly
+break whatever else was using it. A per-server key sidesteps both and is better
+practice regardless.
+
+**No `-N`.** Passing an empty passphrase on the command line is quoted
+differently in `cmd`, Windows PowerShell 5.1 and PowerShell 7, and the failure
+is silent: the passphrase becomes the literal characters `""` and the key then
+refuses to load. Pressing Enter twice is unambiguous in every shell.
+
+> **`Saving key ... failed: Permission denied`** means a key of that name is
+> already there and your account cannot replace it — usually read-only, or
+> owned with restrictive permissions. Use a different `-f` name as above and the
+> problem disappears. To insist on the old name, remove it first:
+>
+> ```powershell
+> Remove-Item "$env:USERPROFILE\.ssh\id_ed25519*" -Force
+> ```
+>
+> If that is also refused, take ownership before removing:
+>
+> ```powershell
+> takeown /f "$env:USERPROFILE\.ssh\id_ed25519"
+> icacls "$env:USERPROFILE\.ssh\id_ed25519" /grant "$env:USERNAME:F"
+> ```
 
 > ### The two things ssh-keygen shows you, only one of which is the key
 >
@@ -93,10 +123,35 @@ chmod 600 ~/.ssh/authorized_keys
 Rewriting the file is safe here: the console does not go through sshd, so it
 stays available whatever the file contains.
 
-`ssh root@<IP>` from your own terminal now works, and everything after this is
-comfortable again. Do this rather than running the whole deployment inside the
-console: the console has no scrollback worth the name and no reliable copy out
-of it, which turns any error into a transcription exercise.
+Now connect, naming the key you just made:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\denghipay" root@<IP>
+```
+
+It should let you in without asking for anything.
+
+### Stop typing `-i` every time
+
+Once it works, record it. Create or append to `%USERPROFILE%\.ssh\config`:
+
+```
+Host denghipay
+  HostName <IP>
+  User root
+  IdentityFile ~/.ssh/denghipay
+```
+
+`ssh denghipay` now does the whole thing, and so does
+`Get-Content infra\scripts\harden-host.sh -Raw | ssh denghipay "bash -s"`.
+Change `User root` to `User deploy` after hardening. This is worth the minute:
+most of the failures above were a wrong or missing `-i`, and a config file
+cannot forget.
+
+Everything after this is comfortable again. Recovering ssh through the console
+is the right use of it; running the whole deployment there is not. The console
+has no scrollback worth the name and no reliable way to copy text out, which
+turns any build error into a transcription exercise.
 
 ## 2 · Harden it, before anything else is on it
 
