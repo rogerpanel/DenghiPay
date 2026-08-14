@@ -27,6 +27,19 @@ ARG APP=web
 # host means a different image, which is the honest way to model it.
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+# Where the /api rewrite forwards to, server-side.
+#
+# A build argument, not only a runtime variable, because `next build` evaluates
+# rewrites() and serialises the result into .next/routes-manifest.json. Setting
+# this only at runtime leaves the default baked into the image, and the server
+# then proxies to its own loopback address where nothing is listening — the
+# pages render perfectly and every request fails.
+#
+# Same trap as NEXT_PUBLIC_API_URL above, one layer down: what looks like
+# configuration is part of the build.
+ARG API_PROXY_TARGET=http://127.0.0.1:4000
+ENV API_PROXY_TARGET=$API_PROXY_TARGET
 COPY . .
 RUN pnpm --filter @morapay/domain build \
  && pnpm --filter @morapay/contracts build \
@@ -34,8 +47,10 @@ RUN pnpm --filter @morapay/domain build \
 
 FROM base AS runtime
 ARG APP=web
+ARG API_PROXY_TARGET=http://127.0.0.1:4000
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV API_PROXY_TARGET=$API_PROXY_TARGET
 
 RUN mkdir -p /app && chown -R node:node /app
 USER node

@@ -111,8 +111,11 @@ services:
       dockerfile: infra/docker/web.Dockerfile
       args:
         APP: web
-        # Relative on purpose. See the header.
+        # Both are build-time values, not runtime configuration. See the note
+        # in web.Dockerfile: next build bakes the rewrite destination into the
+        # routes manifest, and NEXT_PUBLIC_* into the client bundle.
         NEXT_PUBLIC_API_URL: /api
+        API_PROXY_TARGET: http://api:4000
     restart: unless-stopped
     environment:
       PORT: '3000'
@@ -130,6 +133,7 @@ services:
       args:
         APP: admin
         NEXT_PUBLIC_API_URL: /api
+        API_PROXY_TARGET: http://api:4000
     restart: unless-stopped
     environment:
       PORT: '3000'
