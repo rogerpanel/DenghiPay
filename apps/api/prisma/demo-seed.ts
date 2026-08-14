@@ -167,8 +167,23 @@ function maskTail(value: string): string {
 }
 
 async function main(): Promise<void> {
-  if (process.env.NODE_ENV === 'production' || process.env.LIVE_FUNDS_ENABLED === 'true') {
-    throw new Error('Demo fixtures must never be created in production or with live funds enabled');
+  // Live funds is absolute and has no override: these senders share one
+  // published password, and one of them is on the screening list on purpose.
+  if (process.env.LIVE_FUNDS_ENABLED === 'true') {
+    throw new Error(
+      'Refusing to create demo fixtures: LIVE_FUNDS_ENABLED is true. These accounts ' +
+        'share a published password and must never exist where real money moves.',
+    );
+  }
+
+  // A demonstration server runs the production build, so production alone
+  // cannot be the test — but it must be stated deliberately. See the longer
+  // explanation in seed.ts.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMONSTRATION_SEED !== 'true') {
+    throw new Error(
+      'Refusing to create demo fixtures: NODE_ENV is production. If this really is a ' +
+        'demonstration environment, set ALLOW_DEMONSTRATION_SEED=true to say so.',
+    );
   }
 
   const passwordHash = await argonHash(DEMO_PASSWORD, ARGON_OPTIONS);

@@ -51,6 +51,15 @@ if [ ! -f .env ]; then
     echo "PROVIDER_SIGNING_SECRET_PAYOUT_GH_SIM=$(gen)"
     echo "NODE_ENV=production"
     echo "LIVE_FUNDS_ENABLED=false"
+    echo ""
+    echo "# This is a demonstration server, so the seeded staff and sender"
+    echo "# accounts — whose passwords are published in docs/DEMO.md — are"
+    echo "# wanted here despite NODE_ENV=production. Saying so explicitly is"
+    echo "# what lets the seed run; the seed refuses outright if"
+    echo "# LIVE_FUNDS_ENABLED is ever true, and that has no override."
+    echo "#"
+    echo "# Delete this line before this database is used for anything real."
+    echo "ALLOW_DEMONSTRATION_SEED=true"
   } >> .env
   chmod 600 .env
   echo "   .env written, mode 600. It is gitignored; keep it that way."

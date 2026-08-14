@@ -110,10 +110,56 @@ const FLOAT_THRESHOLDS = [
   { currency: 'GHS', lowWatermarkMinorUnits: 5_000_000n, targetMinorUnits: 20_000_000n },
 ];
 
-async function main(): Promise<void> {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('The seed creates development staff accounts and must not run in production');
+/**
+ * Decide whether staff accounts with published passwords may be created here.
+ *
+ * The rule that must never bend: **not alongside live funds.** These accounts
+ * have passwords written in `docs/DEMO.md`, so a database holding both them and
+ * real money is compromised by publication, not by attack. That check comes
+ * first and has no override.
+ *
+ * `NODE_ENV=production` on its own is a weaker signal than it looks. A
+ * demonstration server runs the production build — that is the point of
+ * demonstrating it — so a blanket refusal makes the seeded accounts
+ * unreachable exactly where they are needed, and invites someone to reach for
+ * `NODE_ENV=development` in a place it does not belong.
+ *
+ * So production requires a second, deliberate statement:
+ * `ALLOW_DEMONSTRATION_SEED=true`. It is set once, by a person, in an
+ * environment they have decided is a demonstration, and it cannot survive
+ * `LIVE_FUNDS_ENABLED` being turned on.
+ */
+function assertSeedableEnvironment(): void {
+  if (process.env.LIVE_FUNDS_ENABLED === 'true') {
+    throw new Error(
+      'Refusing to seed: LIVE_FUNDS_ENABLED is true. These staff accounts have ' +
+        'published passwords and must never exist in a database that moves real money.',
+    );
   }
+
+  if (process.env.NODE_ENV !== 'production') return;
+
+  if (process.env.ALLOW_DEMONSTRATION_SEED !== 'true') {
+    throw new Error(
+      'Refusing to seed: NODE_ENV is production. This seed creates staff accounts ' +
+        'whose passwords are published in docs/DEMO.md.\n\n' +
+        'If this really is a demonstration environment, say so explicitly by setting ' +
+        'ALLOW_DEMONSTRATION_SEED=true. Do not set NODE_ENV=development to get around ' +
+        'this — that changes how the application behaves, and this check is the only ' +
+        'thing standing between a published password and a production database.',
+    );
+  }
+
+  console.warn(
+    '⚠  Seeding staff accounts with published passwords into a NODE_ENV=production\n' +
+      '   environment, because ALLOW_DEMONSTRATION_SEED=true. Correct for a\n' +
+      '   demonstration server. Remove that variable before this database is used\n' +
+      '   for anything else.',
+  );
+}
+
+async function main(): Promise<void> {
+  assertSeedableEnvironment();
 
   console.log('→ chart of accounts');
   for (const spec of SYSTEM_ACCOUNTS) {
