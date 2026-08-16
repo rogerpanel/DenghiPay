@@ -781,6 +781,58 @@ model SenderProfileRu {
   @@schema("partition_ru")
 }
 
+/// Nigerian-resident sender personal data. CBN localisation, NDPA 2023.
+///
+/// A separate model from RecipientProfileNg even though both live in the NG
+/// partition: a sender and a recipient are different subjects with different
+/// retention obligations, and collapsing them would mean a recipient we have
+/// never onboarded inherits a sender's record.
+model SenderProfileNg {
+  piiToken    String   @id @map("pii_token")
+  firstName   String   @map("first_name")
+  lastName    String   @map("last_name")
+  middleName  String?  @map("middle_name")
+  dateOfBirth DateTime @map("date_of_birth")
+  nationality String
+  phone       String?
+  addressLine String?  @map("address_line")
+  city        String?
+  /// Bank Verification Number. The identity anchor CBN tiering is built on,
+  /// and the reason this row may not leave Nigeria.
+  bvn         String?
+  documents   Json     @default("[]")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ng")
+}
+
+/// Ghanaian-resident sender personal data. Data Protection Act 843.
+model SenderProfileGh {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Ghana Card number — the national identifier BoG wallet tiers key on.
+  ghanaCardNo   String?  @map("ghana_card_no")
+  /// The wallet we debit to collect. Personal data, so it lives here and is
+  /// read only at the moment a pay-in is initiated.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_gh")
+}
+
 /// Nigerian recipient personal data. CBN localisation.
 model RecipientProfileNg {
   piiToken      String   @id @map("pii_token")

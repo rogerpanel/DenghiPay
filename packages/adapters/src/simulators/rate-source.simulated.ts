@@ -23,6 +23,20 @@ const BASE_RATES: Readonly<Record<string, string>> = {
   'USD:NGN': '1455.0000',
   'USD:GHS': '10.3800',
   'USDT:NGN': '1455.0000',
+  /**
+   * The intra-African pair, both ways.
+   *
+   * There is no deep direct NGN/GHS market — in practice both legs cross the
+   * dollar — so these are the dollar cross of the two rates above:
+   * 10.38 / 1455 and 1455 / 10.38. Quoting them as an explicit pair rather than
+   * pivoting through USD in the quote engine is deliberate: a cross computed on
+   * the fly acquires a second rounding step and a second staleness window, and
+   * the ledger would have to hold a USD leg for a transfer that never touches a
+   * dollar. Cross once, here, where the number is observable and can be
+   * compared against what the settlement partner actually fills at.
+   */
+  'NGN:GHS': '0.0071340',
+  'GHS:NGN': '140.1734',
 };
 
 export interface SimulatedRateOptions {

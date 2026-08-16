@@ -51,7 +51,10 @@ export class MockKycProvider implements KycProvider {
     const supplied = new Set(submission.documents.map((d) => d.type));
 
     // A work permit and a study visa are alternatives, not both.
-    const required = this.requiredDocuments(submission.targetTier, 'RU').filter((type) => {
+    const required = this.requiredDocuments(
+      submission.targetTier,
+      submission.residencyCountry ?? 'RU',
+    ).filter((type) => {
       if (type !== 'WORK_PERMIT') return true;
       return (
         !supplied.has('STUDENT_VISA') &&

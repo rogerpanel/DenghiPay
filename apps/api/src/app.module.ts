@@ -8,11 +8,13 @@ import { LedgerService } from '@morapay/ledger';
 import {
   MockKycProvider,
   MockScreeningProvider,
-  PayinSimulator,
   ProviderRegistry,
   SimulatedRateSource,
+  createGhanaPayinSimulator,
   createGhanaPayoutSimulator,
+  createNigeriaPayinSimulator,
   createNigeriaPayoutSimulator,
+  createRussiaPayinSimulator,
 } from '@morapay/adapters';
 
 import { AppConfig, loadConfig } from './config/config';
@@ -76,29 +78,54 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
     asCorridorId('RU-GH'),
     asCorridorId('BY-NG'),
     asCorridorId('BY-GH'),
+    asCorridorId('NG-GH'),
+    asCorridorId('GH-NG'),
   ];
-  const ngCorridors = allCorridors.filter((id) => String(id).endsWith('-NG'));
-  const ghCorridors = allCorridors.filter((id) => String(id).endsWith('-GH'));
+  // Collection is chosen by where the money comes from; payout by where it
+  // goes. Both are derived from the corridor id rather than listed, so adding
+  // a corridor above is the whole change.
+  const from = (country: string) =>
+    allCorridors.filter((id) => String(id).startsWith(`${country}-`));
+  const to = (country: string) => allCorridors.filter((id) => String(id).endsWith(`-${country}`));
 
-  return new ProviderRegistry()
-    .registerPayin({
-      provider: new PayinSimulator(allCorridors, {
-        autoConfirmAfterSeconds:
-          cfg.SIMULATOR_AUTOCONFIRM_SECONDS === 0 ? null : cfg.SIMULATOR_AUTOCONFIRM_SECONDS,
-      }),
-      priority: 100,
-      enabled: !cfg.PAYIN_RU_PARTNER_ENABLED,
-    })
-    .registerPayout({
-      provider: createNigeriaPayoutSimulator(ngCorridors),
-      priority: 100,
-      enabled: !cfg.PAYCREST_ENABLED && !cfg.FINCRA_ENABLED,
-    })
-    .registerPayout({
-      provider: createGhanaPayoutSimulator(ghCorridors),
-      priority: 100,
-      enabled: !cfg.FINCRA_ENABLED,
-    });
+  const payinOptions = {
+    autoConfirmAfterSeconds:
+      cfg.SIMULATOR_AUTOCONFIRM_SECONDS === 0 ? null : cfg.SIMULATOR_AUTOCONFIRM_SECONDS,
+  };
+
+  return (
+    new ProviderRegistry()
+      .registerPayin({
+        provider: createRussiaPayinSimulator([...from('RU'), ...from('BY')], payinOptions),
+        priority: 100,
+        enabled: !cfg.PAYIN_RU_PARTNER_ENABLED,
+      })
+      // Domestic collection inside Nigeria and Ghana. Simulators for the same
+      // reason as the Russian leg, but a different unfilled prerequisite: these
+      // need a local collection licence, not a partner bank. The corridor licence
+      // gate is what enforces that; registering them here only makes the rails
+      // exist.
+      .registerPayin({
+        provider: createNigeriaPayinSimulator(from('NG'), payinOptions),
+        priority: 100,
+        enabled: true,
+      })
+      .registerPayin({
+        provider: createGhanaPayinSimulator(from('GH'), payinOptions),
+        priority: 100,
+        enabled: true,
+      })
+      .registerPayout({
+        provider: createNigeriaPayoutSimulator(to('NG')),
+        priority: 100,
+        enabled: !cfg.PAYCREST_ENABLED && !cfg.FINCRA_ENABLED,
+      })
+      .registerPayout({
+        provider: createGhanaPayoutSimulator(to('GH')),
+        priority: 100,
+        enabled: !cfg.FINCRA_ENABLED,
+      })
+  );
 }
 
 @Module({

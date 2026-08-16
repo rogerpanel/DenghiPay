@@ -17,6 +17,9 @@ import {
 import { PayinProvider, PayinRequest } from '../ports/payin-provider';
 import { DateRange, RawCallback, StatementLine } from '../ports/payout-provider';
 
+/** Where the money is collected from, which decides the rails and the wording. */
+export type PayinMarket = 'RU' | 'NG' | 'GH';
+
 interface SimulatedPayin {
   readonly providerRef: ProviderRef;
   readonly amount: Money<CurrencyCode>;
@@ -39,27 +42,64 @@ export interface PayinSimulatorOptions {
   readonly autoConfirmAfterSeconds: number | null;
 }
 
+const DEFAULT_OPTIONS: PayinSimulatorOptions = { autoConfirmAfterSeconds: 12 };
+
+/** The collection rails each market actually offers. */
+const METHODS_BY_MARKET: Readonly<Record<PayinMarket, readonly PayinMethod[]>> = {
+  RU: ['SBP', 'QR', 'CARD', 'VIRTUAL_ACCOUNT'],
+  // Nigeria collects by push to a dedicated NUBAN. Card is deliberately absent:
+  // a card-funded remittance is a chargeback exposure we are not taking on.
+  NG: ['VIRTUAL_ACCOUNT'],
+  // Ghana collects by debiting a mobile-money wallet. Bank transfer exists too,
+  // but wallets are where the money is.
+  GH: ['MOBILE_MONEY'],
+};
+
+/** What the receiving switch calls its own reference, per market. */
+const SWITCH_PREFIX: Readonly<Record<PayinMarket, string>> = {
+  RU: 'SBP',
+  NG: 'NIP',
+  GH: 'GHIPSS',
+};
+
+const GH_USSD_FALLBACK: Readonly<Record<string, string>> = {
+  MTN: '*170#',
+  TELECEL: '*110#',
+  AIRTELTIGO: '*110#',
+};
+
 /**
- * Russian pay-in simulator (BUILD_PLAN 6.1).
+ * Pay-in simulator (BUILD_PLAN 6.1).
  *
- * Models SBP push, QR and virtual-account credit, including the awkward parts:
- * duplicate webhooks, dropped webhooks, and a delay between the sender pressing
- * "pay" in their bank app and the money actually being there.
+ * One class, three markets. Russia models SBP push, QR and virtual-account
+ * credit; Nigeria models a dedicated NUBAN the sender pushes to; Ghana models a
+ * mobile-money debit the sender approves on their handset. All three model the
+ * awkward parts — duplicate webhooks, dropped webhooks, and a delay between the
+ * sender pressing "pay" and the money actually being there.
  *
- * This is the leg no partner currently fills (TECHNICAL_ARCHITECTURE §1.1). It
- * stays a simulator until that is a signed agreement rather than a slide.
+ * The Russian leg is the one no partner currently fills
+ * (TECHNICAL_ARCHITECTURE §1.1). The Nigerian and Ghanaian legs are unfilled for
+ * a different reason: collecting from the public inside those countries is a
+ * licensed activity we do not yet hold (see `assertCorridorMayMoveLiveFunds`).
+ * All three stay simulators until those are signed agreements rather than
+ * slides.
  */
 export class PayinSimulator implements PayinProvider {
-  readonly id: ProviderId = asProviderId('payin-ru-sim');
-  readonly supportedMethods: readonly PayinMethod[] = ['SBP', 'QR', 'CARD', 'VIRTUAL_ACCOUNT'];
+  readonly id: ProviderId;
+  readonly supportedMethods: readonly PayinMethod[];
 
   private readonly payins = new Map<string, SimulatedPayin>();
   private readonly byIdempotencyKey = new Map<string, ProviderRef>();
 
   constructor(
+    id: string,
     readonly supportedCorridors: readonly CorridorId[],
-    private readonly options: PayinSimulatorOptions = { autoConfirmAfterSeconds: 12 },
-  ) {}
+    private readonly market: PayinMarket,
+    private readonly options: PayinSimulatorOptions = DEFAULT_OPTIONS,
+  ) {
+    this.id = asProviderId(id);
+    this.supportedMethods = METHODS_BY_MARKET[market];
+  }
 
   async initiatePayin(
     req: PayinRequest,
@@ -76,7 +116,16 @@ export class PayinSimulator implements PayinProvider {
       };
     }
 
-    const providerRef = asProviderRef(`RU-SIM-${randomUUID().slice(0, 12).toUpperCase()}`);
+    if (!this.supportedMethods.includes(req.method)) {
+      throw new Error(
+        `${String(this.id)} collects in ${this.market} and does not support ${req.method}; ` +
+          `supported: ${this.supportedMethods.join(', ')}`,
+      );
+    }
+
+    const providerRef = asProviderRef(
+      `${this.market}-SIM-${randomUUID().slice(0, 12).toUpperCase()}`,
+    );
     const now = new Date();
     this.payins.set(String(providerRef), {
       providerRef,
@@ -104,6 +153,7 @@ export class PayinSimulator implements PayinProvider {
 
   private instructionsFor(providerRef: ProviderRef, req: PayinRequest): PayinInstructions {
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const digits = String(providerRef).replace(/\D/g, '');
     switch (req.method) {
       case 'SBP':
         return {
@@ -125,12 +175,40 @@ export class PayinSimulator implements PayinProvider {
           expiresAt,
         };
       case 'VIRTUAL_ACCOUNT':
+        // A Nigerian NUBAN is ten digits; a Russian settlement account is
+        // twenty and starts 40817810. Same rail, different shape — and getting
+        // the shape wrong is how a demonstration stops looking real.
+        return this.market === 'NG'
+          ? {
+              kind: 'VIRTUAL_ACCOUNT',
+              accountNumber: digits.padEnd(10, '0').slice(0, 10),
+              bankName: 'Simulated Collection Bank (NG)',
+              reference: req.reference,
+            }
+          : {
+              kind: 'VIRTUAL_ACCOUNT',
+              accountNumber: `40817810${digits.padEnd(12, '0').slice(0, 12)}`,
+              bankName: 'Simulated Partner Bank',
+              reference: req.reference,
+            };
+      case 'MOBILE_MONEY': {
+        // The wallet to debit. It is the sender's own number, so it arrives
+        // from the partition gateway at the moment of the call and is never
+        // persisted in the neutral tier; without it there is nothing to debit.
+        if (req.payer === undefined || req.payer.method !== 'MOBILE_MONEY') {
+          throw new Error(
+            'A mobile-money pay-in needs the payer wallet. Resolve it from the ' +
+              'sender partition before calling initiatePayin.',
+          );
+        }
         return {
-          kind: 'VIRTUAL_ACCOUNT',
-          accountNumber: `40817810${String(providerRef).replace(/\D/g, '').padEnd(12, '0').slice(0, 12)}`,
-          bankName: 'Simulated Partner Bank',
-          reference: req.reference,
+          kind: 'MOBILE_MONEY',
+          msisdn: req.payer.msisdn,
+          network: req.payer.network,
+          ussdFallback: GH_USSD_FALLBACK[req.payer.network] ?? '*110#',
+          expiresAt,
         };
+      }
     }
   }
 
@@ -165,7 +243,7 @@ export class PayinSimulator implements PayinProvider {
     return {
       _tag: 'SETTLED',
       providerRef: ref,
-      institutionRef: payin.institutionRef ?? 'SBP-UNKNOWN',
+      institutionRef: payin.institutionRef ?? `${SWITCH_PREFIX[this.market]}-UNKNOWN`,
       settledAt: payin.paidAt,
       receivedMinorUnits: payin.amount.minorUnits,
     };
@@ -209,7 +287,7 @@ export class PayinSimulator implements PayinProvider {
     const payin = this.payins.get(String(ref));
     if (payin === undefined || payin.paidAt !== null) return false;
     payin.paidAt = new Date();
-    payin.institutionRef = `SBP-${randomUUID().slice(0, 10).toUpperCase()}`;
+    payin.institutionRef = `${SWITCH_PREFIX[this.market]}-${randomUUID().slice(0, 10).toUpperCase()}`;
     return true;
   }
 
@@ -235,4 +313,25 @@ export class PayinSimulator implements PayinProvider {
   isKnown(ref: ProviderRef): boolean {
     return this.payins.has(String(ref));
   }
+}
+
+export function createRussiaPayinSimulator(
+  corridors: readonly CorridorId[],
+  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
+): PayinSimulator {
+  return new PayinSimulator('payin-ru-sim', corridors, 'RU', options);
+}
+
+export function createNigeriaPayinSimulator(
+  corridors: readonly CorridorId[],
+  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
+): PayinSimulator {
+  return new PayinSimulator('payin-ng-sim', corridors, 'NG', options);
+}
+
+export function createGhanaPayinSimulator(
+  corridors: readonly CorridorId[],
+  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
+): PayinSimulator {
+  return new PayinSimulator('payin-gh-sim', corridors, 'GH', options);
 }

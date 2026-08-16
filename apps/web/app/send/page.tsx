@@ -94,6 +94,7 @@ function SendFlow() {
   const [payinMethod, setPayinMethod] = useState('SBP');
   const [idempotencyKey] = useState(newIdempotencyKey);
 
+  const residency = account?.residencyCountry ?? null;
   const corridor = useMemo(
     () => corridors.find((c) => c.id === corridorId) ?? null,
     [corridors, corridorId],
@@ -107,11 +108,34 @@ function SendFlow() {
         api<{ recipients: Recipient[] }>('/recipients'),
         api<Institutions>('/institutions'),
       ]);
-      setCorridors(corridorList.corridors.filter((c) => c.enabled));
+      // Only corridors that start where this sender lives. Someone in Lagos
+      // has no way to hand over rubles, and offering RU→NG to them produces a
+      // quote they can never pay.
+      const usable = corridorList.corridors.filter(
+        (c) => c.enabled && (residency === null || c.sourceCountry === residency),
+      );
+      setCorridors(usable);
+      // Functional form on purpose: reading `corridorId` here would make it a
+      // dependency, and this effect would then re-run — and re-fetch — every
+      // time the sender picked a different corridor.
+      setCorridorId((current) =>
+        usable.length > 0 && !usable.some((c) => c.id === current) ? usable[0]!.id : current,
+      );
       setRecipients(recipientList.recipients);
       setInstitutions(institutionList);
     })().catch(() => setError(t('error.generic')));
-  }, [t]);
+  }, [t, residency]);
+
+  /* A corridor collects on the rails it has. When the sender changes corridor,
+     the previously chosen method may not exist on the new one — SBP does not
+     exist on NG→GH — so follow the corridor rather than leave a stale value
+     that the API will reject at confirmation. */
+  useEffect(() => {
+    const methods = corridor?.payinMethods ?? [];
+    if (methods.length > 0 && !methods.includes(payinMethod)) {
+      setPayinMethod(methods[0]!);
+    }
+  }, [corridor, payinMethod]);
 
   /* The quote countdown. A quote is a promise with an expiry, and the sender
      can see it tick — better than discovering it expired on submit. */

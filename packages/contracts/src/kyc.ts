@@ -36,6 +36,30 @@ export const kycSubmitRequestSchema = z.object({
     addressLine: z.string().max(200).optional(),
     city: z.string().max(100).optional(),
     postcode: z.string().max(20).optional(),
+    /**
+     * Jurisdiction-specific identity anchors. Each is stored only in its own
+     * residency partition and is never echoed back to the client.
+     */
+    bvn: z
+      .string()
+      .regex(/^\d{11}$/, 'a BVN is eleven digits')
+      .optional(),
+    ghanaCardNo: z
+      .string()
+      .regex(/^GHA-\d{9}-\d$/, 'a Ghana Card number looks like GHA-123456789-0')
+      .optional(),
+    /**
+     * The wallet we debit when collecting inside Ghana. Asked for at
+     * verification because that is where identity evidence already is, and
+     * because a wallet whose name does not match the verified name is a
+     * finding, not a convenience.
+     */
+    collectionWallet: z
+      .object({
+        msisdn: z.string().regex(/^233\d{9}$/, 'a Ghanaian MSISDN is 233 then nine digits'),
+        network: z.enum(['MTN', 'TELECEL', 'AIRTELTIGO']),
+      })
+      .optional(),
   }),
   documents: z
     .array(

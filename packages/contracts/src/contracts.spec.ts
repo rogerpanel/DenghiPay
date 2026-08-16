@@ -187,14 +187,24 @@ describe('registration', () => {
     );
   });
 
+  /**
+   * NG and GH joined this list when the intra-African corridors landed, and
+   * only because sender stores were built for those partitions at the same
+   * time. The rule the test protects is unchanged: a residency is accepted if
+   * and only if there is somewhere lawful to put that person's data.
+   */
   it('accepts only residencies we have a data partition for', () => {
-    expect(() =>
-      registerRequestSchema.parse({
-        email: 'a@b.com',
-        password: 'a-reasonable-passphrase',
-        acceptedTerms: true,
-        residencyCountry: 'NG',
-      }),
-    ).toThrow();
+    const base = {
+      email: 'a@b.com',
+      password: 'a-reasonable-passphrase',
+      acceptedTerms: true,
+    };
+    for (const residencyCountry of ['RU', 'BY', 'NG', 'GH'] as const) {
+      expect(registerRequestSchema.parse({ ...base, residencyCountry }).residencyCountry).toBe(
+        residencyCountry,
+      );
+    }
+    // Kenya is a plausible next corridor and has no store, so it is refused.
+    expect(() => registerRequestSchema.parse({ ...base, residencyCountry: 'KE' })).toThrow();
   });
 });

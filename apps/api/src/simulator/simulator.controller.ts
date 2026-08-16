@@ -122,6 +122,8 @@ export class SimulatorController {
 
     const secretByProvider: Record<string, string> = {
       'payin-ru-sim': this.config.PROVIDER_SIGNING_SECRET_PAYIN_RU_SIM,
+      'payin-ng-sim': this.config.PROVIDER_SIGNING_SECRET_PAYIN_NG_SIM,
+      'payin-gh-sim': this.config.PROVIDER_SIGNING_SECRET_PAYIN_GH_SIM,
       'payout-ng-sim': this.config.PROVIDER_SIGNING_SECRET_PAYOUT_NG_SIM,
       'payout-gh-sim': this.config.PROVIDER_SIGNING_SECRET_PAYOUT_GH_SIM,
     };

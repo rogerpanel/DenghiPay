@@ -11,6 +11,8 @@ interface Account {
   kycTier: number;
   locale: Locale;
   emailVerified: boolean;
+  /** Where this sender lives; decides which corridors they are offered. */
+  residencyCountry: string;
   capabilities: { canQuote: boolean; canTransfer: boolean; nextKycTier: number | null };
 }
 

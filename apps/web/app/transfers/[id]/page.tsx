@@ -9,13 +9,16 @@ import { AppShell, LoadingCard, MoneyDto, RequireAuth, StatusBadge } from '@/com
 import type { TranslationKey } from '@/lib/i18n';
 
 interface PayinInstructions {
-  kind: 'SBP' | 'QR' | 'VIRTUAL_ACCOUNT' | 'CARD';
+  kind: 'SBP' | 'QR' | 'VIRTUAL_ACCOUNT' | 'CARD' | 'MOBILE_MONEY';
   deepLink?: string;
   payload?: string;
   accountNumber?: string;
   bankName?: string;
   reference?: string;
   redirectUrl?: string;
+  msisdn?: string;
+  network?: string;
+  ussdFallback?: string;
 }
 
 interface Transfer {
@@ -236,6 +239,28 @@ function PayinCard({
           >
             {copied ? t('action.copied') : t('action.copy')}
           </button>
+        </>
+      ) : null}
+
+      {/* Ghana collects by debiting the sender's own wallet, so there is
+          nothing for them to go and do except answer the prompt. The wallet is
+          shown because a sender should be able to see which one is about to be
+          debited, and the short code because prompts get dropped. */}
+      {instructions.kind === 'MOBILE_MONEY' ? (
+        <>
+          <p className="mp-small">{t('send.pay.momo')}</p>
+          <div className="mp-breakdown mp-numeric">
+            <div className="mp-breakdown__row">
+              <span>{t('send.pay.momoWallet')}</span>
+              <strong>
+                {instructions.network} {instructions.msisdn}
+              </strong>
+            </div>
+            <div className="mp-breakdown__row">
+              <span>{t('send.pay.momoFallback')}</span>
+              <strong>{instructions.ussdFallback}</strong>
+            </div>
+          </div>
         </>
       ) : null}
 

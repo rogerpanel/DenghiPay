@@ -28,10 +28,32 @@ export type TierLimitTable = Readonly<
   Record<KycTier, Readonly<Partial<Record<CurrencyCode, TierLimits>>>>
 >;
 
+/**
+ * The naira and cedi rows exist because those currencies are now send
+ * currencies, not only receive currencies (the NG→GH and GH→NG corridors).
+ *
+ * They are anchored to the tiered limits the local regulators already publish,
+ * rather than converted from the ruble rows, because a sender in Lagos is
+ * bounded by what the CBN permits and not by what we permit in Moscow:
+ *
+ *   - **NGN** follows the shape of the CBN's three-tier KYC regime, where a
+ *     tier-1 account is capped at a low single-transaction value and the caps
+ *     rise with the evidence of identity supplied.
+ *   - **GHS** follows the Bank of Ghana's mobile-money tiers, which are stated
+ *     as daily and monthly aggregates rather than per-transaction values, so
+ *     the per-transfer cap here is set at the daily aggregate.
+ *
+ * Like the ruble rows, these are placeholders pending the risk assessment in
+ * docs/compliance, and the compliance officer owns the final numbers. What is
+ * not a placeholder is that they exist at all: `checkLimits` refuses a currency
+ * it has no row for, so an unlisted send currency fails closed.
+ */
 export const DEFAULT_TIER_LIMITS: TierLimitTable = {
   0: {
     RUB: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
     BYN: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    NGN: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    GHS: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
   },
   1: {
     // 15 000 ₽ per transfer, 30 000 ₽ per day, 100 000 ₽ per month.
@@ -42,6 +64,18 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
     },
     BYN: {
       perTransferMinorUnits: 50_000n,
+      dailyMinorUnits: 100_000n,
+      monthlyMinorUnits: 300_000n,
+    },
+    // ₦50 000 per transfer, ₦200 000 per day, ₦500 000 per month.
+    NGN: {
+      perTransferMinorUnits: 5_000_000n,
+      dailyMinorUnits: 20_000_000n,
+      monthlyMinorUnits: 50_000_000n,
+    },
+    // GH₵1 000 per day, GH₵3 000 per month — the minimum-KYC wallet tier.
+    GHS: {
+      perTransferMinorUnits: 100_000n,
       dailyMinorUnits: 100_000n,
       monthlyMinorUnits: 300_000n,
     },
@@ -58,6 +92,18 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       dailyMinorUnits: 900_000n,
       monthlyMinorUnits: 3_000_000n,
     },
+    // ₦500 000 per transfer, ₦1 000 000 per day, ₦5 000 000 per month.
+    NGN: {
+      perTransferMinorUnits: 50_000_000n,
+      dailyMinorUnits: 100_000_000n,
+      monthlyMinorUnits: 500_000_000n,
+    },
+    // GH₵5 000 per day, GH₵20 000 per month — the medium-KYC wallet tier.
+    GHS: {
+      perTransferMinorUnits: 500_000n,
+      dailyMinorUnits: 500_000n,
+      monthlyMinorUnits: 2_000_000n,
+    },
   },
   3: {
     // Enhanced due diligence: higher caps, and every transfer still screened.
@@ -70,6 +116,18 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       perTransferMinorUnits: 2_000_000n,
       dailyMinorUnits: 3_000_000n,
       monthlyMinorUnits: 10_000_000n,
+    },
+    // ₦5 000 000 per transfer, ₦10 000 000 per day, ₦50 000 000 per month.
+    NGN: {
+      perTransferMinorUnits: 500_000_000n,
+      dailyMinorUnits: 1_000_000_000n,
+      monthlyMinorUnits: 5_000_000_000n,
+    },
+    // GH₵10 000 per day, GH₵50 000 per month — the enhanced-KYC wallet tier.
+    GHS: {
+      perTransferMinorUnits: 1_000_000n,
+      dailyMinorUnits: 1_000_000n,
+      monthlyMinorUnits: 5_000_000n,
     },
   },
 };

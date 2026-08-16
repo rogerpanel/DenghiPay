@@ -5,7 +5,9 @@ import { APP_CONFIG } from '../config/tokens';
 import { tokenise } from '../common/crypto.util';
 import { SenderProfileRuRepository } from './ru/sender-profile.repository';
 import { RecipientProfileNgRepository } from './ng/recipient-profile.repository';
+import { SenderProfileNgRepository } from './ng/sender-profile.repository';
 import { RecipientProfileGhRepository } from './gh/recipient-profile.repository';
+import { SenderProfileGhRepository } from './gh/sender-profile.repository';
 
 /**
  * The only door between the neutral tier and the residency partitions
@@ -29,6 +31,8 @@ export class PartitionGateway {
     private readonly ru: SenderProfileRuRepository,
     private readonly ng: RecipientProfileNgRepository,
     private readonly gh: RecipientProfileGhRepository,
+    private readonly ngSender: SenderProfileNgRepository,
+    private readonly ghSender: SenderProfileGhRepository,
   ) {}
 
   token(kind: string, value: string): string {
@@ -37,6 +41,15 @@ export class PartitionGateway {
 
   // ------------------------------------------------------------------ sender
 
+  /**
+   * Senders live in three partitions now, one per residency.
+   *
+   * Russia holds the senders on the inbound corridors; Nigeria and Ghana hold
+   * the senders on the intra-African ones. The identifiers differ by
+   * jurisdiction — a BVN in Nigeria, a Ghana Card in Ghana, a passport and
+   * migration card in Russia — so each store keeps its own shape rather than a
+   * lowest common denominator with most columns null.
+   */
   async upsertSenderProfile(input: {
     readonly piiToken: string;
     readonly partition: string;
@@ -49,12 +62,25 @@ export class PartitionGateway {
     readonly addressLine?: string;
     readonly city?: string;
     readonly postcode?: string;
+    readonly bvn?: string;
+    readonly ghanaCardNo?: string;
+    readonly walletMsisdn?: string;
+    readonly walletNetwork?: string;
     readonly documents: ReadonlyArray<Record<string, unknown>>;
   }): Promise<void> {
-    if (input.partition !== 'RU') {
-      throw new Error(`No sender partition configured for ${input.partition}`);
+    switch (input.partition) {
+      case 'RU':
+        await this.ru.upsert(input);
+        return;
+      case 'NG':
+        await this.ngSender.upsert(input);
+        return;
+      case 'GH':
+        await this.ghSender.upsert(input);
+        return;
+      default:
+        throw new Error(`No sender partition configured for ${input.partition}`);
     }
-    await this.ru.upsert(input);
   }
 
   /**
@@ -63,20 +89,47 @@ export class PartitionGateway {
    * Screening needs a name and a date of birth and nothing else, so that is all
    * that crosses the boundary — and it crosses in memory, to a service that
    * writes only a tokenised subject reference back.
+   *
+   * Returning null here is not a soft failure. The compliance gate treats an
+   * absent subject as unscreenable and refuses the transfer, so a residency
+   * with no store behind it fails closed (guardrail G3).
    */
   async screeningSubject(
     piiToken: string,
     partition: string,
   ): Promise<{ fullName: string; dateOfBirth: string; nationality: string } | null> {
-    if (partition !== 'RU') return null;
-    return this.ru.screeningProjection(piiToken);
+    switch (partition) {
+      case 'RU':
+        return this.ru.screeningProjection(piiToken);
+      case 'NG':
+        return this.ngSender.screeningProjection(piiToken);
+      case 'GH':
+        return this.ghSender.screeningProjection(piiToken);
+      default:
+        return null;
+    }
   }
 
   /** Display projection for the sender's own profile screen. */
   async senderDisplayName(piiToken: string, partition: string): Promise<string | null> {
-    if (partition !== 'RU') return null;
-    const projection = await this.ru.screeningProjection(piiToken);
-    return projection?.fullName ?? null;
+    return (await this.screeningSubject(piiToken, partition))?.fullName ?? null;
+  }
+
+  /**
+   * The account a pull-based collection rail debits.
+   *
+   * Only Ghana has one today: mobile-money collection debits the sender's own
+   * wallet, so the number has to reach the provider. Russia and Nigeria are
+   * push rails — the sender originates the payment — and there is nothing to
+   * return, which is why null is the ordinary answer rather than an error.
+   */
+  async senderCollectionAccount(
+    piiToken: string,
+    partition: string,
+  ): Promise<{ method: 'MOBILE_MONEY'; msisdn: string; network: string } | null> {
+    if (partition !== 'GH') return null;
+    const wallet = await this.ghSender.collectionWallet(piiToken);
+    return wallet === null ? null : { method: 'MOBILE_MONEY', ...wallet };
   }
 
   // --------------------------------------------------------------- recipient
@@ -180,8 +233,16 @@ export class PartitionGateway {
     };
     return {
       RU: await probe(() => this.prisma.senderProfileRu.count()),
-      NG: await probe(() => this.prisma.recipientProfileNg.count()),
-      GH: await probe(() => this.prisma.recipientProfileGh.count()),
+      NG: await probe(
+        async () =>
+          (await this.prisma.recipientProfileNg.count()) +
+          (await this.prisma.senderProfileNg.count()),
+      ),
+      GH: await probe(
+        async () =>
+          (await this.prisma.recipientProfileGh.count()) +
+          (await this.prisma.senderProfileGh.count()),
+      ),
     };
   }
 }

@@ -1,5 +1,12 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { DEFAULT_TIER_LIMITS, KycTier, limitsFor, Money } from '@morapay/domain';
+import {
+  CurrencyCode,
+  DEFAULT_TIER_LIMITS,
+  KycTier,
+  Money,
+  limitsFor,
+  sendCurrencyFor,
+} from '@morapay/domain';
 import { DocumentType, KycProvider } from '@morapay/adapters';
 import { KycCaseResponse, KycRequirementsResponse, KycSubmitRequest } from '@morapay/contracts';
 import { PrismaService } from '../common/prisma.service';
@@ -31,7 +38,11 @@ export class KycService {
   ) {}
 
   requirements(tier: KycTier, residencyCountry: string): KycRequirementsResponse {
-    const limits = limitsFor(tier, 'RUB', DEFAULT_TIER_LIMITS);
+    // Limits are quoted in the sender's own money. This was RUB for everyone
+    // until Nigeria and Ghana became origins; a naira sender shown a ruble cap
+    // is being shown a wrong number, not a placeholder.
+    const currency = sendCurrencyFor(residencyCountry);
+    const limits = limitsFor(tier, currency, DEFAULT_TIER_LIMITS);
     return {
       tier,
       residencyCountry,
@@ -46,7 +57,7 @@ export class KycService {
         perTransfer: (limits?.perTransferMinorUnits ?? 0n).toString(),
         daily: (limits?.dailyMinorUnits ?? 0n).toString(),
         monthly: (limits?.monthlyMinorUnits ?? 0n).toString(),
-        currency: 'RUB',
+        currency,
       },
     };
   }
@@ -74,12 +85,24 @@ export class KycService {
       ...(input.person.addressLine === undefined ? {} : { addressLine: input.person.addressLine }),
       ...(input.person.city === undefined ? {} : { city: input.person.city }),
       ...(input.person.postcode === undefined ? {} : { postcode: input.person.postcode }),
+      ...(input.person.bvn === undefined ? {} : { bvn: input.person.bvn }),
+      ...(input.person.ghanaCardNo === undefined ? {} : { ghanaCardNo: input.person.ghanaCardNo }),
+      ...(input.person.collectionWallet === undefined
+        ? {}
+        : {
+            walletMsisdn: input.person.collectionWallet.msisdn,
+            walletNetwork: input.person.collectionWallet.network,
+          }),
       documents: input.documents.map((doc) => ({ ...doc })),
     });
 
     const decision = await this.provider.submit({
       subjectToken: user.piiToken,
       targetTier: input.targetTier,
+      // The provider decides against the rules of the country the sender lives
+      // in. Without this it evaluated everyone as a foreign national in Russia,
+      // which asks a Lagos resident for a migration card.
+      residencyCountry: user.piiPartition,
       person: {
         firstName: input.person.firstName,
         lastName: input.person.lastName,
@@ -256,10 +279,14 @@ export class KycService {
   }
 
   /** What a tier permits, for the upgrade prompt in the web app. */
-  tierAllowance(tier: KycTier): { perTransfer: Money<'RUB'> } | null {
-    const limits = limitsFor(tier, 'RUB', DEFAULT_TIER_LIMITS);
+  tierAllowance(
+    tier: KycTier,
+    residencyCountry = 'RU',
+  ): { perTransfer: Money<CurrencyCode> } | null {
+    const currency = sendCurrencyFor(residencyCountry);
+    const limits = limitsFor(tier, currency, DEFAULT_TIER_LIMITS);
     if (limits === undefined) return null;
-    return { perTransfer: Money.fromMinorUnits(limits.perTransferMinorUnits, 'RUB') };
+    return { perTransfer: Money.fromMinorUnits(limits.perTransferMinorUnits, currency) };
   }
 }
 

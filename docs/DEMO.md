@@ -103,6 +103,8 @@ the application at all.
 | `chidi@demo.morapay.local`   | Nigerian student in Moscow, KYC tier 2 — the main thread |
 | `ama@demo.morapay.local`     | Tier 0 — the limit block and the upgrade prompt          |
 | `blocked@demo.morapay.local` | Matches the mock sanctions list — guardrail G3           |
+| `folake@demo.morapay.local`  | Lives in Lagos — sends naira to Ghana on NG→GH           |
+| `kofi@demo.morapay.local`    | Lives in Accra — sends cedis to Nigeria on GH→NG         |
 | `compliance@morapay.local`   | Compliance queue                                         |
 | `treasury@morapay.local`     | Requests prefunding                                      |
 | `treasury2@morapay.local`    | Approves it — the second pair of eyes                    |
@@ -195,6 +197,54 @@ including our fee. We do not keep a fee for a transfer we did not deliver.
 
 **Then show `…0000`**: name enquiry returns nothing and the flow stops before
 any money is committed.
+
+---
+
+## Act 2b — The other side of the map (4 minutes)
+
+Everything so far has been money leaving Russia. This act is the second product:
+transfers **between** African countries, both directions, with nothing Russian in
+them at all.
+
+1. Sign out and sign in as `folake@demo.morapay.local` — a Lagos resident.
+
+   The corridor list is different. She is not offered RU→NG, because she has no
+   way to hand over rubles; she is offered **NG→GH** and nothing else. This is
+   worth pausing on: a sender is only shown corridors that start where they
+   live, and the API refuses the others even if the request is hand-crafted.
+
+2. Send ₦50 000 to _Sister — Kumasi_.
+
+   The pay-in screen shows a **ten-digit NUBAN** to transfer to, not an SBP
+   link. Nigeria collects by push to a dedicated account; the sender moves the
+   money from their own bank.
+
+3. Let it complete, then sign in as `kofi@demo.morapay.local` — Accra — and send
+   GH₵500 to _Brother — Abuja_.
+
+   The pay-in screen is different again: **no account to pay into**. Ghana
+   collects by debiting the sender's own wallet, so the instruction is "check
+   your phone and approve the request", with the operator's USSD short code
+   underneath for when the prompt does not arrive. Point out that the wallet
+   shown is _theirs_ — we are not revealing anything, we are confirming which
+   account is about to be debited.
+
+4. Back office → _Operations_ → the ledger view for either transfer. The
+   postings are the same shape as the ruble ones, in naira and cedis.
+
+**The question this act invites, and the honest answer.** Somebody will ask
+whether this doubles the business. It roughly doubles the _addressable_ flow and
+it more than doubles the regulatory surface: collecting naira inside Nigeria and
+debiting wallets inside Ghana are licensed activities in their own right, and
+neither is implied by the inbound-remittance arrangements the ruble corridors
+need. NG→GH does not authorise GH→NG either — they are two licences, not one.
+
+That is why the code carries a licence gate rather than a switch. With live funds
+on, a corridor is only reachable if the specific authorisations behind it are
+named in configuration; there is no wildcard and no override. Today none are
+named, which is correct, and the demonstration works anyway because nothing here
+moves real money. `docs/CORRIDORS.md` has the detail, and it is tracked as
+OPEN_ITEMS B6.
 
 ---
 

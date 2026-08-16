@@ -8,13 +8,22 @@
 #
 #   usage: infra/scripts/smoke-transfer.sh [recipient-identifier] [expected-final-state]
 #
-# CORRIDOR selects the leg. RU-NG (the default) sends to a ten-digit Nigerian
-# NUBAN; RU-GH sends to a Ghanaian mobile-money number (233 then nine digits).
-# In both cases the simulator picks its behaviour from the last four digits of
-# the identifier, so the same scenario suffixes work on either corridor:
+# CORRIDOR selects the leg. Four run today:
+#
+#   RU-NG  rubles collected in Russia   → a ten-digit Nigerian NUBAN
+#   RU-GH  rubles collected in Russia   → a Ghanaian wallet (233 + nine digits)
+#   NG-GH  naira pushed to a NUBAN      → a Ghanaian wallet
+#   GH-NG  a cedi wallet debited        → a Nigerian bank account
+#
+# The last two are the intra-African pair, and they use their own senders,
+# because a corridor is only offered to someone who lives at its origin.
+# The simulator picks its behaviour from the last four digits of the recipient
+# identifier, so the same scenario suffixes work on every corridor:
 #
 #   CORRIDOR=RU-NG infra/scripts/smoke-transfer.sh 0123456789 COMPLETED
 #   CORRIDOR=RU-GH infra/scripts/smoke-transfer.sh 233241116666 REFUNDED
+#   CORRIDOR=NG-GH infra/scripts/smoke-transfer.sh
+#   CORRIDOR=GH-NG infra/scripts/smoke-transfer.sh
 #
 # Sending limits aggregate over real transfer history, so repeated runs against
 # one database eventually exhaust the sender's daily cap and the script stops
@@ -23,17 +32,18 @@
 set -euo pipefail
 
 API="${API:-http://localhost:4000}"
-EMAIL="${EMAIL:-chidi@demo.morapay.local}"
 PASSWORD="${PASSWORD:-morapay-demo-2026}"
 CORRIDOR="${CORRIDOR:-RU-NG}"
 EXPECT="${2:-COMPLETED}"
 BANK_CODE="${BANK_CODE:-058}"
 NETWORK="${NETWORK:-MTN}"
-# Minor units. 100 000,00 ₽ by default — the amount used in the walkthrough.
-AMOUNT="${AMOUNT:-10000000}"
 
-case "$CORRIDOR" in
-  RU-NG)
+# The recipient shape follows the destination; the sender, the amount and the
+# collection rail follow the origin. Both are read off the corridor id rather
+# than listed per corridor, so a new pair is two cases, not a rewrite.
+DESTINATION="${CORRIDOR##*-}"
+case "$DESTINATION" in
+  NG)
     ACCOUNT="${1:-0123456789}"
     DECLARED="ADEBAYO OKONKWO"
     DETAILS_FOR() {
@@ -41,7 +51,7 @@ case "$CORRIDOR" in
         "$ACCOUNT" "$BANK_CODE" "$1"
     }
     ;;
-  RU-GH)
+  GH)
     ACCOUNT="${1:-233241234567}"
     DECLARED="KWAME MENSAH"
     DETAILS_FOR() {
@@ -50,7 +60,32 @@ case "$CORRIDOR" in
     }
     ;;
   *)
-    echo "unknown CORRIDOR '$CORRIDOR' (expected RU-NG or RU-GH)" >&2
+    echo "unknown destination in CORRIDOR '$CORRIDOR' (expected a -NG or -GH corridor)" >&2
+    exit 64
+    ;;
+esac
+
+case "$CORRIDOR" in
+  # A corridor is only offered to someone who lives at its origin, so each
+  # origin has its own demo sender. Amounts are the sensible round number in
+  # each currency, in minor units: 100 000,00 ₽, ₦50 000,00, GH₵500,00.
+  RU-*)
+    EMAIL="${EMAIL:-chidi@demo.morapay.local}"
+    AMOUNT="${AMOUNT:-10000000}"
+    PAYIN_METHOD="${PAYIN_METHOD:-SBP}"
+    ;;
+  NG-*)
+    EMAIL="${EMAIL:-folake@demo.morapay.local}"
+    AMOUNT="${AMOUNT:-5000000}"
+    PAYIN_METHOD="${PAYIN_METHOD:-VIRTUAL_ACCOUNT}"
+    ;;
+  GH-*)
+    EMAIL="${EMAIL:-kofi@demo.morapay.local}"
+    AMOUNT="${AMOUNT:-50000}"
+    PAYIN_METHOD="${PAYIN_METHOD:-MOBILE_MONEY}"
+    ;;
+  *)
+    echo "unknown origin in CORRIDOR '$CORRIDOR'" >&2
     exit 64
     ;;
 esac
@@ -120,7 +155,7 @@ echo "   recipient   $(echo "$QUOTE" | jqr "recipientAmount.formatted")"
 say "5. Confirm the transfer"
 TRANSFER=$(curl -sS -X POST "$API/transfers" -H "$AUTH" -H 'content-type: application/json' \
   -H "idempotency-key: smoke-$(date +%s)-$RANDOM" \
-  -d "{\"quoteId\":\"$QUOTE_ID\",\"recipientId\":\"$RECIPIENT_ID\",\"payinMethod\":\"SBP\",\"purpose\":\"FAMILY_SUPPORT\",\"confirmedRecipientName\":\"$RESOLVED\"}")
+  -d "{\"quoteId\":\"$QUOTE_ID\",\"recipientId\":\"$RECIPIENT_ID\",\"payinMethod\":\"$PAYIN_METHOD\",\"purpose\":\"FAMILY_SUPPORT\",\"confirmedRecipientName\":\"$RESOLVED\"}")
 REFERENCE=$(echo "$TRANSFER" | jqr "reference")
 [ -n "$REFERENCE" ] || fail "no transfer: $TRANSFER"
 echo "   $REFERENCE  state=$(echo "$TRANSFER" | jqr "state")  ($(echo "$TRANSFER" | jqr "senderStatus"))"

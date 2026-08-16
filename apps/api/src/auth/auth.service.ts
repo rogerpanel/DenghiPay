@@ -63,6 +63,10 @@ export class AuthService {
         email: input.email,
         passwordHash,
         locale: input.locale,
+        // Belarus has no partition of its own; its senders are held in the RU
+        // store under the same regime. Nigeria and Ghana do have their own,
+        // and their senders go there — which is the whole reason those stores
+        // exist (BUILD_PLAN 12.1, guardrail G10).
         piiPartition: input.residencyCountry === 'BY' ? 'RU' : input.residencyCountry,
         piiToken,
         roles: ['SENDER'],

@@ -130,6 +130,10 @@ export class ProviderCallbackController {
     switch (providerId) {
       case 'payin-ru-sim':
         return this.config.PROVIDER_SIGNING_SECRET_PAYIN_RU_SIM;
+      case 'payin-ng-sim':
+        return this.config.PROVIDER_SIGNING_SECRET_PAYIN_NG_SIM;
+      case 'payin-gh-sim':
+        return this.config.PROVIDER_SIGNING_SECRET_PAYIN_GH_SIM;
       case 'payout-ng-sim':
         return this.config.PROVIDER_SIGNING_SECRET_PAYOUT_NG_SIM;
       case 'payout-gh-sim':

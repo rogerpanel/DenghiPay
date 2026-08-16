@@ -12,7 +12,21 @@ export type CountryCode = 'RU' | 'BY' | 'NG' | 'GH';
 export const PAYOUT_METHODS = ['BANK_ACCOUNT', 'MOBILE_MONEY'] as const;
 export type PayoutMethod = (typeof PAYOUT_METHODS)[number];
 
-export const PAYIN_METHODS = ['SBP', 'QR', 'CARD', 'VIRTUAL_ACCOUNT'] as const;
+/**
+ * How we collect from the sender.
+ *
+ * `SBP`, `QR` and `CARD` are Russian rails. `VIRTUAL_ACCOUNT` is deliberately
+ * shared: a dedicated account the sender pushes to, which is a Russian virtual
+ * account on RU→ corridors and a Nigerian NUBAN on NG→ ones. The mechanics and
+ * the reconciliation are identical, so splitting them would buy a name and cost
+ * a branch.
+ *
+ * `MOBILE_MONEY` is the Ghanaian collection rail and works the other way round:
+ * we ask the network to debit a wallet, and the sender approves the prompt on
+ * their handset. It is a request we make, not an account we publish — which is
+ * why it needs its own member and its own instruction shape.
+ */
+export const PAYIN_METHODS = ['SBP', 'QR', 'CARD', 'VIRTUAL_ACCOUNT', 'MOBILE_MONEY'] as const;
 export type PayinMethod = (typeof PAYIN_METHODS)[number];
 
 export interface CorridorLimits {
@@ -70,4 +84,40 @@ export function isCorridorOpen(corridor: Corridor, at: Date): boolean {
 
 export function corridorIdFor(source: CountryCode, destination: CountryCode): string {
   return `${source}-${destination}`;
+}
+
+/**
+ * The currency a resident of this country sends in.
+ *
+ * Used wherever something has to be stated in the sender's own money before a
+ * corridor is chosen — KYC limits, the tier upgrade prompt. It was implicitly
+ * RUB everywhere until Nigeria and Ghana became origins, and an implicit RUB
+ * shown to a sender in Accra is a wrong number, not a placeholder.
+ */
+const SEND_CURRENCY: Readonly<Record<CountryCode, CurrencyCode>> = {
+  RU: 'RUB',
+  BY: 'BYN',
+  NG: 'NGN',
+  GH: 'GHS',
+};
+
+export function sendCurrencyFor(country: string): CurrencyCode {
+  return SEND_CURRENCY[country as CountryCode] ?? 'RUB';
+}
+
+/**
+ * May someone whose personal data lives in `partition` send on a corridor that
+ * starts in `sourceCountry`?
+ *
+ * The rule is that a sender must be where the collection happens. Somebody in
+ * Lagos cannot hand over rubles, so offering them RU→NG produces a quote they
+ * can never pay and a pay-in nobody can initiate.
+ *
+ * Belarus is the one place where the partition and the country differ: BY
+ * senders are held in the RU store under the same regime, so the RU partition
+ * admits both RU and BY origins. Everywhere else the partition is the country.
+ */
+export function residencyPermitsOrigin(partition: string, sourceCountry: CountryCode): boolean {
+  if (partition === 'RU') return sourceCountry === 'RU' || sourceCountry === 'BY';
+  return partition === sourceCountry;
 }

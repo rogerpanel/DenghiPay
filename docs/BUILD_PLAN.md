@@ -208,6 +208,13 @@ _DoD:_ Expired or reused quote is rejected; recipient amount is exactly reproduc
 **4.3 Corridor configuration.** Corridors as data, not code: RU→NG, RU→GH (+ BY→NG, BY→GH). Per-corridor limits, fees, enabled payout methods, operating hours.
 _DoD:_ Adding a corridor requires only configuration and a migration.
 
+**4.3a Intra-African corridors (added 2026-08-16, out of plan order).** NG→GH and GH→NG, both directions, built at the CEO's direction ahead of the Part 8 deferral so the product question could be answered with a working demonstration rather than an estimate. Both complete end to end against simulators with the ledger closing to zero in NGN and GHS.
+
+The DoD above held only partly, and the exception is the interesting part. The corridor rows really were configuration — but these corridors put a **sender** inside Nigeria and Ghana for the first time, and there were no sender stores in those partitions, no naira or cedi tier limits, no `FEE_REVENUE:GHS` account, no NGN/GHS rate pair and no domestic collection rail. Those are not corridor configuration; they are what a new _origin_ costs. The claim is now stated more precisely: adding a corridor to an existing origin is configuration; adding an origin is a phase.
+
+These two are also a different regulatory class from everything above them — domestic collection at both ends rather than an inbound remittance — so they carry a licence gate that the enabled flag alone could not express. See `docs/CORRIDORS.md`, and OPEN_ITEMS B6.
+_DoD:_ Both directions reach COMPLETED with no callback; the ledger balances in both currencies; with live funds on and the licences undeclared, neither corridor is reachable.
+
 **4.4 FX exposure tracking.** Every quote lock creates a tracked position; unhedged exposure is reported per currency in real time.
 _DoD:_ Treasury dashboard shows live open exposure by currency.
 
@@ -408,7 +415,9 @@ See `CLAUDE.md` at the repository root. It carries rules 1–10 from this plan p
 
 ## Part 8 — What this plan deliberately defers
 
-Native mobile apps · own IMTO/PSP licence applications · additional corridors · business/SME senders · agent networks · cash pickup · card issuing · Kubernetes · advanced ML fraud scoring · PAPSS integration.
+Native mobile apps · own IMTO/PSP licence applications · ~~additional corridors~~ · business/SME senders · agent networks · cash pickup · card issuing · Kubernetes · advanced ML fraud scoring · PAPSS integration.
+
+**Additional corridors moved out of this list on 2026-08-16.** NG→GH and GH→NG are built (step 4.3a). The deferral's reasoning still stands and is worth restating rather than deleting: building a corridor is not the same as opening one, and the intra-African pair adds _more_ regulatory surface than the ruble corridors, not less, because it makes us a domestic collector in two more countries. The licence gate in `licensing.ts` is what keeps the code ahead of the paperwork without the paperwork being skipped. A French-speaking corridor is the next candidate and is not started.
 
 Each becomes a phase when the preceding gate is cleared. Adding any of them earlier increases regulatory surface before there is a working, reconciled corridor to protect.
 

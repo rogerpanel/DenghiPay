@@ -4,6 +4,7 @@ export * from './money/currency';
 export * from './money/money';
 export * from './money/exchange-rate';
 export * from './corridors/corridor';
+export * from './corridors/licensing';
 export * from './transfer/state-machine';
 export * from './transfer/transfer';
 export * from './fx/quote';

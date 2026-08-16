@@ -99,6 +99,10 @@ export const SYSTEM_ACCOUNTS: ReadonlyArray<{
   { type: 'PARTNER_RECEIVABLE', currency: 'NGN', partition: 'NEUTRAL', scope: 'SETTLEMENT' },
   { type: 'PARTNER_RECEIVABLE', currency: 'GHS', partition: 'NEUTRAL', scope: 'SETTLEMENT' },
   { type: 'FEE_REVENUE', currency: 'NGN', partition: 'NEUTRAL' },
+  // Fees are charged in the send currency, so a cedi origin needs a cedi
+  // revenue account. Without it a GH→NG transfer cannot post at all — the saga
+  // looks the account up by code and there is nothing to find.
+  { type: 'FEE_REVENUE', currency: 'GHS', partition: 'NEUTRAL' },
   { type: 'SUSPENSE', currency: 'RUB', partition: 'NEUTRAL' },
   { type: 'SUSPENSE', currency: 'NGN', partition: 'NEUTRAL' },
   { type: 'SUSPENSE', currency: 'GHS', partition: 'NEUTRAL' },

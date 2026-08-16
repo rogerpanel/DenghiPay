@@ -7,6 +7,13 @@ import { useApp } from '@/app/providers';
 import { ApiError, api, setSession } from '@/lib/api';
 import { AppShell, ErrorNotice, Field } from '@/components/shell';
 
+/**
+ * Where the sender lives. It decides which country holds their personal data
+ * and which corridors they can send on, and it is asked once — moving it later
+ * means moving rows between jurisdictions.
+ */
+type Residency = 'RU' | 'BY' | 'NG' | 'GH';
+
 interface SessionResponse {
   accessToken: string;
   refreshToken: string;
@@ -17,7 +24,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [residency, setResidency] = useState<'RU' | 'BY'>('RU');
+  const [residency, setResidency] = useState<Residency>('RU');
   const [accepted, setAccepted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -85,10 +92,12 @@ export default function RegisterPage() {
             <select
               className="mp-select"
               value={residency}
-              onChange={(e) => setResidency(e.target.value as 'RU' | 'BY')}
+              onChange={(e) => setResidency(e.target.value as Residency)}
             >
               <option value="RU">Россия / Russia</option>
               <option value="BY">Беларусь / Belarus</option>
+              <option value="NG">Nigeria</option>
+              <option value="GH">Ghana</option>
             </select>
           </Field>
 

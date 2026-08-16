@@ -30,6 +30,15 @@ export const payinInstructionsSchema = z.discriminatedUnion('kind', [
     reference: z.string(),
   }),
   z.object({ kind: z.literal('CARD'), redirectUrl: z.string(), expiresAt: z.string() }),
+  z.object({
+    kind: z.literal('MOBILE_MONEY'),
+    /** The sender's own wallet — already theirs, so showing it confirms rather than reveals. */
+    msisdn: z.string(),
+    network: z.string(),
+    /** Approval prompts get dropped; the short code is how a sender recovers. */
+    ussdFallback: z.string(),
+    expiresAt: z.string(),
+  }),
 ]);
 export type PayinInstructionsDto = z.infer<typeof payinInstructionsSchema>;
 

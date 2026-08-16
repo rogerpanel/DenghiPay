@@ -74,6 +74,47 @@ const CORRIDORS = [
     fixedFeeMinorUnits: 15_000n,
     fxMarginBps: 175,
   },
+  /**
+   * The intra-African pair, both directions.
+   *
+   * These are a different kind of corridor from the ones above: we collect
+   * domestically at the origin rather than through a partner at a border, so
+   * each direction rests on its own local authorisation (see
+   * `assertCorridorMayMoveLiveFunds` and docs/CORRIDORS.md). They are enabled
+   * here because with `LIVE_FUNDS_ENABLED=false` nothing moves and both
+   * directions need to be demonstrable end to end; the licence gate is what
+   * stops them the moment live funds are switched on without the paperwork.
+   *
+   * The margin is wider than RU→NG because there is no deep direct NGN/GHS
+   * market — both legs cross the dollar — and the fee is flat in the sender's
+   * own currency at roughly the same real value in each direction.
+   */
+  {
+    id: 'NG-GH',
+    sourceCountry: 'NG',
+    sourceCurrency: 'NGN',
+    destinationCountry: 'GH',
+    destinationCurrency: 'GHS',
+    payinMethods: ['VIRTUAL_ACCOUNT'],
+    payoutMethods: ['MOBILE_MONEY'],
+    minSendMinorUnits: 100_000n, //       ₦1 000,00
+    maxSendMinorUnits: 500_000_000n, //   ₦5 000 000,00
+    fixedFeeMinorUnits: 50_000n, //       ₦500,00
+    fxMarginBps: 225,
+  },
+  {
+    id: 'GH-NG',
+    sourceCountry: 'GH',
+    sourceCurrency: 'GHS',
+    destinationCountry: 'NG',
+    destinationCurrency: 'NGN',
+    payinMethods: ['MOBILE_MONEY'],
+    payoutMethods: ['BANK_ACCOUNT'],
+    minSendMinorUnits: 1_000n, //         GH₵10,00
+    maxSendMinorUnits: 1_000_000n, //     GH₵10 000,00
+    fixedFeeMinorUnits: 350n, //          GH₵3,50
+    fxMarginBps: 225,
+  },
   {
     id: 'BY-NG',
     sourceCountry: 'BY',

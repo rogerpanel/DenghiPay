@@ -30,7 +30,7 @@ export const countryCodeSchema = z.enum(['RU', 'BY', 'NG', 'GH']);
 export type CountryCodeDto = z.infer<typeof countryCodeSchema>;
 
 export const payoutMethodSchema = z.enum(['BANK_ACCOUNT', 'MOBILE_MONEY']);
-export const payinMethodSchema = z.enum(['SBP', 'QR', 'CARD', 'VIRTUAL_ACCOUNT']);
+export const payinMethodSchema = z.enum(['SBP', 'QR', 'CARD', 'VIRTUAL_ACCOUNT', 'MOBILE_MONEY']);
 
 export const transferStateSchema = z.enum([
   'DRAFT',

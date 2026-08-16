@@ -121,6 +121,9 @@ const en = {
   'send.pay.openBank': 'Open my bank app',
   'send.pay.simulate': 'Simulate the payment (demo)',
   'send.pay.waiting': 'Waiting for your payment…',
+  'send.pay.momo': 'Check your phone. Approve the payment request with your mobile money PIN.',
+  'send.pay.momoWallet': 'Wallet',
+  'send.pay.momoFallback': 'No prompt? Dial this and choose “Approve payment”.',
 
   'purpose.FAMILY_SUPPORT': 'Family support',
   'purpose.EDUCATION': 'Education',
@@ -132,6 +135,7 @@ const en = {
   'payin.QR': 'QR code',
   'payin.CARD': 'Card',
   'payin.VIRTUAL_ACCOUNT': 'Bank transfer',
+  'payin.MOBILE_MONEY': 'Mobile money',
 
   'status.draft': 'Draft',
   'status.awaiting_confirmation': 'Awaiting your confirmation',
@@ -301,6 +305,9 @@ const ru: Record<TranslationKey, string> = {
   'send.pay.openBank': 'Открыть приложение банка',
   'send.pay.simulate': 'Смоделировать оплату (демо)',
   'send.pay.waiting': 'Ждём вашу оплату…',
+  'send.pay.momo': 'Проверьте телефон. Подтвердите запрос PIN-кодом мобильного кошелька.',
+  'send.pay.momoWallet': 'Кошелёк',
+  'send.pay.momoFallback': 'Запрос не пришёл? Наберите этот код и выберите «Подтвердить платёж».',
 
   'purpose.FAMILY_SUPPORT': 'Поддержка семьи',
   'purpose.EDUCATION': 'Обучение',
@@ -312,6 +319,7 @@ const ru: Record<TranslationKey, string> = {
   'payin.QR': 'QR-код',
   'payin.CARD': 'Карта',
   'payin.VIRTUAL_ACCOUNT': 'Банковский перевод',
+  'payin.MOBILE_MONEY': 'Мобильный кошелёк',
 
   'status.draft': 'Черновик',
   'status.awaiting_confirmation': 'Ждёт подтверждения',
@@ -481,6 +489,11 @@ const fr: Record<TranslationKey, string> = {
   'send.pay.openBank': 'Ouvrir mon application bancaire',
   'send.pay.simulate': 'Simuler le paiement (démo)',
   'send.pay.waiting': 'En attente de votre paiement…',
+  'send.pay.momo':
+    'Vérifiez votre téléphone. Approuvez la demande avec le code de votre portefeuille mobile.',
+  'send.pay.momoWallet': 'Portefeuille',
+  'send.pay.momoFallback':
+    'Pas de notification ? Composez ce code et choisissez « Approuver le paiement ».',
 
   'purpose.FAMILY_SUPPORT': 'Soutien familial',
   'purpose.EDUCATION': 'Études',
@@ -492,6 +505,7 @@ const fr: Record<TranslationKey, string> = {
   'payin.QR': 'Code QR',
   'payin.CARD': 'Carte',
   'payin.VIRTUAL_ACCOUNT': 'Virement bancaire',
+  'payin.MOBILE_MONEY': 'Mobile money',
 
   'status.draft': 'Brouillon',
   'status.awaiting_confirmation': 'En attente de votre confirmation',

@@ -66,7 +66,46 @@ describe('tiered KYC limits', () => {
 
   it('exposes the configured limits for display', () => {
     expect(limitsFor(2, 'RUB')?.perTransferMinorUnits).toBe(10_000_000n);
-    expect(limitsFor(2, 'GHS')).toBeUndefined();
+    // USD is a treasury currency, never a send currency, so it has no row.
+    expect(limitsFor(2, 'USD')).toBeUndefined();
+  });
+});
+
+/**
+ * NGN and GHS became send currencies with the intra-African corridors. Before
+ * that they had no rows at all, and `checkLimits` fails closed on a missing
+ * row — so a Nigerian sender would have been refused with "no configured
+ * limit" rather than by a limit. These tests exist to keep the rows present.
+ */
+describe('intra-African send limits', () => {
+  it('caps a tier 1 naira sender and names the upgrade tier', () => {
+    expect(checkLimits(1, Money.fromDecimalString('40000.00', 'NGN'), noUsage).allowed).toBe(true);
+
+    const decision = checkLimits(1, Money.fromDecimalString('120000.00', 'NGN'), noUsage);
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) {
+      expect(decision.window).toBe('PER_TRANSFER');
+      expect(decision.upgradeTo).toBe(2);
+    }
+  });
+
+  it('caps a tier 1 cedi sender at the daily aggregate, not per transfer', () => {
+    // The Bank of Ghana states the minimum-KYC wallet tier as a daily total,
+    // so one transfer at the cap is allowed and the next one is not.
+    expect(checkLimits(1, Money.fromDecimalString('1000.00', 'GHS'), noUsage).allowed).toBe(true);
+
+    const decision = checkLimits(1, Money.fromDecimalString('1.00', 'GHS'), {
+      todayMinorUnits: 100_000n,
+      monthMinorUnits: 100_000n,
+    });
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.window).toBe('DAILY');
+  });
+
+  it('gives tier 0 a row in every send currency, so nobody moves money unverified', () => {
+    for (const currency of ['RUB', 'BYN', 'NGN', 'GHS'] as const) {
+      expect(limitsFor(0, currency)?.perTransferMinorUnits).toBe(0n);
+    }
   });
 });
 

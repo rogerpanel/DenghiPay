@@ -5,7 +5,9 @@ import { loadConfig } from '../config/config';
 import { PartitionGateway } from './partition-gateway.service';
 import { SenderProfileRuRepository } from './ru/sender-profile.repository';
 import { RecipientProfileNgRepository } from './ng/recipient-profile.repository';
+import { SenderProfileNgRepository } from './ng/sender-profile.repository';
 import { RecipientProfileGhRepository } from './gh/recipient-profile.repository';
+import { SenderProfileGhRepository } from './gh/sender-profile.repository';
 
 /**
  * The partition boundary, as a module.
@@ -23,7 +25,9 @@ import { RecipientProfileGhRepository } from './gh/recipient-profile.repository'
     { provide: APP_CONFIG, useFactory: () => loadConfig() },
     SenderProfileRuRepository,
     RecipientProfileNgRepository,
+    SenderProfileNgRepository,
     RecipientProfileGhRepository,
+    SenderProfileGhRepository,
     PartitionGateway,
   ],
   exports: [PartitionGateway],

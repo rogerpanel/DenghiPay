@@ -28,6 +28,13 @@ export interface KycSubmission {
   /** Tokenised subject reference. The provider sees personal data; we store a token. */
   readonly subjectToken: string;
   readonly targetTier: 0 | 1 | 2 | 3;
+  /**
+   * Where the subject lives, which decides what evidence is asked for. A
+   * resident of Lagos is not a foreign national in Russia and must not be
+   * asked for a migration card. Defaults to RU for callers written before
+   * there were other origins.
+   */
+  readonly residencyCountry?: string;
   readonly documents: readonly SubmittedDocument[];
   readonly person: {
     readonly firstName: string;

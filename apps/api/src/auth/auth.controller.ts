@@ -1,7 +1,8 @@
 import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
-import { DEFAULT_TIER_LIMITS, KycTier, limitsFor } from '@morapay/domain';
+import { DEFAULT_TIER_LIMITS, KycTier, limitsFor, sendCurrencyFor } from '@morapay/domain';
 import {
+  CountryCodeDto,
   MeResponse,
   RegisterRequest,
   SessionResponse,
@@ -84,7 +85,11 @@ export class AuthController {
   async me(@CurrentUser() user: AuthenticatedUser): Promise<MeResponse> {
     const record = await this.prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     const tier = record.kycTier as KycTier;
-    const limits = limitsFor(tier, 'RUB', DEFAULT_TIER_LIMITS);
+    // Judged in the sender's own currency. Reading the ruble row for a Ghanaian
+    // sender happened to give the right answer for "can they transfer at all",
+    // and the wrong one for every amount.
+    const residencyCountry = record.piiPartition as CountryCodeDto;
+    const limits = limitsFor(tier, sendCurrencyFor(residencyCountry), DEFAULT_TIER_LIMITS);
     const canTransfer =
       record.emailVerifiedAt !== null &&
       record.status === 'ACTIVE' &&
@@ -98,6 +103,7 @@ export class AuthController {
       kycTier: tier,
       locale: record.locale as 'ru' | 'en' | 'fr',
       emailVerified: record.emailVerifiedAt !== null,
+      residencyCountry,
       capabilities: {
         canQuote: record.emailVerifiedAt !== null,
         canTransfer,

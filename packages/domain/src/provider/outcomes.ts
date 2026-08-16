@@ -69,7 +69,23 @@ export type PayinInstructions =
       readonly bankName: string;
       readonly reference: string;
     }
-  | { readonly kind: 'CARD'; readonly redirectUrl: string; readonly expiresAt: Date };
+  | { readonly kind: 'CARD'; readonly redirectUrl: string; readonly expiresAt: Date }
+  /**
+   * Ghanaian mobile-money collection. The sender does not go anywhere: the
+   * network pushes an approval prompt to the handset that owns the wallet, and
+   * they enter their PIN there.
+   *
+   * `ussdFallback` is not decoration. Approval prompts are dropped often enough
+   * on Ghanaian networks that a short code to dial instead is what stops a
+   * transfer stalling, and every operator publishes one.
+   */
+  | {
+      readonly kind: 'MOBILE_MONEY';
+      readonly msisdn: string;
+      readonly network: string;
+      readonly ussdFallback: string;
+      readonly expiresAt: Date;
+    };
 
 export type PayinOutcome =
   | { readonly _tag: 'PENDING'; readonly providerRef: ProviderRef }

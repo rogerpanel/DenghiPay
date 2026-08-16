@@ -26,7 +26,12 @@ export class QuotingController {
   @Get('corridors')
   async listCorridors(): Promise<{ corridors: CorridorResponse[] }> {
     const now = new Date();
-    const corridors = await this.corridors.list();
+    // `listEnabled`, not `list`. This is the sender-facing catalogue, and a
+    // corridor that is switched off — or whose licences are not declared held
+    // once live funds are on — must not be offered here only to be refused at
+    // the quote. Only the two front ends read this endpoint; the back office
+    // reads corridor rows directly, where seeing a disabled one is the point.
+    const corridors = await this.corridors.listEnabled();
     return {
       corridors: corridors.map((corridor) => ({
         id: corridor.id,

@@ -11,7 +11,12 @@ import {
   createGhanaPayoutSimulator,
   createNigeriaPayoutSimulator,
 } from './payout.simulator';
-import { PayinSimulator } from './payin.simulator';
+import {
+  PayinSimulator,
+  createGhanaPayinSimulator,
+  createNigeriaPayinSimulator,
+  createRussiaPayinSimulator,
+} from './payin.simulator';
 import { MockScreeningProvider, similarity } from './screening.mock';
 import { MockKycProvider } from './kyc.mock';
 import { SimulatedRateSource } from './rate-source.simulated';
@@ -267,7 +272,7 @@ describe('pay-in simulator', () => {
   }
 
   it('returns instructions the sender can act on, and no receipt of funds', async () => {
-    const sim = new PayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
     const ack = await initiate(sim);
     expect(ack._tag).toBe('ACKNOWLEDGED');
     expect(ack.instructions.kind).toBe('SBP');
@@ -278,14 +283,14 @@ describe('pay-in simulator', () => {
   });
 
   it('models every pay-in method', async () => {
-    const sim = new PayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
     expect((await initiate(sim, 'QR')).instructions.kind).toBe('QR');
     expect((await initiate(sim, 'CARD')).instructions.kind).toBe('CARD');
     expect((await initiate(sim, 'VIRTUAL_ACCOUNT')).instructions.kind).toBe('VIRTUAL_ACCOUNT');
   });
 
   it('settles once the sender pays, reporting the amount received', async () => {
-    const sim = new PayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
     const ack = await initiate(sim);
     expect(sim.markPaid(ack.providerRef)).toBe(true);
 
@@ -298,14 +303,14 @@ describe('pay-in simulator', () => {
   });
 
   it('does not settle twice', async () => {
-    const sim = new PayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
     const ack = await initiate(sim);
     expect(sim.markPaid(ack.providerRef)).toBe(true);
     expect(sim.markPaid(ack.providerRef)).toBe(false);
   });
 
   it('models a declined pay-in', async () => {
-    const sim = new PayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
     const ack = await initiate(sim);
     expect(sim.markFailed(ack.providerRef)).toBe(true);
     const outcome = await sim.getStatus(ack.providerRef);
@@ -314,10 +319,106 @@ describe('pay-in simulator', () => {
   });
 
   it('is idempotent under a repeated key', async () => {
-    const sim = new PayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
     const a = await initiate(sim);
     const b = await initiate(sim);
     expect(b.providerRef).toBe(a.providerRef);
+  });
+});
+
+/**
+ * The collection side of the intra-African corridors. Nigeria and Ghana collect
+ * by different mechanisms — one waits to be pushed to, the other asks to pull —
+ * and the difference is visible in what the sender is told to do.
+ */
+describe('pay-in simulator, intra-African markets', () => {
+  const NG_GH = asCorridorId('NG-GH');
+  const GH_NG = asCorridorId('GH-NG');
+
+  it('gives a Nigerian sender a ten-digit NUBAN to push to', async () => {
+    const sim = createNigeriaPayinSimulator([NG_GH], { autoConfirmAfterSeconds: null });
+    const ack = await sim.initiatePayin(
+      {
+        corridorId: NG_GH,
+        method: 'VIRTUAL_ACCOUNT',
+        amount: Money.fromDecimalString('50000.00', 'NGN'),
+        reference: 'MP-TEST-NGGH',
+        senderToken: 'tok_sender_ng',
+      },
+      asIdempotencyKey('payin-ng-1'),
+    );
+    expect(ack.instructions.kind).toBe('VIRTUAL_ACCOUNT');
+    if (ack.instructions.kind === 'VIRTUAL_ACCOUNT') {
+      expect(ack.instructions.accountNumber).toMatch(/^\d{10}$/);
+    }
+
+    sim.markPaid(ack.providerRef);
+    const outcome = await sim.getStatus(ack.providerRef);
+    expect(outcome._tag).toBe('SETTLED');
+    if (outcome._tag === 'SETTLED') expect(outcome.institutionRef).toMatch(/^NIP-/);
+  });
+
+  it('sends a Ghanaian sender an approval prompt, with a USSD fallback', async () => {
+    const sim = createGhanaPayinSimulator([GH_NG], { autoConfirmAfterSeconds: null });
+    const ack = await sim.initiatePayin(
+      {
+        corridorId: GH_NG,
+        method: 'MOBILE_MONEY',
+        amount: Money.fromDecimalString('1000.00', 'GHS'),
+        reference: 'MP-TEST-GHNG',
+        senderToken: 'tok_sender_gh',
+        payer: { method: 'MOBILE_MONEY', msisdn: '233241234567', network: 'MTN' },
+      },
+      asIdempotencyKey('payin-gh-1'),
+    );
+    expect(ack.instructions.kind).toBe('MOBILE_MONEY');
+    if (ack.instructions.kind === 'MOBILE_MONEY') {
+      expect(ack.instructions.msisdn).toBe('233241234567');
+      expect(ack.instructions.ussdFallback).toBe('*170#');
+    }
+
+    sim.markPaid(ack.providerRef);
+    const outcome = await sim.getStatus(ack.providerRef);
+    expect(outcome._tag).toBe('SETTLED');
+    if (outcome._tag === 'SETTLED') expect(outcome.institutionRef).toMatch(/^GHIPSS-/);
+  });
+
+  it('refuses a mobile-money pay-in with no wallet to debit', async () => {
+    const sim = createGhanaPayinSimulator([GH_NG], { autoConfirmAfterSeconds: null });
+    await expect(
+      sim.initiatePayin(
+        {
+          corridorId: GH_NG,
+          method: 'MOBILE_MONEY',
+          amount: Money.fromDecimalString('100.00', 'GHS'),
+          reference: 'MP-TEST-NOWALLET',
+          senderToken: 'tok_sender_gh',
+        },
+        asIdempotencyKey('payin-gh-2'),
+      ),
+    ).rejects.toThrow(/needs the payer wallet/);
+  });
+
+  /**
+   * Each market offers the rails it actually has. A Ghanaian collection cannot
+   * be asked for over SBP, and saying so at the adapter boundary is cheaper
+   * than discovering it as a provider error in production.
+   */
+  it('refuses a method its market does not run', async () => {
+    const sim = createNigeriaPayinSimulator([NG_GH], { autoConfirmAfterSeconds: null });
+    expect(sim.supportedMethods).toEqual(['VIRTUAL_ACCOUNT']);
+    await expect(
+      sim.initiatePayin(
+        {
+          corridorId: NG_GH,
+          method: 'SBP',
+          amount: Money.fromDecimalString('1000.00', 'NGN'),
+          reference: 'MP-TEST-WRONGRAIL',
+          senderToken: 'tok_sender_ng',
+        },
+        asIdempotencyKey('payin-ng-wrong'),
+      ),
+    ).rejects.toThrow(/does not support SBP/);
   });
 });
 
@@ -515,6 +616,31 @@ describe('rate source', () => {
     const b = await source.fetch('RUB', 'NGN');
     expect(a.rate.equals(b.rate)).toBe(true);
   });
+
+  it('carries the intra-African pair in both directions', async () => {
+    const source = new SimulatedRateSource({ wobbleBps: 0 });
+    const out = await source.fetch('NGN', 'GHS');
+    const back = await source.fetch('GHS', 'NGN');
+    expect(out.rate.toDecimalString()).toBe('0.0071340');
+    expect(back.rate.toDecimalString()).toBe('140.1734');
+  });
+
+  /**
+   * The two directions are separate observations, not one rate and its
+   * reciprocal, because that is how they will arrive from a real feed — each
+   * with its own spread. They should still round-trip to roughly the amount
+   * you started with, or one of them is wrong by more than a spread.
+   */
+  it('round-trips a naira amount through a cedi and back, to within a percent', async () => {
+    const source = new SimulatedRateSource({ wobbleBps: 0 });
+    const out = await source.fetch('NGN', 'GHS');
+    const back = await source.fetch('GHS', 'NGN');
+    const start = Money.fromDecimalString('1000000.00', 'NGN');
+    const returned = back.rate.convert(out.rate.convert(start, 'DOWN'), 'DOWN');
+    const drift = start.minorUnits - returned.minorUnits;
+    expect(drift >= 0n).toBe(true);
+    expect(drift * 100n < start.minorUnits).toBe(true);
+  });
 });
 
 describe('provider registry', () => {
@@ -553,7 +679,7 @@ describe('provider registry', () => {
   });
 
   it('selects and describes pay-in providers too', () => {
-    const payin = new PayinSimulator([RU_NG]);
+    const payin = createRussiaPayinSimulator([RU_NG]);
     const registry = new ProviderRegistry().registerPayin({
       provider: payin,
       priority: 1,

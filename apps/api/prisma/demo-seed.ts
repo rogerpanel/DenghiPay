@@ -28,6 +28,8 @@ function tokenise(kind: string, value: string): string {
 
 interface DemoSender {
   email: string;
+  /** Which partition holds this person. Also decides which corridors they see. */
+  residency: 'RU' | 'NG' | 'GH';
   kycTier: number;
   verified: boolean;
   person: {
@@ -38,6 +40,12 @@ interface DemoSender {
     phone: string;
     addressLine: string;
     city: string;
+    /** Nigeria: the identity anchor CBN tiering is built on. */
+    bvn?: string;
+    /** Ghana: the national identifier, and the wallet we debit to collect. */
+    ghanaCardNo?: string;
+    walletMsisdn?: string;
+    walletNetwork?: string;
   };
   note: string;
 }
@@ -45,6 +53,7 @@ interface DemoSender {
 const SENDERS: DemoSender[] = [
   {
     email: 'chidi@demo.morapay.local',
+    residency: 'RU',
     kycTier: 2,
     verified: true,
     person: {
@@ -60,6 +69,7 @@ const SENDERS: DemoSender[] = [
   },
   {
     email: 'ama@demo.morapay.local',
+    residency: 'RU',
     kycTier: 0,
     verified: true,
     person: {
@@ -75,6 +85,7 @@ const SENDERS: DemoSender[] = [
   },
   {
     email: 'blocked@demo.morapay.local',
+    residency: 'RU',
     kycTier: 2,
     verified: true,
     person: {
@@ -88,6 +99,47 @@ const SENDERS: DemoSender[] = [
       city: 'Moscow',
     },
     note: 'Matches the mock SDN list — every transfer is blocked and queued (G3)',
+  },
+  {
+    // The intra-African corridors need a sender who actually lives at the
+    // origin. This one is in Lagos: her naira is collected inside Nigeria and
+    // her data never leaves the NG partition.
+    email: 'folake@demo.morapay.local',
+    residency: 'NG',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Folake',
+      lastName: 'Adeyemi',
+      dateOfBirth: '1994-07-21',
+      nationality: 'NG',
+      phone: '2348031234567',
+      addressLine: '14 Adeola Odeku Street, Victoria Island',
+      city: 'Lagos',
+      bvn: '22212345678',
+    },
+    note: 'Lagos resident, tier 2 — sends NGN to Ghana on NG-GH',
+  },
+  {
+    email: 'kofi@demo.morapay.local',
+    residency: 'GH',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Kofi',
+      lastName: 'Mensah',
+      dateOfBirth: '1990-02-09',
+      nationality: 'GH',
+      phone: '233241110000',
+      addressLine: '7 Oxford Street, Osu',
+      city: 'Accra',
+      ghanaCardNo: 'GHA-123456789-0',
+      // The wallet the pay-in debits. Without it a GH-NG transfer cannot be
+      // collected at all — which is the failure the saga reports explicitly.
+      walletMsisdn: '233241110000',
+      walletNetwork: 'MTN',
+    },
+    note: 'Accra resident, tier 2 — sends GHS to Nigeria on GH-NG',
   },
 ];
 
@@ -139,6 +191,24 @@ const RECIPIENTS: DemoRecipient[] = [
     network: 'MTN',
     name: 'AMA MENSAH',
     note: 'Ghana corridor over MTN mobile money',
+  },
+  {
+    ownerEmail: 'folake@demo.morapay.local',
+    country: 'GH',
+    nickname: 'Sister — Kumasi',
+    msisdn: '233241200002',
+    network: 'MTN',
+    name: 'AMA BOATENG',
+    note: 'NG-GH: naira collected in Lagos, cedis delivered to an MTN wallet',
+  },
+  {
+    ownerEmail: 'kofi@demo.morapay.local',
+    country: 'NG',
+    nickname: 'Brother — Abuja',
+    accountNumber: '0123400002',
+    bankCode: '058',
+    name: 'ADEBAYO OKONKWO',
+    note: 'GH-NG: cedi wallet debited in Accra, naira delivered over NIP',
   },
 ];
 
@@ -207,35 +277,73 @@ async function main(): Promise<void> {
         kycTier: sender.kycTier,
         roles: ['SENDER'],
         locale: 'en',
-        piiPartition: 'RU',
+        piiPartition: sender.residency,
         piiToken,
       },
     });
 
-    // Personal data goes to the RU partition, exactly as the application does.
-    await prisma.senderProfileRu.upsert({
-      where: { piiToken },
-      update: {},
-      create: {
-        piiToken,
-        firstName: sender.person.firstName,
-        lastName: sender.person.lastName,
-        dateOfBirth: new Date(`${sender.person.dateOfBirth}T00:00:00Z`),
-        nationality: sender.person.nationality,
-        phone: sender.person.phone,
-        addressLine: sender.person.addressLine,
-        city: sender.person.city,
-        documents: [
-          {
-            type: 'PASSPORT',
-            storageKey: 'demo://passport',
-            issuingCountry: sender.person.nationality,
-          },
-          { type: 'MIGRATION_CARD', storageKey: 'demo://migration-card' },
-          { type: 'RESIDENCE_REGISTRATION', storageKey: 'demo://registration' },
-        ],
-      },
-    });
+    // Personal data goes to the residency partition, exactly as the
+    // application does — and the document set differs by jurisdiction, because
+    // a Lagos resident holds a national ID and a proof of address, not a
+    // migration card.
+    const common = {
+      firstName: sender.person.firstName,
+      lastName: sender.person.lastName,
+      dateOfBirth: new Date(`${sender.person.dateOfBirth}T00:00:00Z`),
+      nationality: sender.person.nationality,
+      phone: sender.person.phone,
+      addressLine: sender.person.addressLine,
+      city: sender.person.city,
+    };
+    const localDocuments = [
+      { type: 'NATIONAL_ID', storageKey: 'demo://national-id' },
+      { type: 'PROOF_OF_ADDRESS', storageKey: 'demo://proof-of-address' },
+      { type: 'SELFIE', storageKey: 'demo://selfie' },
+    ];
+
+    if (sender.residency === 'NG') {
+      await prisma.senderProfileNg.upsert({
+        where: { piiToken },
+        update: {},
+        create: {
+          piiToken,
+          ...common,
+          bvn: sender.person.bvn ?? null,
+          documents: localDocuments,
+        },
+      });
+    } else if (sender.residency === 'GH') {
+      await prisma.senderProfileGh.upsert({
+        where: { piiToken },
+        update: {},
+        create: {
+          piiToken,
+          ...common,
+          ghanaCardNo: sender.person.ghanaCardNo ?? null,
+          walletMsisdn: sender.person.walletMsisdn ?? null,
+          walletNetwork: sender.person.walletNetwork ?? null,
+          documents: localDocuments,
+        },
+      });
+    } else {
+      await prisma.senderProfileRu.upsert({
+        where: { piiToken },
+        update: {},
+        create: {
+          piiToken,
+          ...common,
+          documents: [
+            {
+              type: 'PASSPORT',
+              storageKey: 'demo://passport',
+              issuingCountry: sender.person.nationality,
+            },
+            { type: 'MIGRATION_CARD', storageKey: 'demo://migration-card' },
+            { type: 'RESIDENCE_REGISTRATION', storageKey: 'demo://registration' },
+          ],
+        },
+      });
+    }
 
     if (sender.kycTier > 0) {
       const existing = await prisma.kycCase.findFirst({ where: { userId: user.id } });
@@ -247,14 +355,19 @@ async function main(): Promise<void> {
             status: 'APPROVED',
             provider: 'kyc-mock',
             providerRef: `KYC-DEMO-${user.id.slice(0, 8).toUpperCase()}`,
-            documentTypes: ['PASSPORT', 'MIGRATION_CARD', 'RESIDENCE_REGISTRATION', 'SELFIE'],
+            documentTypes:
+              sender.residency === 'RU'
+                ? ['PASSPORT', 'MIGRATION_CARD', 'RESIDENCE_REGISTRATION', 'SELFIE']
+                : ['NATIONAL_ID', 'PROOF_OF_ADDRESS', 'SELFIE'],
             decidedAt: new Date(),
           },
         });
       }
     }
 
-    console.log(`  ${sender.email.padEnd(34)} tier ${sender.kycTier}  — ${sender.note}`);
+    console.log(
+      `  ${sender.email.padEnd(34)} ${sender.residency}  tier ${sender.kycTier}  — ${sender.note}`,
+    );
   }
 
   console.log('→ demo recipients');

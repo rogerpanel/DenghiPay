@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { localeSchema } from './common';
+import { countryCodeSchema, localeSchema } from './common';
 
 /**
  * Password policy.
@@ -35,8 +35,13 @@ export const registerRequestSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
   locale: localeSchema.default('ru'),
-  /** Residency drives which data partition holds this person's details. */
-  residencyCountry: z.enum(['RU', 'BY']).default('RU'),
+  /**
+   * Residency drives which data partition holds this person's details, and
+   * which corridors they can send on. Nigeria and Ghana are here because the
+   * intra-African corridors put a sender inside those countries; their personal
+   * data goes to the NG and GH partitions and never leaves them.
+   */
+  residencyCountry: z.enum(['RU', 'BY', 'NG', 'GH']).default('RU'),
   acceptedTerms: z.literal(true, {
     errorMap: () => ({ message: 'the terms must be accepted' }),
   }),
@@ -77,6 +82,11 @@ export const sessionResponseSchema = z.object({
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
 
 export const meResponseSchema = sessionResponseSchema.shape.user.extend({
+  /**
+   * Where this sender lives. The app needs it to show only the corridors that
+   * start where they are — a Lagos resident has no way to hand over rubles.
+   */
+  residencyCountry: countryCodeSchema,
   /** What this account may do right now, so the UI does not have to infer it. */
   capabilities: z.object({
     canQuote: z.boolean(),

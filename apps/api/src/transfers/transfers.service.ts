@@ -12,10 +12,12 @@ import {
   TransferState,
   formatTransferReference,
   isPersonalPurpose,
+  residencyPermitsOrigin,
   transition,
 } from '@morapay/domain';
 import { CreateTransferRequest, TransferResponse } from '@morapay/contracts';
 import { PrismaService } from '../common/prisma.service';
+import { CorridorsService } from '../quoting/corridors.service';
 import { QuotesService } from '../quoting/quotes.service';
 import { RecipientsService, namesLookAlike } from '../recipients/recipients.service';
 import { LimitsService } from '../compliance/limits.service';
@@ -45,6 +47,7 @@ export class TransfersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly quotes: QuotesService,
+    private readonly corridors: CorridorsService,
     private readonly recipients: RecipientsService,
     private readonly limits: LimitsService,
     private readonly screening: ScreeningService,
@@ -83,6 +86,13 @@ export class TransfersService {
     const recipient = await this.recipients.get(userId, input.recipientId);
     const quote = await this.quotes.consume(userId, input.quoteId);
 
+    // Re-check the corridor at the moment of confirmation, not only when the
+    // quote was priced. A quote outlives the check that produced it, and this
+    // is the last point before a transfer starts moving toward pay-in — so if
+    // an authorisation lapsed in between, it stops here. Throws when live funds
+    // are on and the corridor's licences are not declared held.
+    const corridor = await this.corridors.get(quote.corridorId);
+
     // The sender confirms the name the institution returned, not the one they
     // typed. If those have drifted apart since the enquiry, stop.
     if (
@@ -96,13 +106,33 @@ export class TransfersService {
       });
     }
 
-    const corridorMatchesRecipient =
-      (recipient.country === 'NG' && quote.corridorId.endsWith('-NG')) ||
-      (recipient.country === 'GH' && quote.corridorId.endsWith('-GH'));
-    if (!corridorMatchesRecipient) {
+    // A sender has to be where the collection happens. The web app already
+    // only offers corridors that start where they live, but the app is not the
+    // only caller a service ever gets, and the failure without this check is
+    // ugly: a payable quote in a currency the sender cannot produce, and a
+    // pay-in provider with no way to reach them.
+    if (!residencyPermitsOrigin(user.piiPartition, corridor.sourceCountry)) {
+      throw new ForbiddenException({
+        code: 'CORRIDOR_RESIDENCY_MISMATCH',
+        message: 'That corridor is not available from your country of residence',
+      });
+    }
+
+    if (recipient.country !== corridor.destinationCountry) {
       throw new BadRequestException({
         code: 'CORRIDOR_RECIPIENT_MISMATCH',
         message: 'That recipient is not reachable on the corridor you quoted',
+      });
+    }
+
+    // A corridor collects on the rails it has. NG→GH takes a naira push to a
+    // NUBAN; GH→NG debits a cedi wallet. Accepting a method the corridor does
+    // not offer produces a pay-in the provider will reject, several steps
+    // later, with a message about the wrong thing.
+    if (!corridor.payinMethods.includes(input.payinMethod)) {
+      throw new BadRequestException({
+        code: 'PAYIN_METHOD_UNAVAILABLE',
+        message: `That corridor collects by ${corridor.payinMethods.join(' or ')}`,
       });
     }
 
@@ -239,6 +269,24 @@ export class TransfersService {
     }
 
     await this.applyEvent(transferId, 'SCREEN_CLEAR', { type: 'SYSTEM', id: null });
+  }
+
+  /**
+   * The account a pull-based collection rail debits, for this sender.
+   *
+   * Mirrors `RecipientsService.detailsForPayout` on the other leg: personal
+   * data comes out of the residency partition, is handed straight to a
+   * provider, and is never persisted in the neutral tier. Null means this
+   * sender's residency collects by push and there is nothing to debit.
+   */
+  async collectionAccountFor(
+    userId: string,
+  ): Promise<{ method: 'MOBILE_MONEY'; msisdn: string; network: string } | null> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { piiToken: true, piiPartition: true },
+    });
+    return this.partitions.senderCollectionAccount(user.piiToken, user.piiPartition);
   }
 
   /**

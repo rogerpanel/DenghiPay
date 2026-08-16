@@ -46,4 +46,21 @@ export interface PayinRequest {
   readonly reference: string;
   /** Tokenised sender reference. Never a name — this crosses a partition boundary. */
   readonly senderToken: string;
+  /**
+   * The account to debit, for rails that pull rather than wait to be pushed to.
+   *
+   * Only mobile-money collection needs this today: we ask the network to debit
+   * a named wallet and the sender approves the prompt. It is personal data, so
+   * it is resolved from the sender's residency partition at the moment of the
+   * call, handed straight to the provider, and never written to the neutral
+   * tier — the same treatment `recipientDetails` gets on the payout leg.
+   *
+   * Absent for push rails (SBP, QR, card, virtual account), where the sender
+   * originates the payment and we have nothing to debit.
+   */
+  readonly payer?: {
+    readonly method: 'MOBILE_MONEY';
+    readonly msisdn: string;
+    readonly network: string;
+  };
 }

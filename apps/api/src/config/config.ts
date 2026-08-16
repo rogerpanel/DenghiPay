@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { Authorisation, parseAuthorisations } from '@morapay/domain';
 
 /**
  * Environment configuration, validated at boot.
@@ -45,8 +46,22 @@ export const configSchema = z.object({
 
   CALLBACK_MAX_SKEW_SECONDS: z.coerce.number().int().positive().default(300),
   PROVIDER_SIGNING_SECRET_PAYIN_RU_SIM: z.string().default('sim-payin-ru-signing-secret'),
+  PROVIDER_SIGNING_SECRET_PAYIN_NG_SIM: z.string().default('sim-payin-ng-signing-secret'),
+  PROVIDER_SIGNING_SECRET_PAYIN_GH_SIM: z.string().default('sim-payin-gh-signing-secret'),
   PROVIDER_SIGNING_SECRET_PAYOUT_NG_SIM: z.string().default('sim-payout-ng-signing-secret'),
   PROVIDER_SIGNING_SECRET_PAYOUT_GH_SIM: z.string().default('sim-payout-gh-signing-secret'),
+
+  /**
+   * Which corridor authorisations we actually hold, as a comma-separated list
+   * of names from `AUTHORISATIONS` in @morapay/domain.
+   *
+   * Empty by default and irrelevant while live funds are off. Once they are on,
+   * a corridor may only move money if every authorisation it rests on is named
+   * here — so bringing up NG→GH for real means writing
+   * `NG_DOMESTIC_COLLECTION,GH_PAYOUT_RAIL`, which is a sentence a reviewer can
+   * ask for evidence of. There is deliberately no wildcard.
+   */
+  LIVE_CORRIDOR_AUTHORISATIONS: z.string().default(''),
 
   // Contracted rails. All disabled until G1 is satisfied.
   PAYCREST_ENABLED: booleanFromEnv,
@@ -100,7 +115,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
 
+  // Reject an unknown authorisation name at boot rather than at the first
+  // transfer. A typo here would otherwise read as "not held" and block a
+  // corridor someone believes they have licensed.
+  parseAuthorisations(config.LIVE_CORRIDOR_AUTHORISATIONS);
+
   return config;
+}
+
+/** The authorisations this deployment claims to hold. */
+export function heldAuthorisations(config: AppConfig): readonly Authorisation[] {
+  return parseAuthorisations(config.LIVE_CORRIDOR_AUTHORISATIONS);
 }
 
 export function corsOrigins(config: AppConfig): string[] {

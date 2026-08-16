@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Queue, Worker } from 'bullmq';
 import {
   CurrencyCode,
+  PayinMethod,
   TransferState,
   asCorridorId,
   asIdempotencyKey,
@@ -174,13 +175,42 @@ export class TransferSagaService implements OnModuleInit, OnModuleDestroy {
         where: { id: transfer.userId },
         select: { piiToken: true },
       });
+
+      // Pull rails need an account to debit. It is the sender's own wallet, so
+      // it is read from their residency partition here and handed straight to
+      // the provider — never written to the neutral tier, and never fetched for
+      // a push rail that has no use for it.
+      const payer =
+        transfer.payinMethod === 'MOBILE_MONEY'
+          ? await this.transfers.collectionAccountFor(transfer.userId)
+          : null;
+      if (transfer.payinMethod === 'MOBILE_MONEY' && payer === null) {
+        this.logger.error(
+          `Transfer ${transfer.reference}: no collection wallet on file for this sender; ` +
+            'the pay-in cannot be initiated until one is verified.',
+        );
+        await this.prisma.transfer.update({
+          where: { id: transfer.id },
+          data: {
+            failureCode: 'NO_COLLECTION_WALLET',
+            failureReason: 'No verified mobile-money wallet on file for this sender',
+          },
+        });
+        await this.transfers.applyEvent(transfer.id, 'PAYIN_TIMEOUT', {
+          type: 'SYSTEM',
+          id: null,
+        });
+        return 'FAILED';
+      }
+
       const ack = await provider.initiatePayin(
         {
           corridorId,
-          method: transfer.payinMethod as 'SBP' | 'QR' | 'CARD' | 'VIRTUAL_ACCOUNT',
+          method: transfer.payinMethod as PayinMethod,
           amount: toMoney(transfer.totalToPayMinorUnits, transfer.sendCurrency),
           reference: transfer.reference,
           senderToken: user.piiToken,
+          ...(payer === null ? {} : { payer }),
         },
         asIdempotencyKey(`payin:${transfer.id}`),
       );
