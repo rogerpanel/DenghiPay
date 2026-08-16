@@ -38,15 +38,46 @@ invariant against the restored data, and prints the elapsed time.
 ## Rehearsal log
 
 BUILD_PLAN 12.7 requires a full restore into a clean environment, performed and
-timed, with the result recorded here. **This table is empty because no rehearsal
-has been performed.** It is a gate for the pilot, not for the demonstration.
+timed, with the result recorded here.
 
-| Date | Partition | Backup | Elapsed | Ledger balanced | Performed by | Notes            |
-| ---- | --------- | ------ | ------- | --------------- | ------------ | ---------------- |
-| —    | —         | —      | —       | —               | —            | No rehearsal yet |
+| Date       | Partition | Backup                     | Elapsed | Ledger balanced           | Rows restored                                 | Notes                                                       |
+| ---------- | --------- | -------------------------- | ------- | ------------------------- | --------------------------------------------- | ----------------------------------------------------------- |
+| 2026-08-16 | neutral   | `morapay-neutral-…204609Z` | < 1 s   | Yes — RUB, NGN, GHS all 0 | 20 accounts, 39 txns, 84 entries, 7 transfers | First rehearsal. **Found two blocking defects** — see below |
 
-A backup nobody has restored is a hypothesis. Until there is a row in this
-table, assume the backups do not work.
+**The elapsed time is not yet meaningful.** The database held one afternoon of
+demonstration data, so under a second says nothing about a restore at pilot
+volume. It becomes a real number when this is repeated against a database
+carrying a year of simulated transfers, which is the same exercise as the load
+test (BUILD_PLAN 13.4) and should be done in the same sitting.
+
+### What the first rehearsal found
+
+Both defects meant the backup and restore path had never worked, and neither
+would have been discovered by inspection — only by running it.
+
+**Every backup was empty, and reported success.** Prisma connection strings
+carry `?schema=public`, which libpq does not accept: `pg_dump` stopped with
+`invalid URI query parameter: "schema"` and left a 200-byte file that looked
+like a backup. Every `DATABASE_URL` this project generates has that parameter —
+`.env.example` and `server-deploy.sh` both. `backup.sh` now strips the
+Prisma-only parameters, removes any partial file on failure, and refuses to keep
+a dump below a size floor.
+
+**The restore could not run at all.** `pg_restore --jobs 4` cannot read a
+custom-format archive from standard input; it needs to seek, and stops with
+`parallel restore from standard input is not supported`. The script piped
+`age --decrypt` straight into it, so it failed every time. It now decrypts to a
+private temporary directory, restores from the file, and removes the plaintext
+however it exits.
+
+**And the verification would have passed on an empty database.** "Every
+currency nets to zero" is trivially true of a ledger with no rows, so a restore
+that produced nothing would have looked like a clean one. The check now asserts
+the restore is non-empty before asserting that it balances — two questions, two
+checks — and prints the row counts so the result can be compared against the
+source by eye.
+
+A backup nobody has restored is a hypothesis. This one was wrong twice.
 
 ## Recovery scenarios
 
