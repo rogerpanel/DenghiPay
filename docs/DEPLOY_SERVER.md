@@ -367,28 +367,49 @@ and on `denghipay.com` later, with no rebuild.
 
 ## The better way: real HTTPS, still without a domain
 
-You can have a genuine, publicly-trusted certificate today, because
-`sslip.io` resolves any IP-shaped hostname to that IP, and Let's Encrypt will
-issue for it:
-
-```
-62.238.23.185.sslip.io   →   62.238.23.185
+```bash
+TLS=1 infra/scripts/server-deploy.sh
 ```
 
-That is a real hostname, so it gets a real certificate, so the browser is
-satisfied, the install prompt appears, and the offline shell can be tested. It
-costs nothing and needs no registrar.
+That is the whole change. It works because `sslip.io` resolves any IP-shaped
+hostname to that IP, including a prefixed one, so both names this needs already
+point at your server:
 
-The production compose file already contains nginx and certbot for exactly this
-shape. Point them at the `sslip.io` name instead of the domain, issue, and swap
-the name for `denghipay.com` when DNS is ready — the runbook for that swap is
-[`runbooks/change-domain.md`](runbooks/change-domain.md).
+```
+62.238.23.185.sslip.io         →  62.238.23.185   (sender app)
+admin.62.238.23.185.sslip.io   →  62.238.23.185   (back office)
+```
 
-**Two limits worth knowing before you rely on it.** Let's Encrypt rate-limits
-certificates per registered domain, and `sslip.io` is one registered domain
-shared by everyone using the trick — so issuance can fail for reasons that have
-nothing to do with you. And the hostname contains the IP, so it changes if the
-server does. It is right for a demonstration and wrong for a pilot.
+Those are real hostnames, so Let's Encrypt will issue real certificates for
+them. Caddy requests them on first use and renews them without being asked. The
+script waits for both to serve over HTTPS before it tells you it is finished,
+because a URL printed while ACME is still working is worse than no URL.
+
+With TLS on, the front ends move to the loopback interface and Caddy is the
+only thing listening publicly — two ports open instead of two, but both of them
+encrypted. **Port 80 must stay open**: Let's Encrypt validates over it, so it is
+not merely a redirect.
+
+What this buys, beyond the padlock: the app can be installed to a home screen
+and the offline shell can be tested, neither of which a browser will do outside
+a secure context.
+
+**Two limits before you rely on it.** Let's Encrypt rate-limits per registered
+domain, and `sslip.io` is one domain shared by everyone using the trick — so
+issuance can fail for reasons that have nothing to do with you. Set
+`CADDY_ACME_CA` to the Let's Encrypt staging directory while testing the
+plumbing to avoid spending that quota. And the hostname contains the IP, so it
+changes if the server does. Right for a demonstration, wrong for a pilot.
+
+### When the domain arrives
+
+```bash
+PUBLIC_HOSTNAME=denghipay.com ADMIN_HOSTNAME=admin.denghipay.com \
+  TLS=1 infra/scripts/server-deploy.sh
+```
+
+Point the DNS at the server first. Nothing else changes — not the images, not
+the build, not the database.
 
 ## The third way, if the server is the problem
 

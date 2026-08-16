@@ -120,8 +120,10 @@ services:
     environment:
       PORT: '3000'
       API_PROXY_TARGET: http://api:4000
+    # Bound to all interfaces in plain-HTTP mode. With TLS on, the deploy
+    # script binds these to loopback and Caddy is the only thing on 80/443.
     ports:
-      - '${WEB_PUBLIC_PORT:-80}:3000'
+      - '${WEB_BIND:-0.0.0.0}:${WEB_PUBLIC_PORT:-80}:3000'
     depends_on:
       api: { condition: service_started }
     networks: [internal]
@@ -139,13 +141,42 @@ services:
       PORT: '3000'
       API_PROXY_TARGET: http://api:4000
     ports:
-      - '${ADMIN_PUBLIC_PORT:-8080}:3000'
+      - '${ADMIN_BIND:-0.0.0.0}:${ADMIN_PUBLIC_PORT:-8080}:3000'
     depends_on:
       api: { condition: service_started }
     networks: [internal]
 
+  # TLS, only when asked for: `--profile tls`. Absent from the default
+  # profile so a plain-HTTP demonstration server never waits on ACME.
+  #
+  # Caddy rather than the nginx that production.yml uses. This file exists to
+  # make different trades, and "a real certificate with no ACME plumbing to get
+  # wrong" is the trade that matters on a box with no domain.
+  caddy:
+    image: caddy:2-alpine
+    profiles: [tls]
+    restart: unless-stopped
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-}
+      ADMIN_HOSTNAME: ${ADMIN_HOSTNAME:-}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+      CADDY_ACME_CA: ${CADDY_ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      web: { condition: service_started }
+      admin: { condition: service_started }
+    networks: [internal]
+
 volumes:
   pgdata:
+  caddydata:
+  caddyconfig:
 
 networks:
   internal:

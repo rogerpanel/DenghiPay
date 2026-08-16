@@ -21,6 +21,28 @@ COMPOSE="docker compose -f infra/compose/server.yml"
 WEB_PORT="${WEB_PUBLIC_PORT:-80}"
 ADMIN_PORT="${ADMIN_PUBLIC_PORT:-8080}"
 
+# ---------------------------------------------------------------------- TLS
+#
+# Opt in with TLS=1. Without a domain, sslip.io resolves any IP-shaped name to
+# that IP — including a prefixed one — so the two names needed here already
+# point at this server and Let's Encrypt can validate them over HTTP-01.
+#
+# This is worth doing before anyone is shown the application. Over plain HTTP
+# the browser will not register a service worker at all, so the PWA cannot
+# install and the offline shell cannot be tested — and passwords cross the
+# network in the clear.
+TLS="${TLS:-0}"
+if [ "$TLS" = "1" ]; then
+  PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME:-}"
+  ADMIN_HOSTNAME="${ADMIN_HOSTNAME:-}"
+  # Filled in below, once the address is known.
+  COMPOSE="$COMPOSE --profile tls"
+  # The front ends move off the public interface; Caddy is the only listener.
+  export WEB_BIND=127.0.0.1 ADMIN_BIND=127.0.0.1
+  WEB_PORT=3000
+  ADMIN_PORT=3001
+fi
+
 # The address the browser will use. Detected, because the whole point of this
 # file is that there is no domain yet; override when there is one, or when the
 # server is behind NAT and its own view of its address is wrong.
@@ -66,8 +88,19 @@ if [ ! -f .env ]; then
 fi
 
 # The two origins are derived every run, so moving to a domain is one variable.
-PUBLIC_ORIGIN="${PUBLIC_ORIGIN:-http://${PUBLIC_HOST}$([ "$WEB_PORT" = "80" ] || echo ":$WEB_PORT")}"
-ADMIN_ORIGIN="${ADMIN_ORIGIN:-http://${PUBLIC_HOST}:${ADMIN_PORT}}"
+if [ "$TLS" = "1" ]; then
+  # Default to sslip.io names for this server's address. Override both when a
+  # real domain exists — nothing else in the deployment needs to change.
+  PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME:-${PUBLIC_HOST}.sslip.io}"
+  ADMIN_HOSTNAME="${ADMIN_HOSTNAME:-admin.${PUBLIC_HOST}.sslip.io}"
+  PUBLIC_ORIGIN="${PUBLIC_ORIGIN:-https://${PUBLIC_HOSTNAME}}"
+  ADMIN_ORIGIN="${ADMIN_ORIGIN:-https://${ADMIN_HOSTNAME}}"
+  export PUBLIC_HOSTNAME ADMIN_HOSTNAME ACME_EMAIL="${ACME_EMAIL:-}" \
+    CADDY_ACME_CA="${CADDY_ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}"
+else
+  PUBLIC_ORIGIN="${PUBLIC_ORIGIN:-http://${PUBLIC_HOST}$([ "$WEB_PORT" = "80" ] || echo ":$WEB_PORT")}"
+  ADMIN_ORIGIN="${ADMIN_ORIGIN:-http://${PUBLIC_HOST}:${ADMIN_PORT}}"
+fi
 export PUBLIC_ORIGIN ADMIN_ORIGIN WEB_PUBLIC_PORT="$WEB_PORT" ADMIN_PUBLIC_PORT="$ADMIN_PORT"
 # shellcheck disable=SC2046
 export POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' .env | cut -d= -f2-)"
@@ -133,6 +166,30 @@ else
   exit 1
 fi
 
+if [ "$TLS" = "1" ]; then
+  # Caddy fetches certificates on first request to each name, so the first load
+  # is slow and can fail while ACME is still working. Wait for the real thing
+  # rather than printing a URL that is not ready yet.
+  echo "→ waiting for certificates (first issuance takes up to a minute)"
+  for name in "$PUBLIC_HOSTNAME" "$ADMIN_HOSTNAME"; do
+    ok=0
+    for _ in $(seq 45); do
+      if curl -sS -o /dev/null -m 8 "https://${name}/login" 2>/dev/null; then ok=1; break; fi
+      sleep 2
+    done
+    if [ "$ok" = "1" ]; then
+      echo "✓ https://${name} serving with a trusted certificate"
+    else
+      echo "✗ https://${name} did not come up." >&2
+      echo "  Check that ports 80 and 443 are open in ufw and in the Hetzner" >&2
+      echo "  firewall — Let's Encrypt validates over port 80, so a redirect" >&2
+      echo "  is not enough, it has to reach Caddy." >&2
+      $COMPOSE logs --tail=25 caddy >&2
+      exit 1
+    fi
+  done
+fi
+
 cat <<EOF
 
   Sender app     ${PUBLIC_ORIGIN}
@@ -141,12 +198,32 @@ cat <<EOF
 
   Sender   chidi@demo.morapay.local / morapay-demo-2026
   Staff    compliance@morapay.local / morapay-local-staff-2026
+EOF
+
+if [ "$TLS" = "1" ]; then
+  cat <<EOF
+
+  Served over HTTPS with a Let's Encrypt certificate, renewed automatically.
+  The app can now be installed to a home screen and the offline shell works.
+
+  The hostname contains the IP, so it changes if the server does — right for a
+  demonstration, wrong for a pilot. Point a real domain here and re-run with
+  PUBLIC_HOSTNAME and ADMIN_HOSTNAME set; nothing else changes.
+EOF
+else
+  cat <<EOF
 
   This is plain HTTP. Passwords cross the network in the clear and the browser
   will not install the app to a home screen, because a service worker needs a
   secure context. Acceptable for a demonstration against simulated rails with
-  fictional senders; not acceptable for anything else. docs/DEPLOY_SERVER.md
-  explains how to get a real certificate today, without owning a domain.
+  fictional senders; not acceptable for anything else.
+
+  For a real certificate today, without owning a domain:
+      TLS=1 infra/scripts/server-deploy.sh
+EOF
+fi
+
+cat <<EOF
 
   Logs:    $COMPOSE logs -f api
   Stop:    $COMPOSE down
