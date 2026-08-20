@@ -2,10 +2,17 @@
 
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useApp } from '@/app/providers';
 import { api } from '@/lib/api';
 import { AppShell, ErrorNotice, LoadingCard } from '@/components/shell';
+
+/** What the API can offer when nothing is configured to deliver mail. */
+interface Shortcut {
+  available: boolean;
+  link: string | null;
+  reason: string | null;
+}
 
 function VerifyInner() {
   const { t, refreshAccount, account } = useApp();
@@ -13,6 +20,21 @@ function VerifyInner() {
   const token = params.get('token');
   const [state, setState] = useState<'idle' | 'working' | 'done' | 'failed'>('idle');
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [shortcut, setShortcut] = useState<Shortcut | null>(null);
+
+  /* On a deployment with no mail server the confirmation link has to come from
+     somewhere, or a real person can never finish signing up. It is scoped to
+     the signed-in caller — never the whole outbox, which would hand any visitor
+     every pending user's token. */
+  const loadShortcut = useCallback(async () => {
+    try {
+      setShortcut(await api<Shortcut>('/auth/verification-link'));
+    } catch {
+      setShortcut({ available: false, link: null, reason: null });
+    }
+  }, []);
 
   useEffect(() => {
     if (token === null) return;
@@ -33,8 +55,29 @@ function VerifyInner() {
     })();
   }, [token, refreshAccount, t]);
 
+  // Only when the page is being used as "we sent you a link", not when it is
+  // consuming one from the URL.
+  useEffect(() => {
+    if (token !== null) return;
+    void loadShortcut();
+  }, [token, loadShortcut]);
+
+  /* Resending used to be fire-and-forget: no busy state, no confirmation, and a
+     rejected promise nobody handled. From the outside that is indistinguishable
+     from a button that does nothing, which is exactly what it looked like. */
   async function resend() {
-    await api('/auth/resend-verification', { method: 'POST' });
+    setBusy(true);
+    setError(null);
+    setResent(false);
+    try {
+      await api('/auth/resend-verification', { method: 'POST' });
+      setResent(true);
+      await loadShortcut();
+    } catch {
+      setError(t('error.generic'));
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (state === 'working') return <LoadingCard />;
@@ -58,19 +101,33 @@ function VerifyInner() {
       <div className="mp-card mp-stack">
         <h1>{t('auth.verify.title')}</h1>
         <ErrorNotice message={error} />
-        <p className="mp-muted">{t('auth.verify.body')}</p>
-        <button className="mp-button mp-button--secondary mp-button--block" onClick={resend}>
-          {t('auth.verify.resend')}
-        </button>
-        {/* In development the mail outbox stands in for a mailbox, so the link
-            is one click away rather than requiring an SMTP server. */}
-        <p className="mp-small mp-muted">
-          Development: open the{' '}
-          <a href="http://localhost:4000/simulator/outbox" target="_blank" rel="noreferrer">
-            mail outbox
-          </a>{' '}
-          to find the link.
+        {/* Only claim to have emailed them when something actually did. */}
+        <p className="mp-muted">
+          {shortcut?.available === true ? t('auth.verify.bodyNoMail') : t('auth.verify.body')}
         </p>
+        {resent ? <div className="mp-notice mp-notice--info">{t('auth.verify.resent')}</div> : null}
+        <button
+          className="mp-button mp-button--secondary mp-button--block"
+          onClick={resend}
+          disabled={busy}
+        >
+          {busy ? t('auth.verify.resending') : t('auth.verify.resend')}
+        </button>
+
+        {shortcut?.available === true && shortcut.link !== null ? (
+          <>
+            <a
+              className="mp-button mp-button--primary mp-button--block"
+              href={shortcut.link}
+              rel="noreferrer"
+            >
+              {t('auth.verify.openLink')}
+            </a>
+            <p className="mp-small mp-muted">{t('auth.verify.noMailServer')}</p>
+          </>
+        ) : shortcut?.reason === null ? null : (
+          <p className="mp-small mp-muted">{shortcut?.reason}</p>
+        )}
       </div>
     </div>
   );

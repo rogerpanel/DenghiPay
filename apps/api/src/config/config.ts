@@ -81,8 +81,31 @@ export const configSchema = z.object({
   RATE_MAX_AGE_MS: z.coerce.number().int().positive().default(120_000),
   QUOTE_TTL_SECONDS: z.coerce.number().int().positive().default(90),
 
+  /**
+   * How outbound mail leaves the building.
+   *
+   * `outbox` writes to the database and stops there — right for a demo, where
+   * the verification link is read from the outbox rather than from a mailbox.
+   * `smtp` adds a worker that drains the outbox over SMTP. The write path is
+   * the same either way, so nothing is lost by an SMTP outage.
+   */
   MAIL_TRANSPORT: z.enum(['outbox', 'smtp']).default('outbox'),
   MAIL_FROM: z.string().default('no-reply@example.invalid'),
+
+  /**
+   * SMTP credentials. No defaults for the host or the password: a half-set
+   * transport that silently sends nothing is the failure this whole section
+   * exists to prevent, so `loadConfig` refuses to boot on one.
+   */
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: booleanFromEnv,
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  /** How often the delivery worker drains the outbox. */
+  MAIL_POLL_SECONDS: z.coerce.number().int().positive().default(15),
+  /** Attempts before a message is parked for a human. */
+  MAIL_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   METRICS_ENABLED: z
@@ -118,6 +141,28 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       'LIVE_FUNDS_ENABLED is true outside production. Guardrail G1: live funds are ' +
         'enabled once, by a human, in production, behind the manual approval gate.',
     );
+  }
+
+  // A transport set to `smtp` with nowhere to send is the quietest failure in
+  // this file: registration would succeed, the outbox row would be written,
+  // and nobody would ever receive a verification link. Refuse at boot instead.
+  if (config.MAIL_TRANSPORT === 'smtp') {
+    const missing = (['SMTP_HOST', 'SMTP_USER', 'SMTP_PASSWORD'] as const).filter(
+      (key) => (config[key] ?? '') === '',
+    );
+    if (missing.length > 0) {
+      throw new Error(
+        `MAIL_TRANSPORT=smtp needs ${missing.join(', ')}. Set them, or use ` +
+          'MAIL_TRANSPORT=outbox, which is honest about not delivering anything.',
+      );
+    }
+    if (config.MAIL_FROM.endsWith('example.invalid')) {
+      throw new Error(
+        'MAIL_TRANSPORT=smtp with the placeholder MAIL_FROM. Set a From address ' +
+          'the receiving domain will accept, or mail will be delivered to spam ' +
+          'folders at best.',
+      );
+    }
   }
 
   // Reject an unknown authorisation name at boot rather than at the first

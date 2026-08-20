@@ -420,6 +420,52 @@ is running, because it stays up when the laptop closes.
 
 ---
 
+## Confirmation email
+
+Out of the box `MAIL_TRANSPORT=outbox`: mail is written to the database and
+goes no further. A person who registers on the demonstration box therefore
+never receives an email, and finishes signing up from the **Open my
+confirmation link** button on the confirmation screen. That link is served by
+`GET /auth/verification-link`, scoped to the signed-in caller — it returns that
+person's own link and nobody else's, and it refuses outright once live funds
+are enabled. Exposing the whole outbox instead would hand any visitor every
+pending user's verification token, which is enough to take over an account
+before its owner reaches it.
+
+To send real email, put four values in `.env` on the server and redeploy:
+
+```bash
+MAIL_TRANSPORT=smtp
+SMTP_HOST=smtp.resend.com        # or Postmark, SES, Mailgun…
+SMTP_USER=resend
+SMTP_PASSWORD=…                  # from the provider, never committed
+MAIL_FROM=no-reply@yourdomain    # a domain whose DNS you control
+```
+
+Then `docker compose -f infra/compose/server.yml up -d --build api`.
+
+Three things that decide whether the mail arrives rather than whether it is
+sent:
+
+- **Use a transactional provider, not a personal mailbox.** Confirmation mail
+  needs SPF, DKIM and a sending reputation. A consumer Gmail account has none
+  of them and will be rate-limited or silently dropped.
+- **`MAIL_FROM` must be on a domain you control**, with the provider's SPF and
+  DKIM records published for it. A From address on somebody else's domain is
+  the single most common reason confirmation mail lands in spam.
+- **The API refuses to boot on a half-set transport.** `MAIL_TRANSPORT=smtp`
+  with a missing host, user or password, or with the placeholder `MAIL_FROM`,
+  is a startup failure rather than a deployment that quietly sends nothing.
+  Check `docker compose -f infra/compose/server.yml logs api` if the API does
+  not come up after a mail change.
+
+Delivery itself is a worker draining the outbox every `MAIL_POLL_SECONDS`. The
+write path is identical either way, so a provider outage delays mail rather
+than losing it; a message that fails `MAIL_MAX_ATTEMPTS` times keeps its
+`failure_reason` in the database for a human to find.
+
+---
+
 ## What this deployment is not
 
 `infra/compose/server.yml` builds from source, ships its own PostgreSQL, and

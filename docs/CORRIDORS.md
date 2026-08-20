@@ -225,8 +225,8 @@ treats an absent subject as unscreenable.
 
 None of these pairs has a deep direct market; every one crosses the dollar in
 practice. The feed therefore holds a **dollar anchor per currency** and derives
-all sixteen ordered pairs from it, rather than listing them by hand — sixteen
-hand-written rates would be sixteen chances for one to disagree with its own
+all twenty ordered pairs from it, rather than listing them by hand — twenty
+hand-written rates would be twenty chances for one to disagree with its own
 reciprocal by more than a spread, discovered at a treasury reconciliation.
 
 Crossing once, at the feed, keeps each quote to a single rounding step and a
@@ -239,6 +239,11 @@ there is a gap of up to a minute after each deploy where the newest observation
 is whatever the seed wrote — often already stale — and every quote is refused
 with `RATE_UNAVAILABLE`. Halting on stale rates is correct; being in that state
 because the process just started is not.
+
+Where the numbers should come from once the simulated feed is replaced, what a
+real feed has to satisfy, and why a model may flag an anomalous rate but must
+never predict the one a customer is charged, is in
+[`FX_RATES.md`](./FX_RATES.md).
 
 ## Limits
 

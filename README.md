@@ -14,6 +14,9 @@ Cross-border remittance platform. Russia/CIS → Nigeria & Ghana.
 | Decisions    | [`docs/adr/`](./docs/adr/)                                           |
 | Guardrails   | [`CLAUDE.md`](./CLAUDE.md)                                           |
 | Demo script  | [`docs/DEMO.md`](./docs/DEMO.md)                                     |
+| Corridors    | [`docs/CORRIDORS.md`](./docs/CORRIDORS.md)                           |
+| FX rates     | [`docs/FX_RATES.md`](./docs/FX_RATES.md)                             |
+| Open items   | [`docs/OPEN_ITEMS.md`](./docs/OPEN_ITEMS.md)                         |
 
 ## Getting started
 

@@ -29,6 +29,7 @@ import { PrismaService } from './common/prisma.service';
 import { MetricsService } from './common/metrics.service';
 import { AuditService } from './audit/audit.service';
 import { OutboxService } from './notifications/outbox.service';
+import { MailDeliveryService } from './notifications/mail-delivery.service';
 import { AuthService } from './auth/auth.service';
 import { AuthController } from './auth/auth.controller';
 import {
@@ -217,6 +218,9 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
     MetricsService,
     AuditService,
     OutboxService,
+    // Writes and delivery are separate services on purpose: the write path is
+    // the same whether or not anything is configured to send.
+    MailDeliveryService,
 
     // Ledger: the Postgres implementation of the port, and the only writer of
     // financial state (guardrail G5).

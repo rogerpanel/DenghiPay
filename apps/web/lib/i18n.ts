@@ -54,6 +54,12 @@ const en = {
   'auth.verify.body':
     'We sent a confirmation link to your email. You can look around, but sending money needs a confirmed address.',
   'auth.verify.resend': 'Send it again',
+  'auth.verify.resending': 'Sending…',
+  'auth.verify.resent': 'Sent. Check your inbox, and your spam folder.',
+  'auth.verify.openLink': 'Open my confirmation link',
+  'auth.verify.bodyNoMail': 'Your account is created. Confirm this address to start sending money.',
+  'auth.verify.noMailServer':
+    'This demonstration has no mail server, so the link is shown here instead of emailed. It is yours alone — nobody else can see it.',
   'auth.verify.success': 'Your email is confirmed. You can send money now.',
 
   'home.greeting': 'Send money',
@@ -295,6 +301,12 @@ const ru: Record<TranslationKey, string> = {
   'auth.verify.body':
     'Мы отправили ссылку для подтверждения. Осмотреться можно и так, но для переводов почта должна быть подтверждена.',
   'auth.verify.resend': 'Отправить ещё раз',
+  'auth.verify.resending': 'Отправляем…',
+  'auth.verify.resent': 'Отправлено. Проверьте почту и папку «Спам».',
+  'auth.verify.openLink': 'Открыть мою ссылку подтверждения',
+  'auth.verify.bodyNoMail': 'Аккаунт создан. Подтвердите адрес, чтобы отправлять деньги.',
+  'auth.verify.noMailServer':
+    'В этой демоверсии нет почтового сервера, поэтому ссылка показана здесь, а не отправлена письмом. Она только ваша — никто другой её не видит.',
   'auth.verify.success': 'Почта подтверждена. Теперь можно отправлять деньги.',
 
   'home.greeting': 'Отправить деньги',
@@ -526,6 +538,13 @@ const fr: Record<TranslationKey, string> = {
   'auth.verify.body':
     'Nous avons envoyé un lien de confirmation. Vous pouvez regarder, mais envoyer de l’argent exige une adresse confirmée.',
   'auth.verify.resend': 'Renvoyer',
+  'auth.verify.resending': 'Envoi…',
+  'auth.verify.resent': 'Envoyé. Vérifiez votre boîte de réception et vos spams.',
+  'auth.verify.openLink': 'Ouvrir mon lien de confirmation',
+  'auth.verify.bodyNoMail':
+    'Votre compte est créé. Confirmez cette adresse pour envoyer de l’argent.',
+  'auth.verify.noMailServer':
+    'Cette démonstration n’a pas de serveur de messagerie : le lien est affiché ici au lieu d’être envoyé par e-mail. Il n’appartient qu’à vous — personne d’autre ne le voit.',
   'auth.verify.success': 'Votre e-mail est confirmé. Vous pouvez envoyer de l’argent.',
 
   'home.greeting': 'Envoyer de l’argent',

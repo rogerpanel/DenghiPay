@@ -99,6 +99,17 @@ services:
       API_PUBLIC_URL: ${PUBLIC_ORIGIN}/api
       WEB_PUBLIC_URL: ${PUBLIC_ORIGIN}
       ADMIN_PUBLIC_URL: ${ADMIN_ORIGIN}
+      # Mail. Defaults to the outbox, where a signed-in user reads their own
+      # confirmation link and nothing is delivered. Set MAIL_TRANSPORT=smtp and
+      # the four SMTP values in .env to send for real; the API refuses to boot
+      # on a half-set transport rather than quietly sending nothing.
+      MAIL_TRANSPORT: ${MAIL_TRANSPORT:-outbox}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@example.invalid}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

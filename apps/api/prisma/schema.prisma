@@ -752,6 +752,9 @@ model OutboxMessage {
   sentAt      DateTime? @map("sent_at")
   failedAt    DateTime? @map("failed_at")
   failureReason String? @map("failure_reason")
+  /// Delivery attempts. Doubles as the optimistic lock the delivery worker
+  /// claims a message with, so two API instances cannot send the same one twice.
+  attempts    Int       @default(0)
 
   @@index([sentAt])
   @@map("outbox_message")
