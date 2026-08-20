@@ -5,13 +5,20 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { ApiError, api } from '@/lib/api';
 import { AppShell, ErrorNotice, Field, LoadingCard, RequireAuth } from '@/components/shell';
+import type { TranslationKey } from '@/lib/i18n';
 
 interface Requirements {
   tier: number;
   residencyCountry: string;
   requiredDocuments: string[];
   alternatives: Record<string, string[]>;
-  limits: { perTransfer: string; daily: string; monthly: string; currency: string };
+  limits: {
+    perTransfer: string;
+    daily: string;
+    monthly: string;
+    currency: string;
+    decimals: number;
+  };
 }
 
 /**
@@ -40,6 +47,20 @@ function KycInner() {
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
 
+  /* Jurisdiction-specific identity anchors. Each is stored only in its own
+     residency partition, and each exists because some later step cannot run
+     without it: Nigeria matches a BVN, Ghana debits a named wallet, and South
+     Africa cannot decide an exchange-control declaration without an identity
+     number and a residency status. Asked here because this is where identity
+     evidence already is. */
+  const [bvn, setBvn] = useState('');
+  const [ghanaCardNo, setGhanaCardNo] = useState('');
+  const [walletMsisdn, setWalletMsisdn] = useState('');
+  const [walletNetwork, setWalletNetwork] = useState('MTN');
+  const [nationalIdNo, setNationalIdNo] = useState('');
+  const [taxReference, setTaxReference] = useState('');
+  const [exchangeControlStatus, setExchangeControlStatus] = useState('RESIDENT');
+
   useEffect(() => {
     void api<Requirements>(`/kyc/requirements/${targetTier}`)
       .then(setRequirements)
@@ -51,11 +72,28 @@ function KycInner() {
     setBusy(true);
     setError(null);
     try {
+      const residency = requirements.residencyCountry;
       await api('/kyc/submit', {
         method: 'POST',
         body: {
           targetTier,
-          person: { firstName, lastName, dateOfBirth, nationality },
+          person: {
+            firstName,
+            lastName,
+            dateOfBirth,
+            nationality,
+            // Only the anchors this residency actually uses, and only when
+            // filled in: an empty string would fail the format checks in the
+            // contract rather than reading as "not provided".
+            ...(residency === 'NG' && bvn !== '' ? { bvn } : {}),
+            ...(residency === 'GH' && ghanaCardNo !== '' ? { ghanaCardNo } : {}),
+            ...(residency === 'GH' && walletMsisdn !== ''
+              ? { collectionWallet: { msisdn: walletMsisdn, network: walletNetwork } }
+              : {}),
+            ...(residency === 'ZA' && nationalIdNo !== '' ? { nationalIdNo } : {}),
+            ...(residency === 'ZA' && taxReference !== '' ? { taxReference } : {}),
+            ...(residency === 'ZA' ? { exchangeControlStatus } : {}),
+          },
           documents: requirements.requiredDocuments
             .filter((type) => attached[type] === true)
             .map((type) => ({ type, storageKey: `upload://${type.toLowerCase()}` })),
@@ -74,7 +112,11 @@ function KycInner() {
   if (requirements === null) return <LoadingCard />;
 
   const allAttached = requirements.requiredDocuments.every((type) => attached[type] === true);
-  const perTransfer = formatMinor(requirements.limits.perTransfer, requirements.limits.currency);
+  const perTransfer = formatMinor(
+    requirements.limits.perTransfer,
+    requirements.limits.currency,
+    requirements.limits.decimals,
+  );
 
   return (
     <div className="mp-stack">
@@ -122,6 +164,100 @@ function KycInner() {
           />
         </Field>
       </section>
+
+      {/* Only the residency's own anchors. A Ghanaian sender is never asked for
+          a BVN, and a South African is never asked for a wallet we would have
+          no rail to debit. */}
+      {['NG', 'GH', 'ZA'].includes(requirements.residencyCountry) ? (
+        <section className="mp-card mp-stack">
+          <h2 className="mp-card__title">
+            {t('kyc.identity', { country: requirements.residencyCountry })}
+          </h2>
+
+          {requirements.residencyCountry === 'NG' ? (
+            <Field label={t('kyc.bvn')} hint={t('kyc.bvnHint')}>
+              <input
+                className="mp-input mp-numeric"
+                inputMode="numeric"
+                maxLength={11}
+                value={bvn}
+                onChange={(e) => setBvn(e.target.value.replace(/\D/g, ''))}
+              />
+            </Field>
+          ) : null}
+
+          {requirements.residencyCountry === 'GH' ? (
+            <>
+              <Field label={t('kyc.ghanaCard')} hint={t('kyc.ghanaCardHint')}>
+                <input
+                  className="mp-input mp-numeric"
+                  value={ghanaCardNo}
+                  onChange={(e) => setGhanaCardNo(e.target.value.toUpperCase())}
+                />
+              </Field>
+              <Field label={t('kyc.walletNetwork')}>
+                <select
+                  className="mp-select"
+                  value={walletNetwork}
+                  onChange={(e) => setWalletNetwork(e.target.value)}
+                >
+                  {['MTN', 'TELECEL', 'AIRTELTIGO'].map((network) => (
+                    <option key={network} value={network}>
+                      {network}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label={t('kyc.wallet')} hint={t('kyc.walletHint')}>
+                <input
+                  className="mp-input mp-numeric"
+                  inputMode="numeric"
+                  maxLength={12}
+                  placeholder="233XXXXXXXXX"
+                  value={walletMsisdn}
+                  onChange={(e) => setWalletMsisdn(e.target.value.replace(/\D/g, ''))}
+                />
+              </Field>
+            </>
+          ) : null}
+
+          {requirements.residencyCountry === 'ZA' ? (
+            <>
+              <Field label={t('kyc.nationalId')}>
+                <input
+                  className="mp-input mp-numeric"
+                  inputMode="numeric"
+                  maxLength={13}
+                  value={nationalIdNo}
+                  onChange={(e) => setNationalIdNo(e.target.value.replace(/\D/g, ''))}
+                />
+              </Field>
+              <Field label={t('kyc.taxReference')} hint={t('kyc.taxReferenceHint')}>
+                <input
+                  className="mp-input mp-numeric"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={taxReference}
+                  onChange={(e) => setTaxReference(e.target.value.replace(/\D/g, ''))}
+                />
+              </Field>
+              <Field label={t('kyc.exchangeControlStatus')} hint={t('kyc.exchangeControlHint')}>
+                <select
+                  className="mp-select"
+                  value={exchangeControlStatus}
+                  onChange={(e) => setExchangeControlStatus(e.target.value)}
+                >
+                  {(['RESIDENT', 'TEMPORARY_RESIDENT', 'NON_RESIDENT'] as const).map((status) => (
+                    <option key={status} value={status}>
+                      {t(`kyc.status.${status}` as TranslationKey)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="mp-card mp-stack">
         <h2 className="mp-card__title">{t('kyc.required')}</h2>
@@ -183,10 +319,18 @@ function humanise(type: string): string {
     .join(' ');
 }
 
-function formatMinor(minorUnits: string, currency: string): string {
-  const value = minorUnits.padStart(3, '0');
-  const whole = value.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  return `${whole}.${value.slice(-2)} ${currency}`;
+/**
+ * Minor units to a readable amount, at the currency's own precision.
+ *
+ * The decimal count comes from the server rather than being assumed to be two:
+ * XAF and XOF have none, and a hardcoded two would show a Beninese sender a
+ * limit a hundred times smaller than the one they actually have.
+ */
+function formatMinor(minorUnits: string, currency: string, decimals: number): string {
+  const value = minorUnits.padStart(decimals + 1, '0');
+  const whole = value.slice(0, value.length - decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  const fraction = decimals === 0 ? '' : `.${value.slice(value.length - decimals)}`;
+  return `${whole}${fraction} ${currency}`;
 }
 
 export default function KycPage() {

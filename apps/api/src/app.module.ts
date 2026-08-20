@@ -19,6 +19,7 @@ import {
   createNigeriaPayinSimulator,
   createNigeriaPayoutSimulator,
   createRussiaPayinSimulator,
+  createSouthAfricaPayinSimulator,
   createSouthAfricaPayoutSimulator,
 } from '@morapay/adapters';
 
@@ -48,6 +49,7 @@ import { RecipientsService } from './recipients/recipients.service';
 import { InstitutionsController, RecipientsController } from './recipients/recipients.controller';
 import { ScreeningService } from './compliance/screening.service';
 import { LimitsService } from './compliance/limits.service';
+import { ExchangeControlService } from './compliance/exchange-control.service';
 import { ComplianceService } from './compliance/compliance.service';
 import { KycService } from './kyc/kyc.service';
 import { KycController } from './kyc/kyc.controller';
@@ -85,7 +87,7 @@ const config = loadConfig();
  * failure that produces is a transfer stuck in AWAITING_PAYIN with a log line
  * nobody is watching.
  */
-const AFRICAN_ORIGINS = ['NG', 'GH', 'CM', 'BJ'] as const;
+const AFRICAN_ORIGINS = ['NG', 'GH', 'ZA', 'CM', 'BJ'] as const;
 const AFRICAN_DESTINATIONS = ['NG', 'GH', 'ZA', 'CM', 'BJ'] as const;
 
 function corridorIds(): string[] {
@@ -123,8 +125,10 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
       // licence gate is what enforces that; registering them here only makes the
       // rails exist.
       //
-      // South Africa is absent, and stays absent: it is a destination only until
-      // SARB exchange-control reporting exists.
+      // South Africa collects too, since exchange control was built
+      // (BUILD_PLAN 4.3c). Its outward payments need a declaration and an
+      // allowance check that no other origin does, and both live above this
+      // layer — the rail itself is an ordinary push.
       .registerPayin({
         provider: createNigeriaPayinSimulator(from('NG'), payinOptions),
         priority: 100,
@@ -132,6 +136,11 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
       })
       .registerPayin({
         provider: createGhanaPayinSimulator(from('GH'), payinOptions),
+        priority: 100,
+        enabled: true,
+      })
+      .registerPayin({
+        provider: createSouthAfricaPayinSimulator(from('ZA'), payinOptions),
         priority: 100,
         enabled: true,
       })
@@ -233,6 +242,7 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
     RecipientsService,
     ScreeningService,
     LimitsService,
+    ExchangeControlService,
     ComplianceService,
     KycService,
     TransfersService,

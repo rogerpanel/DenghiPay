@@ -4,6 +4,7 @@ import {
   DEFAULT_TIER_LIMITS,
   KycTier,
   Money,
+  getCurrency,
   limitsFor,
   sendCurrencyFor,
 } from '@morapay/domain';
@@ -58,6 +59,7 @@ export class KycService {
         daily: (limits?.dailyMinorUnits ?? 0n).toString(),
         monthly: (limits?.monthlyMinorUnits ?? 0n).toString(),
         currency,
+        decimals: getCurrency(currency).exponent,
       },
     };
   }
@@ -87,6 +89,15 @@ export class KycService {
       ...(input.person.postcode === undefined ? {} : { postcode: input.person.postcode }),
       ...(input.person.bvn === undefined ? {} : { bvn: input.person.bvn }),
       ...(input.person.ghanaCardNo === undefined ? {} : { ghanaCardNo: input.person.ghanaCardNo }),
+      ...(input.person.nationalIdNo === undefined
+        ? {}
+        : { nationalIdNo: input.person.nationalIdNo }),
+      ...(input.person.taxReference === undefined
+        ? {}
+        : { taxReference: input.person.taxReference }),
+      ...(input.person.exchangeControlStatus === undefined
+        ? {}
+        : { exchangeControlStatus: input.person.exchangeControlStatus }),
       ...(input.person.collectionWallet === undefined
         ? {}
         : {

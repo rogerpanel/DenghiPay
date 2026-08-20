@@ -29,7 +29,7 @@ function tokenise(kind: string, value: string): string {
 interface DemoSender {
   email: string;
   /** Which partition holds this person. Also decides which corridors they see. */
-  residency: 'RU' | 'NG' | 'GH' | 'CM' | 'BJ';
+  residency: 'RU' | 'NG' | 'GH' | 'ZA' | 'CM' | 'BJ';
   kycTier: number;
   verified: boolean;
   person: {
@@ -44,8 +44,11 @@ interface DemoSender {
     bvn?: string;
     /** Ghana: the national identifier, and the wallet we debit to collect. */
     ghanaCardNo?: string;
-    /** Cameroon and Benin: the CNI or NPI number. */
+    /** Cameroon, Benin and South Africa: the national identity number. */
     nationalIdNo?: string;
+    /** South Africa: SARS tax reference, and exchange-control residency. */
+    taxReference?: string;
+    exchangeControlStatus?: string;
     walletMsisdn?: string;
     walletNetwork?: string;
   };
@@ -183,6 +186,27 @@ const SENDERS: DemoSender[] = [
     },
     note: 'Cotonou resident, tier 2 — sends XOF, francophone journey',
   },
+  {
+    // The only sender subject to exchange control. Every outward payment she
+    // makes needs a declared category and counts against an annual allowance.
+    email: 'thandi@demo.morapay.local',
+    residency: 'ZA',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Thandi',
+      lastName: 'Molefe',
+      dateOfBirth: '1987-06-11',
+      nationality: 'ZA',
+      phone: '27821234567',
+      addressLine: '18 Loop Street, Cape Town City Centre',
+      city: 'Cape Town',
+      nationalIdNo: '8706115012087',
+      taxReference: '0123456789',
+      exchangeControlStatus: 'RESIDENT',
+    },
+    note: 'Cape Town resident, tier 2 — SARB exchange control applies to every send',
+  },
 ];
 
 interface DemoRecipient {
@@ -268,7 +292,7 @@ const RECIPIENTS: DemoRecipient[] = [
     accountNumber: '1234567890',
     bankCode: '470010',
     name: 'THABO MOLEFE',
-    note: 'CM-ZA: South Africa receives; it never sends',
+    note: 'CM-ZA: francs collected in Yaoundé, rand delivered to a Standard Bank account',
   },
   {
     ownerEmail: 'kossi@demo.morapay.local',
@@ -278,6 +302,15 @@ const RECIPIENTS: DemoRecipient[] = [
     network: 'MTN',
     name: 'MARIE NGONO',
     note: 'BJ-CM: the CFA pair, the other way',
+  },
+  {
+    ownerEmail: 'thandi@demo.morapay.local',
+    country: 'NG',
+    nickname: 'Brother — Lagos',
+    accountNumber: '0123400003',
+    bankCode: '058',
+    name: 'CHIAMAKA NWOSU',
+    note: 'ZA-NG: rand collected in Cape Town under a declared BoP category',
   },
   {
     ownerEmail: 'folake@demo.morapay.local',
@@ -387,6 +420,19 @@ async function main(): Promise<void> {
           piiToken,
           ...common,
           bvn: sender.person.bvn ?? null,
+          documents: localDocuments,
+        },
+      });
+    } else if (sender.residency === 'ZA') {
+      await prisma.senderProfileZa.upsert({
+        where: { piiToken },
+        update: {},
+        create: {
+          piiToken,
+          ...common,
+          nationalIdNo: sender.person.nationalIdNo ?? null,
+          taxReference: sender.person.taxReference ?? null,
+          exchangeControlStatus: sender.person.exchangeControlStatus ?? null,
           documents: localDocuments,
         },
       });

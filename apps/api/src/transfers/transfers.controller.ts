@@ -12,6 +12,7 @@ import {
 import {
   CancelTransferRequest,
   CreateTransferRequest,
+  ExchangeControlInfo,
   TransferResponse,
   cancelTransferRequestSchema,
   createTransferRequestSchema,
@@ -19,6 +20,9 @@ import {
 } from '@morapay/contracts';
 import { TransfersService } from './transfers.service';
 import { TransferSagaService } from './transfer-saga.service';
+import { ExchangeControlService } from '../compliance/exchange-control.service';
+import { CorridorsService } from '../quoting/corridors.service';
+import { PrismaService } from '../common/prisma.service';
 import { AuthenticatedUser, CurrentUser, JwtAuthGuard, VerifiedUserGuard } from '../auth/guards';
 import { zodBody } from '../common/zod.pipe';
 
@@ -35,7 +39,78 @@ export class TransfersController {
   constructor(
     private readonly transfers: TransfersService,
     private readonly saga: TransferSagaService,
+    private readonly exchangeControl: ExchangeControlService,
+    private readonly corridors: CorridorsService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * What this sender must declare on a given corridor, and what is left of
+   * their allowance.
+   *
+   * Served per corridor because most corridors need none of it: `required:
+   * false` and nulls everywhere is the ordinary answer. The send flow asks
+   * before showing the confirmation step, so a South African sender sees the
+   * declaration and everyone else does not.
+   *
+   * The remaining figure is what **we** can see. An allowance is personal and
+   * spans every provider, so the number shown is a ceiling on what we know
+   * about, not on what the sender has actually used. The wording in the app
+   * says so, and the API says so here.
+   */
+  @Get('exchange-control')
+  async exchangeControlInfo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('corridorId') corridorId: string,
+  ): Promise<ExchangeControlInfo> {
+    const none: ExchangeControlInfo = {
+      required: false,
+      regimeCountry: null,
+      regimeCountryName: null,
+      authority: null,
+      reportedBy: null,
+      categories: [],
+      allowanceYear: null,
+      annualMinorUnits: null,
+      remainingMinorUnits: null,
+      usedThroughUsMinorUnits: null,
+      declaredElsewhereMinorUnits: null,
+      currency: null,
+    };
+    if (corridorId === undefined || corridorId === '') return none;
+
+    const corridor = await this.corridors.get(corridorId);
+    const record = await this.prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      select: { piiToken: true, piiPartition: true },
+    });
+    const status = await this.exchangeControl.allowanceStatus(
+      user.id,
+      record.piiToken,
+      record.piiPartition,
+      corridor.sourceCountry,
+    );
+    if (status === null) return none;
+
+    return {
+      required: true,
+      regimeCountry: status.regime.country,
+      regimeCountryName: status.regime.countryName,
+      authority: status.regime.authority,
+      reportedBy: status.regime.reportedBy,
+      categories: status.regime.categories.map((c) => ({
+        code: c.code,
+        label: c.label,
+        allowance: c.allowance,
+      })),
+      allowanceYear: status.year,
+      annualMinorUnits: status.annualMinorUnits.toString(),
+      remainingMinorUnits: status.remainingMinorUnits.toString(),
+      usedThroughUsMinorUnits: status.usage.throughUsMinorUnits.toString(),
+      declaredElsewhereMinorUnits: status.usage.declaredElsewhereMinorUnits.toString(),
+      currency: status.regime.currency,
+    };
+  }
 
   @Post()
   async create(

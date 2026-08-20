@@ -1,34 +1,81 @@
 # Corridors
 
-Twenty corridors exist; eighteen are enabled. They are not all the same kind of
-thing, and the transfer code cannot tell them apart — that is the point of
-corridors being data — so the difference is written down here and enforced by a
-check that runs on every corridor read.
+Twenty-four corridors exist; twenty-two are enabled. They are not all the same
+kind of thing, and the transfer code cannot tell them apart — that is the point
+of corridors being data — so the difference is written down here and enforced by
+a check that runs on every corridor read.
 
 ## The map
 
-**Origins (4).** Nigeria, Ghana, Cameroon, Benin — plus Russia on the inbound
-corridors. **Destinations (5).** Those four, plus South Africa.
+**Origins (5).** Nigeria, Ghana, South Africa, Cameroon, Benin — plus Russia on
+the inbound corridors. **Destinations (5).** The same five.
 
-| ↓ from / to → | NG                      | GH  | ZA  | CM  | BJ  |
-| ------------- | ----------------------- | --- | --- | --- | --- |
-| **NG**        | —                       | ✓   | ✓   | ✓   | ✓   |
-| **GH**        | ✓                       | —   | ✓   | ✓   | ✓   |
-| **CM**        | ✓                       | ✓   | ✓   | —   | ✓   |
-| **BJ**        | ✓                       | ✓   | ✓   | ✓   | —   |
-| **ZA**        | receive-only, see below |
+| ↓ from / to → | NG  | GH  | ZA  | CM  | BJ  |
+| ------------- | --- | --- | --- | --- | --- |
+| **NG**        | —   | ✓   | ✓   | ✓   | ✓   |
+| **GH**        | ✓   | —   | ✓   | ✓   | ✓   |
+| **ZA**        | ✓†  | ✓†  | —   | ✓†  | ✓†  |
+| **CM**        | ✓   | ✓   | ✓   | —   | ✓   |
+| **BJ**        | ✓   | ✓   | ✓   | ✓   | —   |
 
-Sixteen intra-African corridors, plus RU→NG and RU→GH. BY→NG and BY→GH exist as
+† Subject to exchange control — see below.
+
+Twenty intra-African corridors, plus RU→NG and RU→GH. BY→NG and BY→GH exist as
 rows and are disabled, awaiting a Belarusian collection partner.
 
-**South Africa receives and does not send.** Outward transfers from South Africa
-sit under SARB exchange control: every one is reported under a
-balance-of-payments category code and measured against the sender's annual
-allowance. That is not another licence to obtain, it is a different product, and
-this codebase models neither the codes nor the allowance. Rather than build a ZA
-origin that could not lawfully run, there is no ZA collection authorisation, no
-ZA sender store, and `authorisationsFor` **throws** for a ZA-origin corridor
-instead of returning an empty list a licence gate would wave through.
+## South Africa: exchange control
+
+South Africa was receive-only until 4.3c, because sending out of it is not just
+another licence — it is a different product. Every outward payment is reported
+under a balance-of-payments category code and measured against the sender's
+annual allowance. That is now built, in `packages/domain/src/compliance/
+exchange-control.ts`, as a regime keyed by origin country rather than as
+South-Africa-shaped code:
+
+| Piece                 | Where                                                                                                           |
+| --------------------- | --------------------------------------------------------------------------------------------------------------- |
+| The regime, as data   | `exchangeControlFor(country)` in the domain package                                                             |
+| Category codes        | `regime.categories` — 416 gift, 417 migrant worker, 418 maintenance, 419 family support, 420 study, 421 medical |
+| Allowances            | `DISCRETIONARY` (R1m, no tax clearance) and `INVESTMENT` (R10m, tax clearance required)                         |
+| The decision          | `checkDeclaration()` — pure, fifteen tests                                                                      |
+| Enforcement           | `ExchangeControlService.assertMayProceed()`, called before a transfer row exists                                |
+| The record            | `public.exchange_control_declaration`, one row per transfer                                                     |
+| The sender's step     | The declaration card in the send flow                                                                           |
+| The Authorised Dealer | `/exchange-control` in the back office — extract, CSV, mark-as-reported                                         |
+
+Four things about it are deliberate and should not be "simplified" later.
+
+**The allowance is personal, and it spans every provider.** Our own tally is a
+floor, not a ceiling. The sender declares what they have already used elsewhere
+this year, we count it, and the figure the app shows is labelled as what we can
+see rather than as what is left. Treating our own total as authoritative would
+confidently permit a payment that breaches the regulation.
+
+**A declaration of what was used elsewhere is a running total, not an
+increment.** Somebody who says "R200 000 elsewhere" on two transfers has used
+R200 000, not R400 000, so `usage()` takes the **maximum** of what has been
+declared rather than the sum. Summing would punish an honest sender for
+declaring twice, which is the fastest way to teach people to under-declare.
+
+**Only residents are supported.** Temporary residents and non-residents have
+different allowances, and guessing which would be worse than refusing: an
+unset or non-`RESIDENT` status is a 403, not a default.
+
+**We do not file; the Authorised Dealer does.** The extract joins each
+declaration to the sender's name and identity number, in memory, at the moment
+it is produced. That join is never persisted, and the console that shows it is
+restricted to `COMPLIANCE_OFFICER` — an administrator is deliberately excluded,
+because the segregation that keeps them out of compliance decisions should keep
+them out of compliance data too. A declaration whose partition holds no identity
+is shown as a problem rather than skipped: a file with a silent gap in it is
+worse than no file.
+
+What is still outstanding is the licence, not the capability: collecting inside
+South Africa needs an Authorised Dealer relationship or an ADLA licence, which
+is `ZA_DOMESTIC_COLLECTION` in `LIVE_CORRIDOR_AUTHORISATIONS` and is not held.
+Every number in the regime — both allowance ceilings, the adult age, the six
+category codes — is marked in the source as a placeholder pending confirmation
+by that Authorised Dealer.
 
 ## Currencies
 
@@ -36,7 +83,7 @@ instead of returning an empty list a licence gate would wave through.
 | -------- | -------- | ------------------------------------------------------------------ |
 | NGN      | 2        |                                                                    |
 | GHS      | 2        |                                                                    |
-| ZAR      | 2        | Destination only                                                   |
+| ZAR      | 2        | Origin and destination. Origin sends are under exchange control    |
 | XAF      | **0**    | Central African CFA franc, BEAC. Pegged to the euro                |
 | XOF      | **0**    | West African CFA franc, BCEAO. Same peg, therefore at par with XAF |
 
@@ -71,19 +118,20 @@ though the currencies are at par.
 `packages/domain/src/corridors/licensing.ts` names the authorisation each leg
 rests on:
 
-| Authorisation            | Meaning                                                       |
-| ------------------------ | ------------------------------------------------------------- |
-| `RU_COLLECTION_PARTNER`  | A licensed Russian partner collects RUB on our behalf         |
-| `BY_COLLECTION_PARTNER`  | The same, for Belarus                                         |
-| `NG_DOMESTIC_COLLECTION` | CBN authorisation to collect naira from the public in Nigeria |
-| `GH_DOMESTIC_COLLECTION` | Bank of Ghana authorisation to debit cedi wallets in Ghana    |
-| `CM_DOMESTIC_COLLECTION` | BEAC/COBAC authorisation to debit XAF wallets in Cameroon     |
-| `BJ_DOMESTIC_COLLECTION` | BCEAO authorisation to debit XOF wallets in Benin             |
-| `NG_PAYOUT_RAIL`         | A licensed rail crediting Nigerian bank accounts              |
-| `GH_PAYOUT_RAIL`         | A licensed rail crediting Ghanaian mobile-money wallets       |
-| `ZA_PAYOUT_RAIL`         | A licensed rail crediting South African bank accounts         |
-| `CM_PAYOUT_RAIL`         | A licensed rail crediting Cameroonian wallets                 |
-| `BJ_PAYOUT_RAIL`         | A licensed rail crediting Beninese wallets                    |
+| Authorisation            | Meaning                                                                                                                       |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `RU_COLLECTION_PARTNER`  | A licensed Russian partner collects RUB on our behalf                                                                         |
+| `BY_COLLECTION_PARTNER`  | The same, for Belarus                                                                                                         |
+| `NG_DOMESTIC_COLLECTION` | CBN authorisation to collect naira from the public in Nigeria                                                                 |
+| `GH_DOMESTIC_COLLECTION` | Bank of Ghana authorisation to debit cedi wallets in Ghana                                                                    |
+| `CM_DOMESTIC_COLLECTION` | BEAC/COBAC authorisation to debit XAF wallets in Cameroon                                                                     |
+| `BJ_DOMESTIC_COLLECTION` | BCEAO authorisation to debit XOF wallets in Benin                                                                             |
+| `ZA_DOMESTIC_COLLECTION` | An Authorised Dealer relationship or an ADLA licence, under which rand is collected and outward payments are reported to SARB |
+| `NG_PAYOUT_RAIL`         | A licensed rail crediting Nigerian bank accounts                                                                              |
+| `GH_PAYOUT_RAIL`         | A licensed rail crediting Ghanaian mobile-money wallets                                                                       |
+| `ZA_PAYOUT_RAIL`         | A licensed rail crediting South African bank accounts                                                                         |
+| `CM_PAYOUT_RAIL`         | A licensed rail crediting Cameroonian wallets                                                                                 |
+| `BJ_PAYOUT_RAIL`         | A licensed rail crediting Beninese wallets                                                                                    |
 
 With `LIVE_FUNDS_ENABLED=false` the check is a no-op: a simulated corridor moves
 no money and needs no licence, which is what lets every direction be built and
@@ -146,8 +194,9 @@ the API boundary rather than accepted and never delivered.
 
 A sender must be where the collection happens. Someone in Lagos cannot hand over
 rubles, so RU→NG is neither offered to them nor accepted from them —
-`CORRIDOR_RESIDENCY_MISMATCH`. Registration offers RU, BY, NG, GH, CM and BJ; it
-does not offer ZA, because there is no store to put a South African sender in.
+`CORRIDOR_RESIDENCY_MISMATCH`. Registration offers RU, BY, NG, GH, ZA, CM and
+BJ — ZA joined in 4.3c along with `partition_za`'s sender store, which holds the
+identity number and exchange-control status the declaration needs.
 
 Personal data follows the same line. Six partitions, deliberately asymmetric:
 
@@ -198,8 +247,11 @@ converted from the ruble rows: NGN follows the CBN's three-tier KYC shape, GHS
 the Bank of Ghana's mobile-money tiers, XAF and XOF the BEAC and BCEAO
 electronic-money tiers. The numbers are placeholders the compliance officer
 owns. What is not a placeholder is that the rows exist — `checkLimits` refuses a
-currency it has no row for, so **ZAR having no row is what makes a rand send
-impossible** rather than merely discouraged.
+currency it has no row for, so a currency without rows cannot be sent at all.
+ZAR gained rows when South Africa became an origin. A rand sender is bounded
+twice, by their KYC tier and by their exchange-control allowance, and the
+tighter of the two wins; they answer different questions and neither substitutes
+for the other.
 
 ## The ledger
 

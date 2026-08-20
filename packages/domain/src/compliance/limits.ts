@@ -53,10 +53,11 @@ export type TierLimitTable = Readonly<
  * naira figure across without dividing by a hundred is the obvious way to get
  * this wrong by two orders of magnitude.
  *
- * **ZAR is deliberately absent.** South Africa receives and does not send, so
- * the rand is never a send currency; `checkLimits` fails closed on a currency
- * with no row, which means a ZAR-denominated send is refused by construction
- * rather than by a flag someone could flip.
+ *   - **ZAR** rows exist as of BUILD_PLAN 4.3c, when South Africa became an
+ *     origin. They are the tier caps only. The binding constraint on a South
+ *     African sender is usually the exchange-control allowance rather than the
+ *     KYC tier, and that is enforced separately in `exchange-control.ts` — two
+ *     different questions with two different answers, deliberately not merged.
  *
  * Like the ruble rows, these are placeholders pending the risk assessment in
  * docs/compliance, and the compliance officer owns the final numbers. What is
@@ -71,6 +72,7 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
     GHS: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
     XAF: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
     XOF: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    ZAR: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
   },
   1: {
     // 15 000 ₽ per transfer, 30 000 ₽ per day, 100 000 ₽ per month.
@@ -95,6 +97,12 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       perTransferMinorUnits: 100_000n,
       dailyMinorUnits: 100_000n,
       monthlyMinorUnits: 300_000n,
+    },
+    // R5 000 per transfer, R10 000 per day, R25 000 per month.
+    ZAR: {
+      perTransferMinorUnits: 500_000n,
+      dailyMinorUnits: 1_000_000n,
+      monthlyMinorUnits: 2_500_000n,
     },
     // 200 000 FCFA per transfer and per day, 1 000 000 per month. Whole francs.
     XAF: {
@@ -132,6 +140,12 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       dailyMinorUnits: 500_000n,
       monthlyMinorUnits: 2_000_000n,
     },
+    // R50 000 per transfer, R100 000 per day, R250 000 per month.
+    ZAR: {
+      perTransferMinorUnits: 5_000_000n,
+      dailyMinorUnits: 10_000_000n,
+      monthlyMinorUnits: 25_000_000n,
+    },
     // 1 000 000 FCFA per transfer, 2 000 000 per day, 5 000 000 per month.
     XAF: {
       perTransferMinorUnits: 1_000_000n,
@@ -167,6 +181,13 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       perTransferMinorUnits: 1_000_000n,
       dailyMinorUnits: 1_000_000n,
       monthlyMinorUnits: 5_000_000n,
+    },
+    // R100 000 per transfer, R250 000 per day, R1 000 000 per month — the last
+    // being the whole discretionary allowance, so exchange control binds first.
+    ZAR: {
+      perTransferMinorUnits: 10_000_000n,
+      dailyMinorUnits: 25_000_000n,
+      monthlyMinorUnits: 100_000_000n,
     },
     // 5 000 000 FCFA per transfer, 10 000 000 per day, 25 000 000 per month.
     XAF: {

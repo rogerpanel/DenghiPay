@@ -1,4 +1,14 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { KycTier, SENDER_FACING_STATUS, TransferState } from '@morapay/domain';
 import {
   ApprovePrefundingRequest,
@@ -33,6 +43,7 @@ import { TransferSagaService } from '../transfers/transfer-saga.service';
 import { TreasuryService } from '../treasury/treasury.service';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { AuditService } from '../audit/audit.service';
+import { ExchangeControlService } from '../compliance/exchange-control.service';
 import { moneyDtoFrom, toMoneyDto } from '../common/money.util';
 
 /** Back-office authentication. Separate session from the customer app. */
@@ -87,6 +98,7 @@ export class AdminController {
     private readonly treasury: TreasuryService,
     private readonly reconciliation: ReconciliationService,
     private readonly audit: AuditService,
+    private readonly exchangeControl: ExchangeControlService,
   ) {}
 
   // ------------------------------------------------------------- 9.1 compliance
@@ -511,6 +523,53 @@ export class AdminController {
         ageDays: Math.floor((Date.now() - item.openedAt.getTime()) / 86_400_000),
       })),
     };
+  }
+
+  // --------------------------------------------------- exchange control (4.3c)
+
+  /**
+   * Declarations awaiting hand-off to the Authorised Dealer.
+   *
+   * We do not file with the regulator — the AD does, and they need each
+   * declaration joined to the sender's identity. That join is the one place a
+   * name and a national identity number come together, so it happens in memory
+   * when this is called and the result is never persisted.
+   *
+   * Compliance only. An administrator is deliberately not accepted: this
+   * returns identity numbers, and the segregation that keeps an admin out of
+   * compliance decisions should keep them out of compliance data too.
+   */
+  @Get('exchange-control/pending')
+  @StaffRoles('COMPLIANCE_OFFICER')
+  async exchangeControlPending(@Query('includeReported') includeReported?: string) {
+    const rows = await this.exchangeControl.reportingExtract({
+      includeReported: includeReported === 'true',
+    });
+    return {
+      declarations: rows,
+      // Surfaced rather than left implicit: a row with no sender name means the
+      // partition has no record for that token, which the AD must not receive
+      // silently.
+      missingIdentity: rows.filter((r) => r.senderName === null).length,
+    };
+  }
+
+  /** Mark declarations as handed over. */
+  @Post('exchange-control/mark-reported')
+  @HttpCode(200)
+  @StaffRoles('COMPLIANCE_OFFICER')
+  async markExchangeControlReported(
+    @CurrentStaff() staff: AuthenticatedStaff,
+    @Body() body: { ids?: string[] },
+  ): Promise<{ marked: number }> {
+    const ids = body?.ids ?? [];
+    if (ids.length === 0) {
+      throw new BadRequestException({
+        code: 'NO_DECLARATIONS',
+        message: 'Name the declarations that were reported',
+      });
+    }
+    return { marked: await this.exchangeControl.markReported(ids, staff.id) };
   }
 
   // ------------------------------------------------------------- 9.4 reporting

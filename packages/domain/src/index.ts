@@ -9,4 +9,5 @@ export * from './transfer/state-machine';
 export * from './transfer/transfer';
 export * from './fx/quote';
 export * from './compliance/limits';
+export * from './compliance/exchange-control';
 export * from './provider/outcomes';

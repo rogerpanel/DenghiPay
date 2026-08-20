@@ -468,6 +468,8 @@ model Transfer {
   corridor   Corridor         @relation(fields: [corridorId], references: [id])
   recipient  Recipient        @relation(fields: [recipientId], references: [id])
   events     TransferEvent[]
+  /// Present only for transfers from an exchange-control regime.
+  exchangeControl ExchangeControlDeclaration?
   screenings ScreeningRecord[]
   cases      ComplianceCase[]
   positions  FxPosition[]
@@ -908,12 +910,39 @@ model SenderProfileBj {
   @@schema("partition_bj")
 }
 
-/// South African recipient personal data. POPIA.
+/// South African-resident sender personal data. POPIA.
 ///
-/// There is deliberately no `SenderProfileZa`: South Africa receives and does
-/// not send until SARB exchange-control reporting is built, and the absence of
-/// a store is what makes a ZA sender unrepresentable rather than merely
-/// discouraged.
+/// Carries two fields no other partition needs, because SARB exchange control
+/// needs them: the identity number an Authorised Dealer reports against, and
+/// the tax compliance reference required before the larger allowance may be
+/// used. Both stay in South Africa.
+model SenderProfileZa {
+  piiToken        String   @id @map("pii_token")
+  firstName       String   @map("first_name")
+  lastName        String   @map("last_name")
+  middleName      String?  @map("middle_name")
+  dateOfBirth     DateTime @map("date_of_birth")
+  nationality     String
+  phone           String?
+  addressLine     String?  @map("address_line")
+  city            String?
+  postcode        String?
+  /// South African identity number, or passport for a non-resident.
+  nationalIdNo    String?  @map("national_id_no")
+  /// SARS tax reference. Required before the investment allowance may be used.
+  taxReference    String?  @map("tax_reference")
+  /// Exchange-control status: RESIDENT, TEMPORARY_RESIDENT or NON_RESIDENT.
+  /// The allowances differ, and only RESIDENT is modelled today.
+  exchangeControlStatus String? @map("exchange_control_status")
+  documents       Json     @default("[]")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_za")
+}
+
+/// South African recipient personal data. POPIA.
 model RecipientProfileZa {
   piiToken      String   @id @map("pii_token")
   accountNumber String   @map("account_number")
@@ -949,4 +978,54 @@ model RecipientProfileBj {
 
   @@map("recipient_profile")
   @@schema("partition_bj")
+}
+
+
+// =============================================================================
+// Exchange control (BUILD_PLAN 4.3c, OPEN_ITEMS B8)
+// =============================================================================
+
+/// One declaration per outward transfer from a regime that requires them.
+///
+/// Neutral tier, deliberately: this is transaction data rather than personal
+/// data — a tokenised subject, a category code and an amount. The Authorised
+/// Dealer files the report and needs these fields; the personal data it must be
+/// joined against stays in its own partition and is fetched at the moment the
+/// report is produced.
+///
+/// `declaredElsewhereMinorUnits` is what the sender told us they had already
+/// used through other providers. It is kept apart from what we observed rather
+/// than summed on the way in, because when a discrepancy is investigated the
+/// question is always which of the two was wrong.
+model ExchangeControlDeclaration {
+  id                          String   @id @default(uuid())
+  transferId                  String   @unique @map("transfer_id")
+  userId                      String   @map("user_id")
+  /// ISO country whose regime governs this payment.
+  regimeCountry               String   @map("regime_country")
+  /// Published reason code, e.g. a SARB balance-of-payments category.
+  categoryCode                String   @map("category_code")
+  categoryLabel               String   @map("category_label")
+  /// DISCRETIONARY or INVESTMENT.
+  allowanceKind               String   @map("allowance_kind")
+  /// Calendar year the allowance is measured over.
+  allowanceYear               Int      @map("allowance_year")
+  amountMinorUnits            BigInt   @map("amount_minor_units")
+  currency                    String
+  /// What we had already observed when this was decided.
+  usedThroughUsMinorUnits     BigInt   @map("used_through_us_minor_units")
+  /// What the sender declared they had used at other providers.
+  declaredElsewhereMinorUnits BigInt   @map("declared_elsewhere_minor_units")
+  /// Tax compliance reference, where the allowance required one.
+  taxClearanceRef             String?  @map("tax_clearance_ref")
+  /// Set once the data has been handed to the Authorised Dealer.
+  reportedAt                  DateTime? @map("reported_at")
+  createdAt                   DateTime @default(now()) @map("created_at")
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([userId, allowanceYear])
+  @@index([reportedAt])
+  @@map("exchange_control_declaration")
+  @@schema("public")
 }

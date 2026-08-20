@@ -8,15 +8,14 @@
 #
 #   usage: infra/scripts/smoke-transfer.sh [recipient-identifier] [expected-final-state]
 #
-# CORRIDOR selects the leg. Twenty exist; eighteen are enabled.
+# CORRIDOR selects the leg. Twenty-four exist; twenty-two are enabled.
 #
 #   RU-NG, RU-GH        rubles collected in Russia, into Nigeria or Ghana
-#   {NG,GH,CM,BJ}-{NG,GH,ZA,CM,BJ}   the intra-African mesh, sixteen corridors
+#   {NG,GH,ZA,CM,BJ}-{NG,GH,ZA,CM,BJ}   the intra-African mesh, twenty corridors
 #
 # Each origin has its own demo sender, because a corridor is only offered to
-# someone who lives where the collection happens. South Africa appears only as
-# a destination: it receives and does not send until SARB exchange-control
-# reporting exists.
+# someone who lives where the collection happens. A ZA-* leg additionally
+# carries an exchange-control declaration, without which the API refuses it.
 #
 # The simulator picks its behaviour from the last four digits of the recipient
 # identifier, so the same scenario suffixes work on every corridor:
@@ -127,11 +126,16 @@ case "$CORRIDOR" in
     AMOUNT="${AMOUNT:-25000}"
     PAYIN_METHOD="${PAYIN_METHOD:-MOBILE_MONEY}"
     ;;
+  # South Africa became an origin in 4.3c. Every outward rand payment carries a
+  # balance-of-payments category and counts against the sender's annual
+  # allowance, so the create call needs a declaration block — a ZA-* transfer
+  # without one is refused with EXCHANGE_CONTROL_CATEGORY_REQUIRED, by design.
   ZA-*)
-    echo "South Africa is a destination, not an origin: no ZA-* corridor exists." >&2
-    echo "Outward transfers from South Africa need SARB balance-of-payments" >&2
-    echo "reporting and allowance tracking, which is not built. See docs/CORRIDORS.md." >&2
-    exit 64
+    EMAIL="${EMAIL:-thandi@demo.morapay.local}"
+    AMOUNT="${AMOUNT:-50000}"
+    PAYIN_METHOD="${PAYIN_METHOD:-VIRTUAL_ACCOUNT}"
+    # 417, migrant worker remittance. Discretionary allowance, no tax clearance.
+    EXCHANGE_CONTROL_CATEGORY="${EXCHANGE_CONTROL_CATEGORY:-417}"
     ;;
   *)
     echo "unknown origin in CORRIDOR '$CORRIDOR'" >&2
@@ -202,9 +206,16 @@ echo "   our rate    $(echo "$QUOTE" | jqr "effectiveRate")"
 echo "   recipient   $(echo "$QUOTE" | jqr "recipientAmount.formatted")"
 
 say "5. Confirm the transfer"
+# Only origins with an exchange-control regime carry a declaration. Sending an
+# empty block on the others would fail validation rather than be ignored.
+DECLARATION=""
+if [ -n "${EXCHANGE_CONTROL_CATEGORY:-}" ]; then
+  DECLARATION=",\"exchangeControl\":{\"categoryCode\":\"$EXCHANGE_CONTROL_CATEGORY\",\"declaredElsewhereMinorUnits\":\"${EXCHANGE_CONTROL_ELSEWHERE:-0}\",\"declarationAccepted\":true}"
+  echo "   declared    BoP $EXCHANGE_CONTROL_CATEGORY, ${EXCHANGE_CONTROL_ELSEWHERE:-0} used elsewhere"
+fi
 TRANSFER=$(curl -sS -X POST "$API/transfers" -H "$AUTH" -H 'content-type: application/json' \
   -H "idempotency-key: smoke-$(date +%s)-$RANDOM" \
-  -d "{\"quoteId\":\"$QUOTE_ID\",\"recipientId\":\"$RECIPIENT_ID\",\"payinMethod\":\"$PAYIN_METHOD\",\"purpose\":\"FAMILY_SUPPORT\",\"confirmedRecipientName\":\"$RESOLVED\"}")
+  -d "{\"quoteId\":\"$QUOTE_ID\",\"recipientId\":\"$RECIPIENT_ID\",\"payinMethod\":\"$PAYIN_METHOD\",\"purpose\":\"FAMILY_SUPPORT\",\"confirmedRecipientName\":\"$RESOLVED\"$DECLARATION}")
 REFERENCE=$(echo "$TRANSFER" | jqr "reference")
 [ -n "$REFERENCE" ] || fail "no transfer: $TRANSFER"
 echo "   $REFERENCE  state=$(echo "$TRANSFER" | jqr "state")  ($(echo "$TRANSFER" | jqr "senderStatus"))"

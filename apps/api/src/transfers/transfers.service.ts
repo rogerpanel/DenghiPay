@@ -21,6 +21,7 @@ import { CorridorsService } from '../quoting/corridors.service';
 import { QuotesService } from '../quoting/quotes.service';
 import { RecipientsService, namesLookAlike } from '../recipients/recipients.service';
 import { LimitsService } from '../compliance/limits.service';
+import { ExchangeControlService } from '../compliance/exchange-control.service';
 import { ScreeningService } from '../compliance/screening.service';
 import { ComplianceService } from '../compliance/compliance.service';
 import { PartitionGateway } from '../partitions/partition-gateway.service';
@@ -50,6 +51,7 @@ export class TransfersService {
     private readonly corridors: CorridorsService,
     private readonly recipients: RecipientsService,
     private readonly limits: LimitsService,
+    private readonly exchangeControl: ExchangeControlService,
     private readonly screening: ScreeningService,
     private readonly compliance: ComplianceService,
     private readonly partitions: PartitionGateway,
@@ -150,6 +152,25 @@ export class TransfersService {
       });
     }
 
+    // Exchange control, where the origin has a regime. This runs before the
+    // transfer row exists: creating one and then discovering it may not proceed
+    // would leave a record of an attempt that was never permissible, and would
+    // consume an idempotency key on a request that should never have had one.
+    //
+    // Returns null when the origin has no regime, which is every corridor but
+    // the South African ones today.
+    const exchangeControl = await this.exchangeControl.assertMayProceed({
+      userId,
+      piiToken: user.piiToken,
+      partition: user.piiPartition,
+      sourceCountry: corridor.sourceCountry,
+      amount: quote.sendAmount,
+      categoryCode: input.exchangeControl?.categoryCode ?? null,
+      declaredElsewhereMinorUnits: BigInt(
+        input.exchangeControl?.declaredElsewhereMinorUnits ?? '0',
+      ),
+    });
+
     const transfer = await this.prisma.transfer.create({
       data: {
         reference: formatTransferReference(randomBytes(6).toString('hex')),
@@ -177,6 +198,18 @@ export class TransfersService {
         responseSnapshot: { transferId: transfer.id },
       },
     });
+
+    if (exchangeControl !== null) {
+      await this.exchangeControl.record({
+        transferId: transfer.id,
+        userId,
+        regime: exchangeControl.regime,
+        decision: exchangeControl.decision,
+        usage: exchangeControl.usage,
+        amount: quote.sendAmount,
+        taxClearanceRef: exchangeControl.taxClearanceRef,
+      });
+    }
 
     await this.quotes.markConsumed(quote.id);
 

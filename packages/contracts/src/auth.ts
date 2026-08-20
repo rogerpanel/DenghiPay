@@ -39,11 +39,12 @@ export const registerRequestSchema = z.object({
    * Residency drives which data partition holds this person's details, and
    * which corridors they can send on.
    *
-   * South Africa is deliberately absent. It is a destination and not an origin
-   * until SARB exchange-control reporting is built, so there is no ZA sender
-   * store for a registration to write to.
+   * South Africa is here as of BUILD_PLAN 4.3c. A South African sender is
+   * subject to SARB exchange control: every outward payment needs a declared
+   * category and counts against their annual allowance, which the send flow
+   * collects and the API enforces.
    */
-  residencyCountry: z.enum(['RU', 'BY', 'NG', 'GH', 'CM', 'BJ']).default('RU'),
+  residencyCountry: z.enum(['RU', 'BY', 'NG', 'GH', 'ZA', 'CM', 'BJ']).default('RU'),
   acceptedTerms: z.literal(true, {
     errorMap: () => ({ message: 'the terms must be accepted' }),
   }),

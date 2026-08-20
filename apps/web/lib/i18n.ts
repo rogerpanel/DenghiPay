@@ -113,6 +113,27 @@ const en = {
   'send.review.personalOnly':
     'MoraPay carries personal transfers only — family support, education, medical costs and gifts.',
 
+  /* Exchange control. Shown only where the origin has a regime — today South
+     Africa. The caveat on the remaining figure is not decoration: an allowance
+     is personal and spans every provider, so our number is a ceiling on what we
+     know about, never on what the sender has actually used. */
+  'send.declaration.title': 'Exchange control declaration',
+  'send.declaration.intro':
+    'Money leaving {country} must be declared under a published reason code. {authority} sets the rules and {reportedBy} files the declaration.',
+  'send.declaration.category': 'Reason code',
+  'send.declaration.categoryPlaceholder': 'Choose the reason that fits',
+  'send.declaration.allowance': 'Your {year} allowance',
+  'send.declaration.remaining': 'Remaining',
+  'send.declaration.usedThroughUs': 'Used through MoraPay',
+  'send.declaration.usedElsewhere': 'Already used with other providers this year',
+  'send.declaration.usedElsewhereHint':
+    'Leave at 0 if you have sent nothing abroad through anyone else this year.',
+  'send.declaration.caveat':
+    'We can only see what you have sent through us. The allowance is yours personally and covers every provider you use, so the figure above is what we know about — not proof of what is left. Declaring the rest keeps the count right.',
+  'send.declaration.affirm': 'I confirm this declaration is true and complete.',
+  'send.declaration.affirmRequired': 'Confirm the declaration to continue.',
+  'send.declaration.categoryRequired': 'Choose a reason code to continue.',
+
   'send.pay.title': 'Complete your payment',
   'send.pay.sbp': 'Open your bank app to approve the payment.',
   'send.pay.qr': 'Scan this code in your bank app.',
@@ -181,6 +202,28 @@ const en = {
   'kyc.documents': 'Documents',
   'kyc.upload': 'Attach',
   'kyc.attached': 'Attached',
+  /* Jurisdiction-specific identity anchors, shown only to the residency that
+     uses them. Each unlocks a later step: BVN matching in Nigeria, a named
+     wallet to debit in Ghana, and an exchange-control declaration in South
+     Africa that cannot be decided without an identity number and a status. */
+  'kyc.identity': 'Identity in {country}',
+  'kyc.bvn': 'Bank Verification Number',
+  'kyc.bvnHint': 'Eleven digits. Dial *565*0# if you do not have it to hand.',
+  'kyc.ghanaCard': 'Ghana Card number',
+  'kyc.ghanaCardHint': 'GHA-123456789-0',
+  'kyc.wallet': 'Mobile money wallet we will debit',
+  'kyc.walletHint': 'It must be registered in the name you gave above.',
+  'kyc.walletNetwork': 'Network',
+  'kyc.nationalId': 'South African identity number',
+  'kyc.taxReference': 'SARS tax reference (optional)',
+  'kyc.taxReferenceHint':
+    'Only needed for the investment allowance. The discretionary allowance does not ask for it.',
+  'kyc.exchangeControlStatus': 'Exchange control status',
+  'kyc.exchangeControlHint':
+    'Residents, temporary residents and non-residents have different allowances. Only residents can send today.',
+  'kyc.status.RESIDENT': 'Resident',
+  'kyc.status.TEMPORARY_RESIDENT': 'Temporary resident',
+  'kyc.status.NON_RESIDENT': 'Non-resident',
 
   'settings.title': 'Settings',
   'settings.language': 'Language',
@@ -198,6 +241,19 @@ const en = {
   'error.INVALID_CREDENTIALS': 'Email or password is incorrect.',
   'error.RATE_UNAVAILABLE':
     'We cannot price this right now — our rate feed is stale and we will not guess. Try again shortly.',
+  'error.EXCHANGE_CONTROL_ALLOWANCE_EXCEEDED':
+    'This would take you past your annual allowance, counting what you told us you used elsewhere. Send a smaller amount, or speak to your bank about the investment allowance.',
+  'error.EXCHANGE_CONTROL_CATEGORY_REQUIRED': 'Choose a reason code before sending.',
+  'error.EXCHANGE_CONTROL_CATEGORY_UNKNOWN':
+    'That reason code is not one we can declare. Choose another.',
+  'error.EXCHANGE_CONTROL_TAX_CLEARANCE_REQUIRED':
+    'This reason needs a tax clearance reference on file. Add it in your verification details first.',
+  'error.EXCHANGE_CONTROL_UNDER_AGE':
+    'This allowance is available from adulthood, and the date of birth we hold does not reach it.',
+  'error.EXCHANGE_CONTROL_SUBJECT_MISSING':
+    'We do not hold the verified details this declaration needs. Complete verification first.',
+  'error.EXCHANGE_CONTROL_STATUS_UNSUPPORTED':
+    'Only residents can send on this route today. Temporary and non-residents follow different rules that we have not built yet.',
 
   'demo.banner': 'Demonstration environment — no real money moves.',
 } as const;
@@ -297,6 +353,23 @@ const ru: Record<TranslationKey, string> = {
   'send.review.personalOnly':
     'MoraPay выполняет только личные переводы — поддержка семьи, обучение, лечение и подарки.',
 
+  'send.declaration.title': 'Декларация валютного контроля',
+  'send.declaration.intro':
+    'Средства, покидающие {country}, декларируются по официальному коду цели. Правила устанавливает {authority}, а декларацию подаёт {reportedBy}.',
+  'send.declaration.category': 'Код цели',
+  'send.declaration.categoryPlaceholder': 'Выберите подходящую цель',
+  'send.declaration.allowance': 'Ваш лимит на {year} год',
+  'send.declaration.remaining': 'Остаток',
+  'send.declaration.usedThroughUs': 'Использовано через MoraPay',
+  'send.declaration.usedElsewhere': 'Уже использовано у других провайдеров в этом году',
+  'send.declaration.usedElsewhereHint':
+    'Оставьте 0, если в этом году вы не отправляли за рубеж ни через кого другого.',
+  'send.declaration.caveat':
+    'Мы видим только то, что вы отправили через нас. Лимит принадлежит вам лично и охватывает всех провайдеров, поэтому цифра выше отражает лишь известное нам, а не подтверждённый остаток. Укажите остальное, чтобы счёт был верным.',
+  'send.declaration.affirm': 'Подтверждаю, что декларация верна и полна.',
+  'send.declaration.affirmRequired': 'Подтвердите декларацию, чтобы продолжить.',
+  'send.declaration.categoryRequired': 'Выберите код цели, чтобы продолжить.',
+
   'send.pay.title': 'Завершите оплату',
   'send.pay.sbp': 'Откройте приложение банка и подтвердите платёж.',
   'send.pay.qr': 'Отсканируйте код в приложении банка.',
@@ -366,6 +439,24 @@ const ru: Record<TranslationKey, string> = {
   'kyc.documents': 'Документы',
   'kyc.upload': 'Прикрепить',
   'kyc.attached': 'Прикреплено',
+  'kyc.identity': 'Личность в стране {country}',
+  'kyc.bvn': 'Банковский идентификационный номер (BVN)',
+  'kyc.bvnHint': 'Одиннадцать цифр. Если не помните — наберите *565*0#.',
+  'kyc.ghanaCard': 'Номер Ghana Card',
+  'kyc.ghanaCardHint': 'GHA-123456789-0',
+  'kyc.wallet': 'Кошелёк мобильных денег для списания',
+  'kyc.walletHint': 'Он должен быть зарегистрирован на указанное выше имя.',
+  'kyc.walletNetwork': 'Оператор',
+  'kyc.nationalId': 'Южноафриканский идентификационный номер',
+  'kyc.taxReference': 'Налоговый номер SARS (необязательно)',
+  'kyc.taxReferenceHint':
+    'Нужен только для инвестиционного лимита. Для дискреционного он не требуется.',
+  'kyc.exchangeControlStatus': 'Статус валютного контроля',
+  'kyc.exchangeControlHint':
+    'У резидентов, временных резидентов и нерезидентов разные лимиты. Сегодня отправлять могут только резиденты.',
+  'kyc.status.RESIDENT': 'Резидент',
+  'kyc.status.TEMPORARY_RESIDENT': 'Временный резидент',
+  'kyc.status.NON_RESIDENT': 'Нерезидент',
 
   'settings.title': 'Настройки',
   'settings.language': 'Язык',
@@ -383,6 +474,19 @@ const ru: Record<TranslationKey, string> = {
   'error.INVALID_CREDENTIALS': 'Неверная почта или пароль.',
   'error.RATE_UNAVAILABLE':
     'Сейчас не можем назвать цену — курс устарел, а гадать мы не будем. Попробуйте чуть позже.',
+  'error.EXCHANGE_CONTROL_ALLOWANCE_EXCEEDED':
+    'С учётом того, что вы указали как использованное у других провайдеров, перевод выйдет за годовой лимит. Отправьте меньшую сумму или обсудите с банком инвестиционный лимит.',
+  'error.EXCHANGE_CONTROL_CATEGORY_REQUIRED': 'Выберите код цели перед отправкой.',
+  'error.EXCHANGE_CONTROL_CATEGORY_UNKNOWN':
+    'Такой код цели мы задекларировать не можем. Выберите другой.',
+  'error.EXCHANGE_CONTROL_TAX_CLEARANCE_REQUIRED':
+    'Для этой цели нужен налоговый номер в вашем профиле. Сначала добавьте его при верификации.',
+  'error.EXCHANGE_CONTROL_UNDER_AGE':
+    'Этот лимит доступен с совершеннолетия, а по имеющейся у нас дате рождения оно ещё не наступило.',
+  'error.EXCHANGE_CONTROL_SUBJECT_MISSING':
+    'У нас нет проверенных данных, которых требует эта декларация. Сначала пройдите верификацию.',
+  'error.EXCHANGE_CONTROL_STATUS_UNSUPPORTED':
+    'Сегодня по этому направлению отправлять могут только резиденты. Для временных и нерезидентов действуют другие правила, которые мы ещё не реализовали.',
 
   'demo.banner': 'Демонстрационная среда — реальные деньги не двигаются.',
 };
@@ -481,6 +585,23 @@ const fr: Record<TranslationKey, string> = {
   'send.review.personalOnly':
     'MoraPay effectue uniquement des transferts personnels — soutien familial, études, frais médicaux et cadeaux.',
 
+  'send.declaration.title': 'Déclaration de contrôle des changes',
+  'send.declaration.intro':
+    'Les fonds quittant {country} doivent être déclarés sous un code de motif publié. {authority} fixe les règles et {reportedBy} dépose la déclaration.',
+  'send.declaration.category': 'Code de motif',
+  'send.declaration.categoryPlaceholder': 'Choisissez le motif qui convient',
+  'send.declaration.allowance': 'Votre plafond {year}',
+  'send.declaration.remaining': 'Restant',
+  'send.declaration.usedThroughUs': 'Utilisé via MoraPay',
+  'send.declaration.usedElsewhere': 'Déjà utilisé chez d’autres prestataires cette année',
+  'send.declaration.usedElsewhereHint':
+    'Laissez 0 si vous n’avez rien envoyé à l’étranger par un autre prestataire cette année.',
+  'send.declaration.caveat':
+    'Nous ne voyons que ce que vous avez envoyé chez nous. Le plafond vous est personnel et couvre tous les prestataires : le montant ci-dessus reflète donc ce que nous connaissons, et non ce qu’il vous reste réellement. Déclarer le reste garde le compte juste.',
+  'send.declaration.affirm': 'Je confirme que cette déclaration est exacte et complète.',
+  'send.declaration.affirmRequired': 'Confirmez la déclaration pour continuer.',
+  'send.declaration.categoryRequired': 'Choisissez un code de motif pour continuer.',
+
   'send.pay.title': 'Finalisez votre paiement',
   'send.pay.sbp': 'Ouvrez votre application bancaire pour approuver le paiement.',
   'send.pay.qr': 'Scannez ce code dans votre application bancaire.',
@@ -551,6 +672,24 @@ const fr: Record<TranslationKey, string> = {
   'kyc.documents': 'Documents',
   'kyc.upload': 'Joindre',
   'kyc.attached': 'Joint',
+  'kyc.identity': 'Identité au {country}',
+  'kyc.bvn': 'Numéro de vérification bancaire (BVN)',
+  'kyc.bvnHint': 'Onze chiffres. Composez *565*0# si vous ne l’avez pas sous la main.',
+  'kyc.ghanaCard': 'Numéro de Ghana Card',
+  'kyc.ghanaCardHint': 'GHA-123456789-0',
+  'kyc.wallet': 'Portefeuille mobile money à débiter',
+  'kyc.walletHint': 'Il doit être enregistré au nom indiqué ci-dessus.',
+  'kyc.walletNetwork': 'Opérateur',
+  'kyc.nationalId': 'Numéro d’identité sud-africain',
+  'kyc.taxReference': 'Référence fiscale SARS (facultatif)',
+  'kyc.taxReferenceHint':
+    'Nécessaire uniquement pour le plafond d’investissement. Le plafond discrétionnaire ne l’exige pas.',
+  'kyc.exchangeControlStatus': 'Statut au regard du contrôle des changes',
+  'kyc.exchangeControlHint':
+    'Résidents, résidents temporaires et non-résidents ont des plafonds différents. Seuls les résidents peuvent envoyer aujourd’hui.',
+  'kyc.status.RESIDENT': 'Résident',
+  'kyc.status.TEMPORARY_RESIDENT': 'Résident temporaire',
+  'kyc.status.NON_RESIDENT': 'Non-résident',
 
   'settings.title': 'Réglages',
   'settings.language': 'Langue',
@@ -570,6 +709,19 @@ const fr: Record<TranslationKey, string> = {
   'error.INVALID_CREDENTIALS': 'E-mail ou mot de passe incorrect.',
   'error.RATE_UNAVAILABLE':
     'Nous ne pouvons pas fixer de prix maintenant — notre flux de taux est périmé et nous ne devinerons pas. Réessayez bientôt.',
+  'error.EXCHANGE_CONTROL_ALLOWANCE_EXCEEDED':
+    'Compte tenu de ce que vous avez déclaré avoir utilisé ailleurs, ce transfert dépasserait votre plafond annuel. Envoyez un montant plus faible, ou parlez du plafond d’investissement à votre banque.',
+  'error.EXCHANGE_CONTROL_CATEGORY_REQUIRED': 'Choisissez un code de motif avant d’envoyer.',
+  'error.EXCHANGE_CONTROL_CATEGORY_UNKNOWN':
+    'Ce code de motif ne peut pas être déclaré. Choisissez-en un autre.',
+  'error.EXCHANGE_CONTROL_TAX_CLEARANCE_REQUIRED':
+    'Ce motif exige une référence fiscale à votre dossier. Ajoutez-la d’abord dans vos informations de vérification.',
+  'error.EXCHANGE_CONTROL_UNDER_AGE':
+    'Ce plafond n’est ouvert qu’à partir de la majorité, que la date de naissance dont nous disposons n’atteint pas.',
+  'error.EXCHANGE_CONTROL_SUBJECT_MISSING':
+    'Nous ne détenons pas les informations vérifiées qu’exige cette déclaration. Terminez d’abord la vérification.',
+  'error.EXCHANGE_CONTROL_STATUS_UNSUPPORTED':
+    'Seuls les résidents peuvent envoyer sur cette route aujourd’hui. Les résidents temporaires et non-résidents relèvent de règles différentes, que nous n’avons pas encore construites.',
 
   'demo.banner': 'Environnement de démonstration — aucun argent réel ne circule.',
 };

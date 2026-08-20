@@ -116,27 +116,54 @@ describe('corridor authorisations', () => {
   });
 
   /**
-   * South Africa is a destination and not an origin, and the reason is a
-   * product gap rather than a missing signature: SARB exchange control needs
-   * balance-of-payments codes and allowance tracking that this codebase does
-   * not model. Refusing to describe a ZA-origin corridor is what stops someone
-   * seeding one and having the licence gate wave it through with nothing
-   * missing.
+   * A country absent from the collection map cannot be an origin at all, and
+   * the refusal is a throw rather than an empty list — an empty list would read
+   * to the licence gate as "nothing missing" and wave the corridor through.
+   *
+   * South Africa was the case that motivated this rule and has stopped being an
+   * example of it: exchange control was built in 4.3c, so ZA now has a
+   * collection authorisation of its own. Every country in `CountryCode` can
+   * collect today, so the test reaches for one that is not in the type at all.
    */
   it('refuses to describe a corridor starting where we cannot collect', () => {
-    expect(canCollectFrom('NG')).toBe(true);
-    expect(canCollectFrom('CM')).toBe(true);
-    expect(canCollectFrom('ZA')).toBe(false);
+    for (const country of ['NG', 'GH', 'ZA', 'CM', 'BJ', 'RU', 'BY'] as const) {
+      expect(canCollectFrom(country)).toBe(true);
+    }
 
-    expect(() => authorisationsFor({ sourceCountry: 'ZA', destinationCountry: 'NG' })).toThrow(
-      /No collection authorisation is defined for ZA/,
+    // A country the map has never heard of. Cast because CountryCode does not
+    // admit it — which is the first line of defence; this is the second.
+    const unknown = 'KE' as never;
+    expect(() => authorisationsFor({ sourceCountry: unknown, destinationCountry: 'NG' })).toThrow(
+      /No collection authorisation is defined for KE/,
     );
     expect(() =>
       assertCorridorMayMoveLiveFunds(
-        corridor({ id: 'ZA-NG', sourceCountry: 'ZA', destinationCountry: 'NG' }),
+        corridor({ id: 'KE-NG', sourceCountry: unknown, destinationCountry: 'NG' }),
         { liveFundsEnabled: true, held: [] },
       ),
-    ).toThrow(/No collection authorisation is defined for ZA/);
+    ).toThrow(/No collection authorisation is defined for KE/);
+  });
+
+  /**
+   * South Africa collects under an Authorised Dealer arrangement rather than a
+   * plain collection permit, and it is still a separate authorisation from the
+   * payout rail into South Africa. Holding one says nothing about the other.
+   */
+  it('separates collecting in South Africa from paying into it', () => {
+    expect(authorisationsFor({ sourceCountry: 'ZA', destinationCountry: 'NG' })).toEqual([
+      'ZA_DOMESTIC_COLLECTION',
+      'NG_PAYOUT_RAIL',
+    ]);
+    expect(authorisationsFor({ sourceCountry: 'NG', destinationCountry: 'ZA' })).toEqual([
+      'NG_DOMESTIC_COLLECTION',
+      'ZA_PAYOUT_RAIL',
+    ]);
+    expect(() =>
+      assertCorridorMayMoveLiveFunds(
+        corridor({ id: 'ZA-NG', sourceCountry: 'ZA', destinationCountry: 'NG' }),
+        { liveFundsEnabled: true, held: ['ZA_PAYOUT_RAIL', 'NG_PAYOUT_RAIL'] },
+      ),
+    ).toThrow(/ZA_DOMESTIC_COLLECTION/);
   });
 
   it('names the francophone authorisations, and keeps the two CFA zones apart', () => {

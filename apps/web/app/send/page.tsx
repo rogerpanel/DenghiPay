@@ -61,6 +61,37 @@ type NameEnquiry =
   | { status: 'NOT_FOUND'; reason: string }
   | { status: 'UNSUPPORTED'; reason: string };
 
+/** Mirrors `ExchangeControlInfo` in @morapay/contracts. */
+interface ExchangeControl {
+  required: boolean;
+  regimeCountry: string | null;
+  regimeCountryName: string | null;
+  authority: string | null;
+  reportedBy: string | null;
+  categories: Array<{ code: string; label: string; allowance: string }>;
+  allowanceYear: number | null;
+  annualMinorUnits: string | null;
+  remainingMinorUnits: string | null;
+  usedThroughUsMinorUnits: string | null;
+  declaredElsewhereMinorUnits: string | null;
+  currency: string | null;
+}
+
+const NO_EXCHANGE_CONTROL: ExchangeControl = {
+  required: false,
+  regimeCountry: null,
+  regimeCountryName: null,
+  authority: null,
+  reportedBy: null,
+  categories: [],
+  allowanceYear: null,
+  annualMinorUnits: null,
+  remainingMinorUnits: null,
+  usedThroughUsMinorUnits: null,
+  declaredElsewhereMinorUnits: null,
+  currency: null,
+};
+
 const PURPOSES = ['FAMILY_SUPPORT', 'EDUCATION', 'MEDICAL', 'GIFT', 'OWN_ACCOUNT'] as const;
 
 /* ------------------------------------------------------------------- page */
@@ -94,6 +125,11 @@ function SendFlow() {
   const [payinMethod, setPayinMethod] = useState('SBP');
   const [idempotencyKey] = useState(newIdempotencyKey);
 
+  const [exchangeControl, setExchangeControl] = useState<ExchangeControl>(NO_EXCHANGE_CONTROL);
+  const [categoryCode, setCategoryCode] = useState('');
+  const [usedElsewhereText, setUsedElsewhereText] = useState('0');
+  const [declarationAccepted, setDeclarationAccepted] = useState(false);
+
   const residency = account?.residencyCountry ?? null;
   const corridor = useMemo(
     () => corridors.find((c) => c.id === corridorId) ?? null,
@@ -106,6 +142,12 @@ function SendFlow() {
      wrong thing to ask about — the corridor already states its payout methods. */
   const destinationPaysWallets = corridor?.payoutMethods.includes('MOBILE_MONEY') ?? false;
   const destinationCountry = corridor?.destinationCountry ?? null;
+  /* How many decimals this origin's money has. The CFA francs have none, so a
+     sender typing 200000 means two hundred thousand francs and not two
+     thousand — a hundredfold error that still looks like a plausible number.
+     Read off the corridor's own minimum rather than shipping a currency table
+     to the browser: the server already formatted it to the right precision. */
+  const sendDecimals = decimalsOf(corridor?.minSend.amount);
 
   useEffect(() => {
     void (async () => {
@@ -155,6 +197,38 @@ function SendFlow() {
     }
   }, [corridor, payinMethod]);
 
+  /* Whether this corridor's origin has an exchange-control regime, and what is
+     left of the sender's allowance under it.
+
+     Asked per corridor because the answer is "no" almost everywhere: a Lagos
+     sender gets `required: false` and never sees the step. Asked again on every
+     corridor change because the regime belongs to where the money leaves from,
+     not to where it lands. */
+  useEffect(() => {
+    if (corridorId === '') return;
+    let current = true;
+    void (async () => {
+      const info = await api<ExchangeControl>(
+        `/transfers/exchange-control?corridorId=${encodeURIComponent(corridorId)}`,
+      );
+      if (!current) return;
+      setExchangeControl(info);
+      // A declaration belongs to the corridor it was made on. Carrying a
+      // category or an affirmation across a corridor change would file a
+      // South African reason code against a payment that left Accra.
+      setCategoryCode('');
+      setDeclarationAccepted(false);
+    })().catch(() => {
+      // Failing closed: without an answer we cannot know a declaration is
+      // unnecessary, and the API refuses an undeclared payment anyway. The
+      // sender sees that refusal rather than a silent, wrong "not required".
+      if (current) setExchangeControl(NO_EXCHANGE_CONTROL);
+    });
+    return () => {
+      current = false;
+    };
+  }, [corridorId]);
+
   /* The quote countdown. A quote is a promise with an expiry, and the sender
      can see it tick — better than discovering it expired on submit. */
   useEffect(() => {
@@ -175,7 +249,7 @@ function SendFlow() {
     setBusy(true);
     setError(null);
     try {
-      const minorUnits = toMinorUnits(amountText);
+      const minorUnits = toMinorUnits(amountText, sendDecimals);
       const created = await api<Quote>('/quotes', {
         method: 'POST',
         body: { corridorId, sendMinorUnits: minorUnits },
@@ -187,7 +261,7 @@ function SendFlow() {
     } finally {
       setBusy(false);
     }
-  }, [amountText, corridorId, t]);
+  }, [amountText, corridorId, sendDecimals, t]);
 
   /* The recipient the sender is describing, in the shape the API expects.
      Built in one place because the enquiry and the save must describe the same
@@ -262,6 +336,17 @@ function SendFlow() {
           payinMethod,
           purpose,
           confirmedRecipientName: selectedRecipient.resolvedName ?? '',
+          // Omitted entirely where no regime applies. Sending an empty object
+          // would fail schema validation on corridors that need nothing.
+          ...(exchangeControl.required
+            ? {
+                exchangeControl: {
+                  categoryCode,
+                  declaredElsewhereMinorUnits: toMinorUnits(usedElsewhereText, sendDecimals),
+                  declarationAccepted,
+                },
+              }
+            : {}),
         },
       });
       router.push(`/transfers/${transfer.id}`);
@@ -361,6 +446,14 @@ function SendFlow() {
           setPayinMethod={setPayinMethod}
           secondsLeft={secondsLeft}
           busy={busy}
+          exchangeControl={exchangeControl}
+          sendDecimals={sendDecimals}
+          categoryCode={categoryCode}
+          setCategoryCode={setCategoryCode}
+          usedElsewhereText={usedElsewhereText}
+          setUsedElsewhereText={setUsedElsewhereText}
+          declarationAccepted={declarationAccepted}
+          setDeclarationAccepted={setDeclarationAccepted}
           onBack={() => setStep(1)}
           onConfirm={confirmTransfer}
         />
@@ -714,11 +807,24 @@ function ReviewStep(props: {
   setPayinMethod: (value: string) => void;
   secondsLeft: number;
   busy: boolean;
+  exchangeControl: ExchangeControl;
+  sendDecimals: number;
+  categoryCode: string;
+  setCategoryCode: (value: string) => void;
+  usedElsewhereText: string;
+  setUsedElsewhereText: (value: string) => void;
+  declarationAccepted: boolean;
+  setDeclarationAccepted: (value: boolean) => void;
   onBack: () => void;
   onConfirm: () => void;
 }) {
   const { t } = useApp();
   const expired = props.secondsLeft <= 0;
+  /* A declaration that is required and not complete stops the confirm button
+     here as well as at the API. Both, not either: the button is a courtesy and
+     the server is the control. */
+  const declarationIncomplete =
+    props.exchangeControl.required && (props.categoryCode === '' || !props.declarationAccepted);
 
   return (
     <div className="mp-stack">
@@ -774,6 +880,19 @@ function ReviewStep(props: {
         <p className="mp-small mp-muted">{t('send.review.personalOnly')}</p>
       </section>
 
+      {props.exchangeControl.required ? (
+        <DeclarationStep
+          info={props.exchangeControl}
+          decimals={props.sendDecimals}
+          categoryCode={props.categoryCode}
+          setCategoryCode={props.setCategoryCode}
+          usedElsewhereText={props.usedElsewhereText}
+          setUsedElsewhereText={props.setUsedElsewhereText}
+          accepted={props.declarationAccepted}
+          setAccepted={props.setDeclarationAccepted}
+        />
+      ) : null}
+
       {expired ? (
         <div className="mp-notice mp-notice--warning">{t('send.amount.expired')}</div>
       ) : null}
@@ -781,7 +900,7 @@ function ReviewStep(props: {
       <button
         className="mp-button mp-button--primary mp-button--block"
         onClick={props.onConfirm}
-        disabled={props.busy || expired}
+        disabled={props.busy || expired || declarationIncomplete}
       >
         {t('send.review.commit')} · {props.quote.totalToPay.formatted}
       </button>
@@ -793,12 +912,162 @@ function ReviewStep(props: {
   );
 }
 
+/* ------------------------------------------------------- step: declaration */
+
+/**
+ * The exchange-control declaration.
+ *
+ * Shown only where the origin has a regime — today South Africa under SARB.
+ * Three things are asked for and each is load-bearing:
+ *
+ *  - the published reason code, because the Authorised Dealer files against it
+ *    and "other" is not a category a regulator accepts;
+ *  - what the sender has already used elsewhere this year, because an allowance
+ *    is personal and spans every provider they use. We cannot verify it and we
+ *    must not ignore it: counting only what we can see would confidently permit
+ *    a payment that breaches the regulation;
+ *  - an affirmation, which is recorded rather than decorative.
+ *
+ * The remaining figure is shown with the caveat that it is what we know about.
+ * Presenting our own tally as the true headroom would be a lie the sender acts
+ * on, and they are the only party here who knows the real number.
+ */
+function DeclarationStep(props: {
+  info: ExchangeControl;
+  decimals: number;
+  categoryCode: string;
+  setCategoryCode: (value: string) => void;
+  usedElsewhereText: string;
+  setUsedElsewhereText: (value: string) => void;
+  accepted: boolean;
+  setAccepted: (value: boolean) => void;
+}) {
+  const { t } = useApp();
+  const { info } = props;
+  const currency = info.currency;
+
+  return (
+    <section className="mp-card mp-stack">
+      <h2 className="mp-card__title">{t('send.declaration.title')}</h2>
+      <p className="mp-small mp-muted">
+        {t('send.declaration.intro', {
+          country: info.regimeCountryName ?? info.regimeCountry ?? '',
+          authority: info.authority ?? '',
+          reportedBy: info.reportedBy ?? '',
+        })}
+      </p>
+
+      <Field label={t('send.declaration.category')}>
+        <select
+          className="mp-select"
+          value={props.categoryCode}
+          onChange={(e) => props.setCategoryCode(e.target.value)}
+        >
+          <option value="">{t('send.declaration.categoryPlaceholder')}</option>
+          {info.categories.map((category) => (
+            <option key={category.code} value={category.code}>
+              {category.code} · {category.label}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <div className="mp-breakdown mp-numeric">
+        <div className="mp-breakdown__row">
+          <span>{t('send.declaration.allowance', { year: info.allowanceYear ?? '' })}</span>
+          <span>{formatMinorUnits(info.annualMinorUnits, props.decimals, currency)}</span>
+        </div>
+        <div className="mp-breakdown__row">
+          <span>{t('send.declaration.usedThroughUs')}</span>
+          <span>{formatMinorUnits(info.usedThroughUsMinorUnits, props.decimals, currency)}</span>
+        </div>
+        <div className="mp-breakdown__row mp-breakdown__row--highlight">
+          <span>{t('send.declaration.remaining')}</span>
+          <span>{formatMinorUnits(info.remainingMinorUnits, props.decimals, currency)}</span>
+        </div>
+      </div>
+
+      <Field
+        label={t('send.declaration.usedElsewhere')}
+        hint={t('send.declaration.usedElsewhereHint')}
+      >
+        <input
+          className="mp-input mp-numeric"
+          inputMode="decimal"
+          value={props.usedElsewhereText}
+          onChange={(e) => props.setUsedElsewhereText(e.target.value.replace(/[^\d.]/g, ''))}
+          aria-label={t('send.declaration.usedElsewhere')}
+        />
+      </Field>
+
+      <p className="mp-small mp-muted">{t('send.declaration.caveat')}</p>
+
+      <label
+        className="mp-small"
+        style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'flex-start' }}
+      >
+        <input
+          type="checkbox"
+          checked={props.accepted}
+          onChange={(e) => props.setAccepted(e.target.checked)}
+          style={{ width: 20, height: 20, marginTop: 2, flex: 'none' }}
+        />
+        <span>{t('send.declaration.affirm')}</span>
+      </label>
+
+      {props.categoryCode === '' ? (
+        <p className="mp-small mp-muted">{t('send.declaration.categoryRequired')}</p>
+      ) : props.accepted ? null : (
+        <p className="mp-small mp-muted">{t('send.declaration.affirmRequired')}</p>
+      )}
+    </section>
+  );
+}
+
 /* ----------------------------------------------------------------- helpers */
 
-/** "100000.50" → "10000050". Never goes through a float. */
-function toMinorUnits(input: string): string {
+/**
+ * "100000.50" → "10000050", at the currency's own precision.
+ *
+ * The decimal count is a parameter rather than a constant two: XAF and XOF have
+ * none, and treating a francophone sender's 200000 as 20 000 000 minor units
+ * would multiply their transfer by a hundred. Never goes through a float.
+ */
+function toMinorUnits(input: string, decimals: number): string {
   const [whole = '0', fraction = ''] = input.split('.');
-  return `${whole || '0'}${fraction.padEnd(2, '0').slice(0, 2)}`.replace(/^0+(?=\d)/, '');
+  const scaled =
+    decimals === 0
+      ? whole || '0'
+      : `${whole || '0'}${fraction.padEnd(decimals, '0').slice(0, decimals)}`;
+  return scaled.replace(/^0+(?=\d)/, '');
+}
+
+/**
+ * How many decimals a currency has, read off an amount the server formatted.
+ *
+ * `Money.toDecimalString()` always emits exactly `exponent` fraction digits, so
+ * the corridor's own minimum carries the precision without the browser needing
+ * a currency table. Defaults to two when there is no corridor yet.
+ */
+function decimalsOf(amount: string | undefined): number {
+  if (amount === undefined) return 2;
+  return amount.split('.')[1]?.length ?? 0;
+}
+
+/** Minor units to a grouped decimal string, for display only. */
+function formatMinorUnits(
+  minorUnits: string | null,
+  decimals: number,
+  currency: string | null,
+): string {
+  if (minorUnits === null) return '—';
+  const digits = minorUnits.padStart(decimals + 1, '0');
+  const whole = digits
+    .slice(0, digits.length - decimals)
+    // A non-breaking space, so a grouped amount never wraps mid-number.
+    .replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+  const fraction = decimals === 0 ? '' : `.${digits.slice(digits.length - decimals)}`;
+  return `${whole}${fraction}${currency === null ? '' : `\u00a0${currency}`}`;
 }
 
 function messageFor(caught: unknown, t: (key: TranslationKey) => string): string {

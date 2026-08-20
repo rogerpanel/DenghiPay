@@ -18,7 +18,7 @@ import { PayinProvider, PayinRequest } from '../ports/payin-provider';
 import { DateRange, RawCallback, StatementLine } from '../ports/payout-provider';
 
 /** Where the money is collected from, which decides the rails and the wording. */
-export type PayinMarket = 'RU' | 'NG' | 'GH' | 'CM' | 'BJ';
+export type PayinMarket = 'RU' | 'NG' | 'GH' | 'ZA' | 'CM' | 'BJ';
 
 interface SimulatedPayin {
   readonly providerRef: ProviderRef;
@@ -53,6 +53,11 @@ const METHODS_BY_MARKET: Readonly<Record<PayinMarket, readonly PayinMethod[]>> =
   // Ghana collects by debiting a mobile-money wallet. Bank transfer exists too,
   // but wallets are where the money is.
   GH: ['MOBILE_MONEY'],
+  // South Africa collects by EFT push to a dedicated account. Wallets exist but
+  // bank transfer is where the volume is, and a push rail keeps the sender's
+  // own bank in the loop — which matters under exchange control, because their
+  // Authorised Dealer sees the payment leave.
+  ZA: ['VIRTUAL_ACCOUNT'],
   // Cameroon and Benin are wallet-first markets by a wide margin. Both collect
   // the same way Ghana does: we request the debit, the holder approves it on
   // their handset.
@@ -65,6 +70,7 @@ const SWITCH_PREFIX: Readonly<Record<PayinMarket, string>> = {
   RU: 'SBP',
   NG: 'NIP',
   GH: 'GHIPSS',
+  ZA: 'BANKSERV',
   CM: 'GIMAC',
   BJ: 'GIM-UEMOA',
 };
@@ -200,6 +206,16 @@ export class PayinSimulator implements PayinProvider {
         // A Nigerian NUBAN is ten digits; a Russian settlement account is
         // twenty and starts 40817810. Same rail, different shape — and getting
         // the shape wrong is how a demonstration stops looking real.
+        if (this.market === 'ZA') {
+          // A South African account number is nine to eleven digits, and the
+          // branch code identifies the bank rather than a branch.
+          return {
+            kind: 'VIRTUAL_ACCOUNT',
+            accountNumber: digits.padEnd(10, '0').slice(0, 10),
+            bankName: 'Simulated Collection Bank (ZA) · branch 470010',
+            reference: req.reference,
+          };
+        }
         return this.market === 'NG'
           ? {
               kind: 'VIRTUAL_ACCOUNT',
@@ -356,6 +372,13 @@ export function createGhanaPayinSimulator(
   options: PayinSimulatorOptions = DEFAULT_OPTIONS,
 ): PayinSimulator {
   return new PayinSimulator('payin-gh-sim', corridors, 'GH', options);
+}
+
+export function createSouthAfricaPayinSimulator(
+  corridors: readonly CorridorId[],
+  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
+): PayinSimulator {
+  return new PayinSimulator('payin-za-sim', corridors, 'ZA', options);
 }
 
 export function createCameroonPayinSimulator(

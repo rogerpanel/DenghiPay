@@ -4,9 +4,10 @@ import { PrismaService } from '../../common/prisma.service';
 /**
  * ZA partition — South African recipient personal data. POPIA.
  *
- * There is no sender repository beside this one, and that is the design: South
- * Africa receives and does not send until SARB exchange-control reporting
- * exists, so a South African sender has nowhere to be stored.
+ * Its sender counterpart is `sender-profile.repository.ts`, added when South
+ * Africa became an origin: a ZA sender's row carries an identity number and an
+ * exchange-control status, because a declaration cannot be decided without
+ * them.
  *
  * Reached only through `PartitionGateway`.
  */

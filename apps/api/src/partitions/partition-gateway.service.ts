@@ -10,6 +10,7 @@ import { SenderProfileNgRepository } from './ng/sender-profile.repository';
 import { RecipientProfileGhRepository } from './gh/recipient-profile.repository';
 import { SenderProfileGhRepository } from './gh/sender-profile.repository';
 import { RecipientProfileZaRepository } from './za/recipient-profile.repository';
+import { SenderProfileZaRepository } from './za/sender-profile.repository';
 import { RecipientProfileCmRepository } from './cm/recipient-profile.repository';
 import { SenderProfileCmRepository } from './cm/sender-profile.repository';
 import { RecipientProfileBjRepository } from './bj/recipient-profile.repository';
@@ -83,12 +84,11 @@ export type RecipientProjection =
  * separate instances in separate jurisdictions, and only the connection string
  * changes.
  *
- * Six partitions now, and they are not symmetrical. Russia holds senders only;
- * South Africa holds recipients only, because it receives and does not send;
- * the other four hold both. Every lookup dispatches on the partition rather
- * than on the shape of the data, which is the fix for a bug the earlier version
- * carried: recipients were routed by payout **method**, so any bank account
- * landed in the Nigerian store regardless of which country it belonged to.
+ * Six partitions, and they are not symmetrical: Russia holds senders only, the
+ * other five hold both. Every lookup dispatches on the partition rather than on
+ * the shape of the data, which is the fix for a bug an earlier version carried —
+ * recipients were routed by payout **method**, so any bank account landed in the
+ * Nigerian store regardless of which country it belonged to.
  */
 @Injectable()
 export class PartitionGateway {
@@ -105,6 +105,7 @@ export class PartitionGateway {
     private readonly ngSender: SenderProfileNgRepository,
     private readonly ghSender: SenderProfileGhRepository,
     private readonly za: RecipientProfileZaRepository,
+    private readonly zaSender: SenderProfileZaRepository,
     private readonly cm: RecipientProfileCmRepository,
     private readonly cmSender: SenderProfileCmRepository,
     private readonly bj: RecipientProfileBjRepository,
@@ -114,6 +115,7 @@ export class PartitionGateway {
       RU: this.ru,
       NG: this.ngSender,
       GH: this.ghSender,
+      ZA: this.zaSender,
       CM: this.cmSender,
       BJ: this.bjSender,
     };
@@ -135,9 +137,11 @@ export class PartitionGateway {
    * in Cameroon and Benin — so each store keeps its own shape rather than a
    * lowest common denominator with most columns null.
    *
-   * South Africa is absent and stays absent until exchange-control reporting is
-   * built: a South African sender has nowhere to be stored, which is a stronger
-   * guarantee than a flag.
+   * South Africa joined this list when exchange control was built (BUILD_PLAN
+   * 4.3c). Its store carries two fields no other partition needs — an identity
+   * number the Authorised Dealer reports against, and a tax reference the
+   * larger allowance requires — which is why it is a store of its own rather
+   * than nullable columns on somebody else's.
    */
   async upsertSenderProfile(input: {
     readonly piiToken: string;
@@ -154,6 +158,8 @@ export class PartitionGateway {
     readonly bvn?: string;
     readonly ghanaCardNo?: string;
     readonly nationalIdNo?: string;
+    readonly taxReference?: string;
+    readonly exchangeControlStatus?: string;
     readonly walletMsisdn?: string;
     readonly walletNetwork?: string;
     readonly documents: ReadonlyArray<Record<string, unknown>>;
@@ -167,6 +173,9 @@ export class PartitionGateway {
         return;
       case 'GH':
         await this.ghSender.upsert(input);
+        return;
+      case 'ZA':
+        await this.zaSender.upsert(input);
         return;
       case 'CM':
         await this.cmSender.upsert(input);
@@ -314,6 +323,41 @@ export class PartitionGateway {
     return null;
   }
 
+  /**
+   * What the exchange-control gate needs about a sender.
+   *
+   * Only South Africa answers this today, because only South Africa has a
+   * regime. Null for everyone else, and the caller reads null as "no regime
+   * applies" rather than as a failure.
+   */
+  async exchangeControlSubject(
+    piiToken: string,
+    partition: string,
+  ): Promise<{ ageYears: number; taxReference: string | null; status: string | null } | null> {
+    if (partition !== 'ZA') return null;
+    return this.zaSender.exchangeControlSubject(piiToken);
+  }
+
+  /**
+   * The identity fields an Authorised Dealer reports a payment against.
+   *
+   * The widest projection in this file, and the only one carrying a name and a
+   * national identity number together. It exists because the reporting
+   * obligation genuinely requires them, it is read at the moment a report is
+   * produced, and it is never persisted in the neutral tier.
+   */
+  async reportingSubject(
+    piiToken: string,
+    partition: string,
+  ): Promise<{
+    fullName: string;
+    nationalIdNo: string | null;
+    taxReference: string | null;
+  } | null> {
+    if (partition !== 'ZA') return null;
+    return this.zaSender.reportingSubject(piiToken);
+  }
+
   /** Health of each partition store, for the readiness endpoint. */
   async health(): Promise<Record<string, boolean>> {
     const probe = async (fn: () => Promise<unknown>): Promise<boolean> => {
@@ -336,7 +380,11 @@ export class PartitionGateway {
           (await this.prisma.recipientProfileGh.count()) +
           (await this.prisma.senderProfileGh.count()),
       ),
-      ZA: await probe(() => this.prisma.recipientProfileZa.count()),
+      ZA: await probe(
+        async () =>
+          (await this.prisma.recipientProfileZa.count()) +
+          (await this.prisma.senderProfileZa.count()),
+      ),
       CM: await probe(
         async () =>
           (await this.prisma.recipientProfileCm.count()) +

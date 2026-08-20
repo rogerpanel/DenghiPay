@@ -103,7 +103,7 @@ describe('intra-African send limits', () => {
   });
 
   it('gives tier 0 a row in every send currency, so nobody moves money unverified', () => {
-    for (const currency of ['RUB', 'BYN', 'NGN', 'GHS', 'XAF', 'XOF'] as const) {
+    for (const currency of ['RUB', 'BYN', 'NGN', 'GHS', 'ZAR', 'XAF', 'XOF'] as const) {
       expect(limitsFor(0, currency)?.perTransferMinorUnits).toBe(0n);
     }
   });
@@ -133,15 +133,20 @@ describe('intra-African send limits', () => {
   });
 
   /**
-   * South Africa receives and does not send, pending exchange-control work, so
-   * the rand has no tier row at all. This test is the enforcement: if someone
-   * adds a ZA origin without building balance-of-payments reporting, the send
-   * is refused here rather than succeeding quietly.
+   * The rand gained tier rows when South Africa became an origin. These are the
+   * KYC caps only: a South African sender is usually bounded first by their
+   * exchange-control allowance, which is a different question answered in
+   * `exchange-control.ts`. Both apply, and the tighter one wins.
    */
-  it('refuses a rand send outright, because ZAR is not a send currency', () => {
-    const decision = checkLimits(3, Money.fromDecimalString('100.00', 'ZAR'), noUsage);
+  it('caps a rand sender by tier, independently of exchange control', () => {
+    expect(checkLimits(2, Money.fromDecimalString('40000.00', 'ZAR'), noUsage).allowed).toBe(true);
+
+    const decision = checkLimits(2, Money.fromDecimalString('60000.00', 'ZAR'), noUsage);
     expect(decision.allowed).toBe(false);
-    if (!decision.allowed) expect(decision.upgradeTo).toBeNull();
+    if (!decision.allowed) {
+      expect(decision.window).toBe('PER_TRANSFER');
+      expect(decision.upgradeTo).toBe(3);
+    }
   });
 });
 

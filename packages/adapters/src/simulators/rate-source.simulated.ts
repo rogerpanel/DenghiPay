@@ -17,10 +17,10 @@ import { RateObservation, RateSource } from '../ports/rate-source';
  * Units of each currency per one US dollar.
  *
  * Every corridor pair is derived from this table rather than written out by
- * hand. With four origins and five destinations there are sixteen ordered pairs
- * today and more with every country; typing them individually guarantees that
- * one eventually disagrees with its own reciprocal by more than a spread, and
- * nobody notices until a treasury reconciliation.
+ * hand. Five origins into five destinations is twenty ordered pairs, and more
+ * with every country; typing them individually guarantees that one eventually
+ * disagrees with its own reciprocal by more than a spread, and nobody notices
+ * until a treasury reconciliation.
  *
  * The CFA francs sit at the euro peg — 655.957 XAF or XOF to the euro, fixed
  * and guaranteed — carried through to the dollar at roughly 1.08 USD/EUR. They
@@ -57,7 +57,7 @@ const DIRECT_RATES: Readonly<Record<string, string>> = {
  *
  * Origins first — a pair is only generated where somebody can send.
  */
-const ORIGIN_CURRENCIES: readonly CurrencyCode[] = ['NGN', 'GHS', 'XAF', 'XOF'];
+const ORIGIN_CURRENCIES: readonly CurrencyCode[] = ['NGN', 'GHS', 'ZAR', 'XAF', 'XOF'];
 const DESTINATION_CURRENCIES: readonly CurrencyCode[] = ['NGN', 'GHS', 'ZAR', 'XAF', 'XOF'];
 
 /**

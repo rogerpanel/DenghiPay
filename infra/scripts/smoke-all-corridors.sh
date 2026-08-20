@@ -19,8 +19,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 API="${API:-http://localhost:4000}"
 
-# South Africa is a destination only, so it never appears on the left.
-ORIGINS=(NG GH CM BJ)
+# Every African country here is both an origin and a destination. South Africa
+# joined the left-hand side in 4.3c, when exchange control was built: outward
+# rand payments carry a BoP category and count against the sender's allowance,
+# which smoke-transfer.sh now declares.
+ORIGINS=(NG GH ZA CM BJ)
 DESTINATIONS=(NG GH ZA CM BJ)
 
 PASSED=()

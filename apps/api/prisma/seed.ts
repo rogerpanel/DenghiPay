@@ -56,19 +56,17 @@ const DEV_STAFF_PASSWORD = 'morapay-local-staff-2026';
  * twenty-five. What varies between them is only the pricing, which is a
  * function of the pair, so that is the only thing stated per corridor.
  *
- * South Africa appears as a destination and never as an origin: outward
- * transfers from South Africa need SARB balance-of-payments reporting and
- * allowance tracking that this codebase does not model, and
- * `assertCorridorMayMoveLiveFunds` refuses to describe a ZA-origin corridor at
- * all. Adding 'ZA' to ORIGINS below would fail at seed time, which is the
- * intended outcome.
+ * South Africa is an origin as of BUILD_PLAN 4.3c. Its outward payments are
+ * subject to SARB exchange control, which is enforced above this layer: a
+ * declaration category and an annual allowance check, neither of which any
+ * other origin needs. The corridor rows themselves are ordinary.
  *
  * These are enabled because with LIVE_FUNDS_ENABLED=false nothing moves and
  * every direction needs to be demonstrable end to end. The licence gate is
  * what stops them the moment live funds are switched on without the paperwork
  * — see docs/CORRIDORS.md and OPEN_ITEMS B6.
  */
-const ORIGINS = ['NG', 'GH', 'CM', 'BJ'] as const;
+const ORIGINS = ['NG', 'GH', 'ZA', 'CM', 'BJ'] as const;
 const DESTINATIONS = ['NG', 'GH', 'ZA', 'CM', 'BJ'] as const;
 
 type AfricanCountry = (typeof DESTINATIONS)[number];
@@ -108,11 +106,12 @@ const COUNTRY_RAILS: Readonly<
   },
   ZA: {
     currency: 'ZAR',
-    payin: [], // Receive-only: no collection rail exists here.
+    payin: ['VIRTUAL_ACCOUNT'],
     payout: ['BANK_ACCOUNT'],
-    minSend: 0n,
-    maxSend: 0n,
-    fee: 0n,
+    minSend: 10_000n, //       R100,00
+    maxSend: 10_000_000n, //   R100 000,00 — well inside the annual allowance,
+    //                         which is enforced per sender rather than per corridor.
+    fee: 5_000n, //            R50,00
   },
   CM: {
     currency: 'XAF',

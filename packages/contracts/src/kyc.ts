@@ -48,6 +48,20 @@ export const kycSubmitRequestSchema = z.object({
       .string()
       .regex(/^GHA-\d{9}-\d$/, 'a Ghana Card number looks like GHA-123456789-0')
       .optional(),
+    /** South Africa: the identity number an Authorised Dealer reports against. */
+    nationalIdNo: z.string().min(6).max(20).optional(),
+    /**
+     * SARS tax reference. Required before the investment allowance may be used,
+     * and captured at verification because that is where identity evidence
+     * already is.
+     */
+    taxReference: z.string().min(6).max(20).optional(),
+    /**
+     * Exchange-control status. Only RESIDENT is supported today: temporary and
+     * non-residents have different allowances, and guessing which would be
+     * worse than refusing.
+     */
+    exchangeControlStatus: z.enum(['RESIDENT', 'TEMPORARY_RESIDENT', 'NON_RESIDENT']).optional(),
     /**
      * The wallet we debit when collecting inside Ghana. Asked for at
      * verification because that is where identity evidence already is, and
@@ -106,6 +120,12 @@ export const kycRequirementsResponseSchema = z.object({
     daily: z.string(),
     monthly: z.string(),
     currency: z.string(),
+    /**
+     * Decimal places in this currency's minor unit. Sent because the client
+     * must not guess: XAF and XOF have none, and a client assuming two would
+     * show a Beninese sender a limit a hundred times smaller than it is.
+     */
+    decimals: z.number().int().min(0).max(8),
   }),
 });
 export type KycRequirementsResponse = z.infer<typeof kycRequirementsResponseSchema>;

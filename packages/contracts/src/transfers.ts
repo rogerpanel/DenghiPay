@@ -17,8 +17,63 @@ export const createTransferRequestSchema = z.object({
   purpose: transferPurposeSchema,
   /** The sender confirms the name the institution returned, not the one they typed. */
   confirmedRecipientName: z.string().min(2).max(120),
+  /**
+   * Exchange-control declaration, required only on corridors whose origin has a
+   * regime (today: South Africa under SARB).
+   *
+   * Optional in the schema and mandatory in the service, deliberately. The
+   * requirement depends on the corridor, which the schema cannot see; making it
+   * required here would break every other corridor, and making it optional in
+   * both places would let an undeclared payment through. The API refuses with
+   * EXCHANGE_CONTROL_CATEGORY_REQUIRED when the corridor needs one and it is
+   * absent.
+   */
+  exchangeControl: z
+    .object({
+      /** Published reason code, e.g. a SARB balance-of-payments category. */
+      categoryCode: z.string().min(1).max(16),
+      /**
+       * What the sender says they have already used of this year's allowance
+       * through other providers. Minor units, as a string.
+       *
+       * We cannot verify it and we must not ignore it: an allowance is personal
+       * and spans every provider a person uses, so counting only what we can
+       * see would permit a payment that breaches the regulation.
+       */
+      declaredElsewhereMinorUnits: z
+        .string()
+        .regex(/^\d+$/, 'must be a whole number of minor units')
+        .default('0'),
+      /** The sender affirms the declaration is true. Recorded, not decorative. */
+      declarationAccepted: z.literal(true, {
+        errorMap: () => ({ message: 'the declaration must be affirmed' }),
+      }),
+    })
+    .optional(),
 });
 export type CreateTransferRequest = z.infer<typeof createTransferRequestSchema>;
+
+/**
+ * What a sender needs to complete a declaration, and what is left of their
+ * allowance. Served per corridor, because most corridors need none of it.
+ */
+export const exchangeControlInfoSchema = z.object({
+  required: z.boolean(),
+  regimeCountry: z.string().nullable(),
+  /** The country's name, because a sender reads a sentence, not a code. */
+  regimeCountryName: z.string().nullable(),
+  authority: z.string().nullable(),
+  reportedBy: z.string().nullable(),
+  categories: z.array(z.object({ code: z.string(), label: z.string(), allowance: z.string() })),
+  allowanceYear: z.number().int().nullable(),
+  annualMinorUnits: z.string().nullable(),
+  /** What we believe is left. A ceiling we can see, not the true one. */
+  remainingMinorUnits: z.string().nullable(),
+  usedThroughUsMinorUnits: z.string().nullable(),
+  declaredElsewhereMinorUnits: z.string().nullable(),
+  currency: z.string().nullable(),
+});
+export type ExchangeControlInfo = z.infer<typeof exchangeControlInfoSchema>;
 
 export const payinInstructionsSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('SBP'), deepLink: z.string(), expiresAt: z.string() }),

@@ -202,7 +202,7 @@ any money is committed.
 
 ---
 
-## Act 2b — The other side of the map (6 minutes)
+## Act 2b — The other side of the map (9 minutes)
 
 Everything so far has been money leaving Russia. This act is the second product:
 transfers **between** African countries, both directions, with nothing Russian in
@@ -245,9 +245,34 @@ them at all.
    two separate central banks, and the two currencies cannot be added together
    anywhere in the system.
 
-6. Optional, if someone asks about South Africa: try to send _from_ there. You
-   cannot. It is not in the residency list at registration, there is no
-   corridor, and the licence gate refuses to describe one.
+6. Sign in as `thandi@demo.morapay.local` — Cape Town — and send **R500** to
+   _Brother — Lagos_. This is the act's best screen and worth two minutes.
+
+   Before the confirm button there is a step nobody else in the demo sees: an
+   **exchange control declaration**. South Africa requires every outward payment
+   to be reported under a published balance-of-payments category, so she picks
+   one — 417, migrant worker remittance — and sees what is left of her annual
+   allowance.
+
+   Read the caveat under that figure out loud. It says the number is what
+   _we_ can see, not what is left: the allowance is hers personally and covers
+   every provider she uses, so she is asked what she has already used elsewhere
+   this year and we count it. We could have shown our own total and called it
+   the headroom. That would have been a confident number and sometimes a wrong
+   one, and being wrong here means permitting a payment that breaches the
+   regulation.
+
+7. Two refusals worth showing, both instant. Clear the category and confirm:
+   refused, because an undeclared payment is not something we can file. Then set
+   "already used elsewhere" to R1 000 000 and confirm: refused again, and the
+   message names what is left rather than saying no.
+
+8. Back office → _Exchange control_, signed in as `compliance@morapay.local`.
+   Thandi's declaration is there, joined to her name and identity number, ready
+   to hand to the Authorised Dealer as a CSV. Two things to point at: an
+   administrator cannot open this page at all — identity numbers are compliance
+   data — and marking a declaration "reported" is a separate deliberate act,
+   because downloading a file is not the same as sending it.
 
 **The question this act invites, and the honest answer.** Somebody will ask
 whether this multiplies the business. It multiplies the _addressable_ flow and
@@ -256,14 +281,20 @@ debiting cedi wallets in Ghana, XAF wallets in Cameroon and XOF wallets in Benin
 are four licensed activities in their own right, and none is implied by the
 inbound-remittance arrangements the ruble corridors need. NG→GH does not
 authorise GH→NG. A BCEAO approval in Benin says nothing about BEAC in Cameroon,
-even though the two currencies are at par.
+even though the two currencies are at par. South Africa adds a second kind of
+surface again: not just a licence but a reporting obligation, which is why it
+took a phase of its own rather than a row in a table.
 
-South Africa is the sharpest version of the point, and worth making out loud: we
-deliberately did **not** build it as an origin. Outward payments from South
-Africa are reported under balance-of-payments codes and counted against each
-sender's annual allowance — a product we have not built, not merely a licence we
-have not signed. So South Africa receives and does not send, and the code makes a
-South African sender unrepresentable rather than merely discouraged.
+South Africa is the sharpest version of the point, and worth making out loud.
+For two phases we deliberately did **not** build it as an origin: outward
+payments from South Africa are reported under balance-of-payments codes and
+counted against each sender's annual allowance — a product we had not built,
+not merely a licence we had not signed. Rather than fake it, a South African
+sender was made unrepresentable. That product is now built, and the difference
+between the two situations is exactly the point: a South African sender declares
+a category, sees what is left of their allowance, and the declaration reaches
+the back office for the Authorised Dealer to file. What is still missing is the
+Dealer relationship — a licence, which the gate below is what enforces.
 
 That is why the code carries a licence gate rather than a switch. With live funds
 on, a corridor is only reachable if the specific authorisations behind it are

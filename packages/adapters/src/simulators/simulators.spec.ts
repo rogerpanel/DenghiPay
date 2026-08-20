@@ -663,9 +663,20 @@ describe('rate source', () => {
     expect((await source.fetch('XOF', 'XAF')).rate.toDecimalString()).toBe('1.000000');
   });
 
-  it('has no rate out of South Africa, because nobody sends from there', async () => {
+  /**
+   * South Africa was receive-only when it was first added, so this asserted the
+   * absence of a rate out of it. Exchange control (4.3c) made it an origin, so
+   * the assertion is inverted: the rate must exist, in both directions, and a
+   * currency that is genuinely not an origin must still be refused rather than
+   * invented.
+   */
+  it('prices out of South Africa now that it is an origin, and still refuses one that is not', async () => {
     const source = new SimulatedRateSource({ wobbleBps: 0 });
-    await expect(source.fetch('ZAR', 'NGN')).rejects.toThrow(/no rate/i);
+    expect(Number((await source.fetch('ZAR', 'NGN')).rate.toDecimalString())).toBeGreaterThan(0);
+    expect(Number((await source.fetch('NGN', 'ZAR')).rate.toDecimalString())).toBeGreaterThan(0);
+    // The ruble is a send currency but not an intra-African one, and USDT is a
+    // treasury instrument. Neither has a cross in this table.
+    await expect(source.fetch('ZAR', 'USDT')).rejects.toThrow(/no rate/i);
   });
 
   /**

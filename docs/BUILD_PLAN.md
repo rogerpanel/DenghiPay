@@ -220,13 +220,31 @@ _DoD:_ Both directions reach COMPLETED with no callback; the ledger balances in 
 Three things about these countries were new, and two of them changed what got built:
 
 - **The CFA francs have no decimals.** XAF and XOF carry an exponent of zero, so `minorUnits` counts whole francs. They are also at par with each other via a shared euro peg — which is a fact about the peg, not a licence to substitute one for the other, since BEAC and BCEAO are separate central banks.
-- **South Africa receives and does not send.** Outward transfers from South Africa fall under SARB exchange control, which needs balance-of-payments reporting and allowance tracking that this codebase does not model. Rather than build an origin that could not lawfully run, there is no ZA collection authorisation and no ZA sender store, and the licence gate _throws_ for a ZA-origin corridor rather than finding nothing missing. Tracked as OPEN_ITEMS B8.
+- **South Africa receives and does not send.** Outward transfers from South Africa fall under SARB exchange control, which needs balance-of-payments reporting and allowance tracking that this codebase does not model. Rather than build an origin that could not lawfully run, there is no ZA collection authorisation and no ZA sender store, and the licence gate _throws_ for a ZA-origin corridor rather than finding nothing missing. Tracked as OPEN_ITEMS B8. **Superseded by 4.3c**, which built the capability; the throw survives for a country the map has never heard of.
 - **French was already there.** All three locales have shipped since the sender PWA, so the francophone markets needed translations of new strings, not a new i18n layer.
 
 Step 4.3a claimed adding an origin is a phase while adding a corridor is configuration. Doing it three more times bore that out and cost one refactor that should have happened earlier: the ledger's float account types carried the currency in the type name (`FLOAT_RUB`, `FLOAT_NGN`, `FLOAT_GHS`) beside a currency column holding the same fact. That is now one `FLOAT` type keyed by currency, migrated in place with balances untouched, so a seventh currency costs nothing.
 
 Two latent defects surfaced and were fixed: name enquiry chose a payout provider by fabricating an `RU-` corridor id from the recipient's country, and recipients were filed by payout **method**, which would have put a Johannesburg bank account in the Nigerian partition.
 _DoD:_ All sixteen corridors reach COMPLETED; the ledger nets to zero in NGN, GHS, ZAR, XAF, XOF and RUB; a ZA-origin corridor cannot be described, let alone seeded.
+
+**4.3c Exchange control, and South Africa as an origin (added 2026-08-20, out of plan order).** Step 4.3b left South Africa receive-only and tracked the reason as OPEN_ITEMS B8: sending out of it is not another licence but a different product, because every outward payment is reported under a balance-of-payments category and measured against the sender's annual allowance. That product is now built, and the mesh is **twenty intra-African corridors** across five origins and five destinations.
+
+The regime is data keyed by origin country, not South-Africa-shaped code: `exchangeControlFor('ZA')` returns the authority, the reporting party, the adult age, the published category codes and the allowance ceilings, and `checkDeclaration()` decides against them as a pure function. Adding a second country with capital controls is a table entry and a set of tests, not a second implementation.
+
+Four decisions in it are load-bearing and are argued in `docs/CORRIDORS.md`:
+
+- **The allowance is personal and spans every provider**, so our own tally is a floor and never a ceiling. The sender declares what they used elsewhere, we count it, and the app says plainly that the remaining figure is what we can see rather than what is left. Treating our own total as authoritative would confidently permit a breach.
+- **A declaration of use elsewhere is a running total, not an increment**, so usage takes the maximum of what has been declared rather than the sum — summing would punish an honest sender for declaring twice.
+- **Only residents are supported.** Temporary and non-residents have different allowances; an unset status is a refusal, not a default.
+- **We do not file — the Authorised Dealer does.** The extract joins a declaration to a name and an identity number in memory when it is produced, is never persisted, and is restricted to `COMPLIANCE_OFFICER`; an administrator is deliberately excluded. A declaration with no identity behind it is surfaced as a problem rather than dropped from the file.
+
+Enforcement runs **before** a transfer row exists, so a payment that may not proceed leaves a refusal in the audit log rather than a transfer record of an attempt that was never permissible. Every refusal is audited with its reason; a missing or unknown category is a 400 and an exhausted allowance is a 403, because they are different problems.
+
+Two money-display defects surfaced while wiring the sender's step and were fixed: the send flow parsed typed amounts at a hardcoded two decimals, which multiplied a CFA sender's transfer by a hundred, and the KYC screen formatted tier limits the same way. Both now take the precision from the server rather than assuming it.
+
+What remains outstanding for South Africa is the licence, not the capability. `ZA_DOMESTIC_COLLECTION` — an Authorised Dealer relationship or an ADLA licence — is not held, and every number in the regime is marked in the source as a placeholder pending that Dealer's confirmation. B8 accordingly narrows from a product gap to a licence.
+_DoD:_ All twenty intra-African corridors reach COMPLETED with the ledger at zero in every currency; a ZA-origin transfer with no category is refused with 400 and one that would breach the allowance with 403; the declaration reaches the back office joined to the sender's identity, and can be marked as reported.
 
 **4.4 FX exposure tracking.** Every quote lock creates a tracked position; unhedged exposure is reported per currency in real time.
 _DoD:_ Treasury dashboard shows live open exposure by currency.

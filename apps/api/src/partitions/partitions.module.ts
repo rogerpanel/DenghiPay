@@ -9,6 +9,7 @@ import { SenderProfileNgRepository } from './ng/sender-profile.repository';
 import { RecipientProfileGhRepository } from './gh/recipient-profile.repository';
 import { SenderProfileGhRepository } from './gh/sender-profile.repository';
 import { RecipientProfileZaRepository } from './za/recipient-profile.repository';
+import { SenderProfileZaRepository } from './za/sender-profile.repository';
 import { RecipientProfileCmRepository } from './cm/recipient-profile.repository';
 import { SenderProfileCmRepository } from './cm/sender-profile.repository';
 import { RecipientProfileBjRepository } from './bj/recipient-profile.repository';
@@ -24,8 +25,8 @@ import { SenderProfileBjRepository } from './bj/sender-profile.repository';
  * outside `src/partitions/` imports a repository directly, and with this module
  * in place there is no reason for anyone to.
  *
- * Six residencies, ten stores, and one deliberate gap: South Africa has a
- * recipient store and no sender store.
+ * Six residencies, eleven stores. South Africa's sender store is the newest and
+ * the only one carrying exchange-control fields.
  */
 @Module({
   providers: [
@@ -37,6 +38,7 @@ import { SenderProfileBjRepository } from './bj/sender-profile.repository';
     RecipientProfileGhRepository,
     SenderProfileGhRepository,
     RecipientProfileZaRepository,
+    SenderProfileZaRepository,
     RecipientProfileCmRepository,
     SenderProfileCmRepository,
     RecipientProfileBjRepository,
