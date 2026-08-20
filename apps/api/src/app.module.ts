@@ -10,11 +10,16 @@ import {
   MockScreeningProvider,
   ProviderRegistry,
   SimulatedRateSource,
+  createBeninPayinSimulator,
+  createBeninPayoutSimulator,
+  createCameroonPayinSimulator,
+  createCameroonPayoutSimulator,
   createGhanaPayinSimulator,
   createGhanaPayoutSimulator,
   createNigeriaPayinSimulator,
   createNigeriaPayoutSimulator,
   createRussiaPayinSimulator,
+  createSouthAfricaPayoutSimulator,
 } from '@morapay/adapters';
 
 import { AppConfig, loadConfig } from './config/config';
@@ -72,15 +77,27 @@ const config = loadConfig();
  * (TECHNICAL_ARCHITECTURE §1.1). Until it is closed, `PayinSimulator` is the
  * only implementation, and that is enough to build and test everything above it.
  */
+/**
+ * Every corridor the rails must serve.
+ *
+ * The intra-African mesh is generated from the same origin/destination lists
+ * the seed uses, so a corridor row cannot exist without a rail behind it — the
+ * failure that produces is a transfer stuck in AWAITING_PAYIN with a log line
+ * nobody is watching.
+ */
+const AFRICAN_ORIGINS = ['NG', 'GH', 'CM', 'BJ'] as const;
+const AFRICAN_DESTINATIONS = ['NG', 'GH', 'ZA', 'CM', 'BJ'] as const;
+
+function corridorIds(): string[] {
+  const inbound = ['RU-NG', 'RU-GH', 'BY-NG', 'BY-GH'];
+  const intraAfrican = AFRICAN_ORIGINS.flatMap((from) =>
+    AFRICAN_DESTINATIONS.filter((to) => to !== from).map((to) => `${from}-${to}`),
+  );
+  return [...inbound, ...intraAfrican];
+}
+
 function buildRegistry(cfg: AppConfig): ProviderRegistry {
-  const allCorridors = [
-    asCorridorId('RU-NG'),
-    asCorridorId('RU-GH'),
-    asCorridorId('BY-NG'),
-    asCorridorId('BY-GH'),
-    asCorridorId('NG-GH'),
-    asCorridorId('GH-NG'),
-  ];
+  const allCorridors = corridorIds().map(asCorridorId);
   // Collection is chosen by where the money comes from; payout by where it
   // goes. Both are derived from the corridor id rather than listed, so adding
   // a corridor above is the whole change.
@@ -100,11 +117,14 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
         priority: 100,
         enabled: !cfg.PAYIN_RU_PARTNER_ENABLED,
       })
-      // Domestic collection inside Nigeria and Ghana. Simulators for the same
-      // reason as the Russian leg, but a different unfilled prerequisite: these
-      // need a local collection licence, not a partner bank. The corridor licence
-      // gate is what enforces that; registering them here only makes the rails
-      // exist.
+      // Domestic collection inside the four African origins. Simulators for the
+      // same reason as the Russian leg, but a different unfilled prerequisite:
+      // these need a local collection licence, not a partner bank. The corridor
+      // licence gate is what enforces that; registering them here only makes the
+      // rails exist.
+      //
+      // South Africa is absent, and stays absent: it is a destination only until
+      // SARB exchange-control reporting exists.
       .registerPayin({
         provider: createNigeriaPayinSimulator(from('NG'), payinOptions),
         priority: 100,
@@ -112,6 +132,16 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
       })
       .registerPayin({
         provider: createGhanaPayinSimulator(from('GH'), payinOptions),
+        priority: 100,
+        enabled: true,
+      })
+      .registerPayin({
+        provider: createCameroonPayinSimulator(from('CM'), payinOptions),
+        priority: 100,
+        enabled: true,
+      })
+      .registerPayin({
+        provider: createBeninPayinSimulator(from('BJ'), payinOptions),
         priority: 100,
         enabled: true,
       })
@@ -124,6 +154,21 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
         provider: createGhanaPayoutSimulator(to('GH')),
         priority: 100,
         enabled: !cfg.FINCRA_ENABLED,
+      })
+      .registerPayout({
+        provider: createSouthAfricaPayoutSimulator(to('ZA')),
+        priority: 100,
+        enabled: true,
+      })
+      .registerPayout({
+        provider: createCameroonPayoutSimulator(to('CM')),
+        priority: 100,
+        enabled: true,
+      })
+      .registerPayout({
+        provider: createBeninPayoutSimulator(to('BJ')),
+        priority: 100,
+        enabled: true,
       })
   );
 }

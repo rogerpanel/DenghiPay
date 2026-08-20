@@ -125,7 +125,12 @@ export class SimulatorController {
       'payin-ng-sim': this.config.PROVIDER_SIGNING_SECRET_PAYIN_NG_SIM,
       'payin-gh-sim': this.config.PROVIDER_SIGNING_SECRET_PAYIN_GH_SIM,
       'payout-ng-sim': this.config.PROVIDER_SIGNING_SECRET_PAYOUT_NG_SIM,
+      'payin-cm-sim': this.config.PROVIDER_SIGNING_SECRET_PAYIN_CM_SIM,
+      'payin-bj-sim': this.config.PROVIDER_SIGNING_SECRET_PAYIN_BJ_SIM,
       'payout-gh-sim': this.config.PROVIDER_SIGNING_SECRET_PAYOUT_GH_SIM,
+      'payout-za-sim': this.config.PROVIDER_SIGNING_SECRET_PAYOUT_ZA_SIM,
+      'payout-cm-sim': this.config.PROVIDER_SIGNING_SECRET_PAYOUT_CM_SIM,
+      'payout-bj-sim': this.config.PROVIDER_SIGNING_SECRET_PAYOUT_BJ_SIM,
     };
     const secret = secretByProvider[providerId];
     if (secret === undefined) {

@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { Money, PayoutOutcome, asProviderRef } from '@morapay/domain';
 import { InMemoryLedgerStore } from './memory-store';
 import { LedgerService } from './service';
-import { SYSTEM_ACCOUNTS, accountCode, assertAccountCurrency, userPayableCode } from './accounts';
+import {
+  SYSTEM_ACCOUNTS,
+  accountCode,
+  assertAccountCurrency,
+  floatCode,
+  userPayableCode,
+} from './accounts';
 import { IdempotencyConflictError, InvalidEntryError, UnbalancedTransactionError } from './errors';
 import {
   DraftTransaction,
@@ -43,7 +49,7 @@ async function setup() {
 describe('ledger — the balance invariant', () => {
   it('refuses to persist a transaction that does not balance (DoD 1.2)', async () => {
     const { ledger, userPayable } = await setup();
-    const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
+    const floatRub = await ledger.accountByCode(floatCode('RUB'));
 
     const unbalanced: DraftTransaction = {
       reason: 'PAYIN_CONFIRMED',
@@ -73,8 +79,8 @@ describe('ledger — the balance invariant', () => {
 
   it('does not let two currencies net each other out', async () => {
     const { ledger } = await setup();
-    const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
-    const floatNgn = await ledger.accountByCode(accountCode('FLOAT_NGN', 'NGN'));
+    const floatRub = await ledger.accountByCode(floatCode('RUB'));
+    const floatNgn = await ledger.accountByCode(floatCode('NGN'));
 
     const crossCurrency: DraftTransaction = {
       reason: 'SETTLEMENT_OUT',
@@ -100,7 +106,7 @@ describe('ledger — the balance invariant', () => {
 
   it('rejects single-entry and non-positive-amount drafts', async () => {
     const { ledger, userPayable } = await setup();
-    const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
+    const floatRub = await ledger.accountByCode(floatCode('RUB'));
 
     expect(() =>
       validateDraft({
@@ -144,7 +150,7 @@ describe('ledger — the balance invariant', () => {
 describe('ledger — idempotency (DoD 1.3)', () => {
   it('creates exactly one transaction under 100 concurrent identical requests', async () => {
     const { ledger, userPayable } = await setup();
-    const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
+    const floatRub = await ledger.accountByCode(floatCode('RUB'));
     const feeRevenue = await ledger.accountByCode(accountCode('FEE_REVENUE', 'RUB'));
 
     const draft = payinConfirmed({
@@ -174,7 +180,7 @@ describe('ledger — idempotency (DoD 1.3)', () => {
 
   it('rejects a reused key carrying different content', async () => {
     const { ledger, userPayable } = await setup();
-    const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
+    const floatRub = await ledger.accountByCode(floatCode('RUB'));
     const feeRevenue = await ledger.accountByCode(accountCode('FEE_REVENUE', 'RUB'));
 
     const first = payinConfirmed({
@@ -223,7 +229,7 @@ describe('ledger — idempotency (DoD 1.3)', () => {
 describe('ledger — derived balances and drift (DoD 1.4)', () => {
   it('derives balances from entries and refreshes the snapshot', async () => {
     const { ledger, userPayable } = await setup();
-    const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
+    const floatRub = await ledger.accountByCode(floatCode('RUB'));
     const feeRevenue = await ledger.accountByCode(accountCode('FEE_REVENUE', 'RUB'));
 
     await ledger.post(
@@ -250,7 +256,7 @@ describe('ledger — derived balances and drift (DoD 1.4)', () => {
 
   it('catches a manually corrupted snapshot', async () => {
     const { store, ledger, userPayable } = await setup();
-    const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
+    const floatRub = await ledger.accountByCode(floatCode('RUB'));
     const feeRevenue = await ledger.accountByCode(accountCode('FEE_REVENUE', 'RUB'));
 
     await ledger.post(
@@ -279,8 +285,8 @@ describe('ledger — derived balances and drift (DoD 1.4)', () => {
 describe('ledger — a complete transfer lifecycle balances to zero (DoD 5.3)', () => {
   it('books pay-in, settlement, FX difference and payout with a zero net ledger', async () => {
     const { store, ledger, userPayable } = await setup();
-    const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
-    const floatNgn = await ledger.accountByCode(accountCode('FLOAT_NGN', 'NGN'));
+    const floatRub = await ledger.accountByCode(floatCode('RUB'));
+    const floatNgn = await ledger.accountByCode(floatCode('NGN'));
     const feeRevenue = await ledger.accountByCode(accountCode('FEE_REVENUE', 'RUB'));
     const prRub = await ledger.accountByCode(
       accountCode('PARTNER_RECEIVABLE', 'RUB', 'SETTLEMENT'),
@@ -401,7 +407,7 @@ describe('ledger — a complete transfer lifecycle balances to zero (DoD 5.3)', 
 describe('ledger — refunds, prefunding and suspense', () => {
   it('mirrors the original entries on refund', async () => {
     const { ledger, userPayable } = await setup();
-    const floatRub = await ledger.accountByCode(accountCode('FLOAT_RUB', 'RUB'));
+    const floatRub = await ledger.accountByCode(floatCode('RUB'));
     const feeRevenue = await ledger.accountByCode(accountCode('FEE_REVENUE', 'RUB'));
 
     await ledger.post(
@@ -506,8 +512,11 @@ describe('ledger — refunds, prefunding and suspense', () => {
 
 describe('chart of accounts', () => {
   it('pins float accounts to their currency', () => {
-    expect(() => assertAccountCurrency('FLOAT_NGN', 'RUB')).toThrow();
-    expect(() => assertAccountCurrency('FLOAT_NGN', 'NGN')).not.toThrow();
+    expect(() => assertAccountCurrency('TREASURY_USD', 'RUB')).toThrow();
+    expect(() => assertAccountCurrency('TREASURY_USD', 'USD')).not.toThrow();
+    // FLOAT is no longer pinned to a currency — that is the point of the
+    // collapse — so any registered currency is acceptable for it.
+    expect(() => assertAccountCurrency('FLOAT', 'XOF')).not.toThrow();
     expect(() => assertAccountCurrency('FEE_REVENUE', 'GHS')).not.toThrow();
   });
 
@@ -536,6 +545,6 @@ describe('chart of accounts', () => {
 
   it('raises a clear error for an unknown account code', async () => {
     const { ledger } = await setup();
-    await expect(ledger.accountByCode('FLOAT_RUB:ZZZ')).rejects.toThrow(/No ledger account/);
+    await expect(ledger.accountByCode('FLOAT:ZZZ')).rejects.toThrow(/No ledger account/);
   });
 });

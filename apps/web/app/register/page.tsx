@@ -11,8 +11,12 @@ import { AppShell, ErrorNotice, Field } from '@/components/shell';
  * Where the sender lives. It decides which country holds their personal data
  * and which corridors they can send on, and it is asked once — moving it later
  * means moving rows between jurisdictions.
+ *
+ * South Africa is absent on purpose. It is a destination and not an origin
+ * until SARB exchange-control reporting exists, so there is no store for a
+ * South African sender's data and the API refuses the residency outright.
  */
-type Residency = 'RU' | 'BY' | 'NG' | 'GH';
+type Residency = 'RU' | 'BY' | 'NG' | 'GH' | 'CM' | 'BJ';
 
 interface SessionResponse {
   accessToken: string;
@@ -98,6 +102,8 @@ export default function RegisterPage() {
               <option value="BY">Беларусь / Belarus</option>
               <option value="NG">Nigeria</option>
               <option value="GH">Ghana</option>
+              <option value="CM">Cameroun / Cameroon</option>
+              <option value="BJ">Bénin / Benin</option>
             </select>
           </Field>
 

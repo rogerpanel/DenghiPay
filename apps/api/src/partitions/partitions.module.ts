@@ -8,6 +8,11 @@ import { RecipientProfileNgRepository } from './ng/recipient-profile.repository'
 import { SenderProfileNgRepository } from './ng/sender-profile.repository';
 import { RecipientProfileGhRepository } from './gh/recipient-profile.repository';
 import { SenderProfileGhRepository } from './gh/sender-profile.repository';
+import { RecipientProfileZaRepository } from './za/recipient-profile.repository';
+import { RecipientProfileCmRepository } from './cm/recipient-profile.repository';
+import { SenderProfileCmRepository } from './cm/sender-profile.repository';
+import { RecipientProfileBjRepository } from './bj/recipient-profile.repository';
+import { SenderProfileBjRepository } from './bj/sender-profile.repository';
 
 /**
  * The partition boundary, as a module.
@@ -18,6 +23,9 @@ import { SenderProfileGhRepository } from './gh/sender-profile.repository';
  * (infra/scripts/check-partition-boundaries.sh) fails any build where code
  * outside `src/partitions/` imports a repository directly, and with this module
  * in place there is no reason for anyone to.
+ *
+ * Six residencies, ten stores, and one deliberate gap: South Africa has a
+ * recipient store and no sender store.
  */
 @Module({
   providers: [
@@ -28,6 +36,11 @@ import { SenderProfileGhRepository } from './gh/sender-profile.repository';
     SenderProfileNgRepository,
     RecipientProfileGhRepository,
     SenderProfileGhRepository,
+    RecipientProfileZaRepository,
+    RecipientProfileCmRepository,
+    SenderProfileCmRepository,
+    RecipientProfileBjRepository,
+    SenderProfileBjRepository,
     PartitionGateway,
   ],
   exports: [PartitionGateway],

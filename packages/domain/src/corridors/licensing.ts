@@ -33,25 +33,57 @@ export const AUTHORISATIONS = [
   'NG_DOMESTIC_COLLECTION',
   /** Bank of Ghana authorisation to debit cedi wallets inside Ghana. */
   'GH_DOMESTIC_COLLECTION',
+  /** BEAC/COBAC authorisation to debit XAF wallets inside Cameroon. */
+  'CM_DOMESTIC_COLLECTION',
+  /** BCEAO authorisation to debit XOF wallets inside Benin. */
+  'BJ_DOMESTIC_COLLECTION',
   /** A licensed rail that credits Nigerian bank accounts. Paycrest or Fincra. */
   'NG_PAYOUT_RAIL',
   /** A licensed rail that credits Ghanaian mobile-money wallets. OPEN_ITEMS B4. */
   'GH_PAYOUT_RAIL',
+  /** A licensed rail that credits South African bank accounts. */
+  'ZA_PAYOUT_RAIL',
+  /** A licensed rail that credits Cameroonian mobile-money wallets. */
+  'CM_PAYOUT_RAIL',
+  /** A licensed rail that credits Beninese mobile-money wallets. */
+  'BJ_PAYOUT_RAIL',
 ] as const;
 
 export type Authorisation = (typeof AUTHORISATIONS)[number];
 
-const COLLECTION_AUTHORISATION: Readonly<Record<CountryCode, Authorisation>> = {
+/**
+ * Where we are authorised — or intend to become authorised — to collect.
+ *
+ * Deliberately **partial**. South Africa is absent, and its absence is the
+ * design: outward transfers from South Africa sit under SARB exchange control,
+ * which is not merely another licence to obtain but a different product —
+ * every outward payment is reported under a balance-of-payments category code
+ * and measured against the sender's annual allowance, neither of which this
+ * codebase models. Until that is built, South Africa receives and does not
+ * send, and `authorisationsFor` refuses to describe a ZA-origin corridor at
+ * all rather than quietly inventing a licence name for one.
+ */
+const COLLECTION_AUTHORISATION: Readonly<Partial<Record<CountryCode, Authorisation>>> = {
   RU: 'RU_COLLECTION_PARTNER',
   BY: 'BY_COLLECTION_PARTNER',
   NG: 'NG_DOMESTIC_COLLECTION',
   GH: 'GH_DOMESTIC_COLLECTION',
+  CM: 'CM_DOMESTIC_COLLECTION',
+  BJ: 'BJ_DOMESTIC_COLLECTION',
 };
 
 const PAYOUT_AUTHORISATION: Readonly<Partial<Record<CountryCode, Authorisation>>> = {
   NG: 'NG_PAYOUT_RAIL',
   GH: 'GH_PAYOUT_RAIL',
+  ZA: 'ZA_PAYOUT_RAIL',
+  CM: 'CM_PAYOUT_RAIL',
+  BJ: 'BJ_PAYOUT_RAIL',
 };
+
+/** Countries we can collect from at all. A corridor cannot start anywhere else. */
+export function canCollectFrom(country: CountryCode): boolean {
+  return COLLECTION_AUTHORISATION[country] !== undefined;
+}
 
 /**
  * Corridors divide into two regulatory shapes, and a reader should be able to
@@ -59,21 +91,37 @@ const PAYOUT_AUTHORISATION: Readonly<Partial<Record<CountryCode, Authorisation>>
  */
 export type CorridorClass = 'INBOUND_REMITTANCE' | 'INTRA_AFRICAN';
 
+/** Origins whose collection leg is domestic rather than a border crossing. */
+const AFRICAN_ORIGINS: readonly CountryCode[] = ['NG', 'GH', 'ZA', 'CM', 'BJ'];
+
 export function corridorClass(corridor: {
   readonly sourceCountry: CountryCode;
   readonly destinationCountry: CountryCode;
 }): CorridorClass {
-  return corridor.sourceCountry === 'NG' || corridor.sourceCountry === 'GH'
-    ? 'INTRA_AFRICAN'
-    : 'INBOUND_REMITTANCE';
+  return AFRICAN_ORIGINS.includes(corridor.sourceCountry) ? 'INTRA_AFRICAN' : 'INBOUND_REMITTANCE';
 }
 
-/** Every authorisation this corridor rests on, collection leg first. */
+/**
+ * Every authorisation this corridor rests on, collection leg first.
+ *
+ * Throws for an origin we have no collection authorisation defined for. That
+ * is not defensive noise: a corridor starting somewhere we cannot lawfully
+ * collect is a mistake in the seed, and returning an empty list would let the
+ * licence gate wave it through as "nothing missing".
+ */
 export function authorisationsFor(corridor: {
   readonly sourceCountry: CountryCode;
   readonly destinationCountry: CountryCode;
 }): readonly Authorisation[] {
   const collection = COLLECTION_AUTHORISATION[corridor.sourceCountry];
+  if (collection === undefined) {
+    throw new Error(
+      `No collection authorisation is defined for ${corridor.sourceCountry}, so no corridor ` +
+        'may start there. If that country should become an origin, add its authorisation ' +
+        'and whatever the local regime actually requires — for South Africa that means ' +
+        'balance-of-payments reporting and allowance tracking, not just a name in a list.',
+    );
+  }
   const payout = PAYOUT_AUTHORISATION[corridor.destinationCountry];
   return payout === undefined ? [collection] : [collection, payout];
 }

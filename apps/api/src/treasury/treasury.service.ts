@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CurrencyCode, Money, requireCurrencyCode } from '@morapay/domain';
-import { LedgerService, accountCode, floatPrefunding } from '@morapay/ledger';
+import { LedgerService, accountCode, floatCode, floatPrefunding } from '@morapay/ledger';
 import { PrismaService } from '../common/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { MetricsService } from '../common/metrics.service';
@@ -48,9 +48,12 @@ export class TreasuryService {
     const byCurrency = new Map(thresholds.map((t) => [t.currency, t]));
 
     const floats: Array<[CurrencyCode, string]> = [
-      ['RUB', accountCode('FLOAT_RUB', 'RUB')],
-      ['NGN', accountCode('FLOAT_NGN', 'NGN')],
-      ['GHS', accountCode('FLOAT_GHS', 'GHS')],
+      ['RUB', floatCode('RUB')],
+      ['NGN', floatCode('NGN')],
+      ['GHS', floatCode('GHS')],
+      ['ZAR', floatCode('ZAR')],
+      ['XAF', floatCode('XAF')],
+      ['XOF', floatCode('XOF')],
     ];
 
     const positions = [];
@@ -178,12 +181,12 @@ export class TreasuryService {
       });
     }
 
-    const floatCode = accountCode(floatTypeFor(input.currency), input.currency);
+    const code = floatCode(input.currency);
     const created = await this.prisma.prefundingRequest.create({
       data: {
         currency: input.currency,
         amountMinorUnits: input.amountMinorUnits,
-        floatAccountCode: floatCode,
+        floatAccountCode: code,
         treasuryAccountCode: accountCode('TREASURY_USD', 'USD'),
         reason: input.reason,
         requestedBy: input.staffId,
@@ -343,8 +346,4 @@ export class TreasuryService {
       take: limit,
     });
   }
-}
-
-function floatTypeFor(currency: 'RUB' | 'NGN' | 'GHS'): 'FLOAT_RUB' | 'FLOAT_NGN' | 'FLOAT_GHS' {
-  return currency === 'RUB' ? 'FLOAT_RUB' : currency === 'NGN' ? 'FLOAT_NGN' : 'FLOAT_GHS';
 }

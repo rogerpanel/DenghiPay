@@ -137,7 +137,9 @@
                       "RU",
                       "BY",
                       "NG",
-                      "GH"
+                      "GH",
+                      "CM",
+                      "BJ"
                     ],
                     "default": "RU"
                   },
@@ -745,7 +747,10 @@
                         "RU",
                         "BY",
                         "NG",
-                        "GH"
+                        "GH",
+                        "ZA",
+                        "CM",
+                        "BJ"
                       ]
                     },
                     "capabilities": {
@@ -1833,7 +1838,7 @@
                 "type": "object",
                 "properties": {
                   "details": {
-                    "oneOf": [
+                    "anyOf": [
                       {
                         "type": "object",
                         "properties": {
@@ -1877,6 +1882,43 @@
                           "method": {
                             "type": "string",
                             "enum": [
+                              "BANK_ACCOUNT"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "ZA"
+                            ]
+                          },
+                          "accountNumber": {
+                            "type": "string",
+                            "pattern": "^\\d{9,11}$"
+                          },
+                          "bankCode": {
+                            "type": "string",
+                            "pattern": "^\\d{6}$"
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "accountNumber",
+                          "bankCode",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
                               "MOBILE_MONEY"
                             ]
                           },
@@ -1896,6 +1938,87 @@
                               "MTN",
                               "TELECEL",
                               "AIRTELTIGO"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "CM"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^237\\d{9}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "ORANGE"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "BJ"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^229\\d{8,10}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "MOOV",
+                              "CELTIIS"
                             ]
                           },
                           "declaredName": {
@@ -2067,7 +2190,7 @@
                 "type": "object",
                 "properties": {
                   "details": {
-                    "oneOf": [
+                    "anyOf": [
                       {
                         "type": "object",
                         "properties": {
@@ -2090,6 +2213,43 @@
                           "bankCode": {
                             "type": "string",
                             "pattern": "^\\d{3}$"
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "accountNumber",
+                          "bankCode",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "BANK_ACCOUNT"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "ZA"
+                            ]
+                          },
+                          "accountNumber": {
+                            "type": "string",
+                            "pattern": "^\\d{9,11}$"
+                          },
+                          "bankCode": {
+                            "type": "string",
+                            "pattern": "^\\d{6}$"
                           },
                           "declaredName": {
                             "type": "string",
@@ -2145,6 +2305,87 @@
                           "network",
                           "declaredName"
                         ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "CM"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^237\\d{9}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "ORANGE"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "BJ"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^229\\d{8,10}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "MOOV",
+                              "CELTIIS"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
                       }
                     ]
                   },
@@ -2184,7 +2425,10 @@
                         "RU",
                         "BY",
                         "NG",
-                        "GH"
+                        "GH",
+                        "ZA",
+                        "CM",
+                        "BJ"
                       ]
                     },
                     "maskedAccount": {
@@ -2306,7 +2550,10 @@
                               "RU",
                               "BY",
                               "NG",
-                              "GH"
+                              "GH",
+                              "ZA",
+                              "CM",
+                              "BJ"
                             ]
                           },
                           "maskedAccount": {

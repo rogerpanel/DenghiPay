@@ -5,6 +5,7 @@ import {
   CorridorNotAuthorisedError,
   assertCorridorMayMoveLiveFunds,
   authorisationsFor,
+  canCollectFrom,
   corridorClass,
   parseAuthorisations,
 } from './licensing';
@@ -112,6 +113,55 @@ describe('corridor authorisations', () => {
     expect(() => assertCorridorMayMoveLiveFunds(reverse, { liveFundsEnabled: true, held })).toThrow(
       /GH_DOMESTIC_COLLECTION, NG_PAYOUT_RAIL/,
     );
+  });
+
+  /**
+   * South Africa is a destination and not an origin, and the reason is a
+   * product gap rather than a missing signature: SARB exchange control needs
+   * balance-of-payments codes and allowance tracking that this codebase does
+   * not model. Refusing to describe a ZA-origin corridor is what stops someone
+   * seeding one and having the licence gate wave it through with nothing
+   * missing.
+   */
+  it('refuses to describe a corridor starting where we cannot collect', () => {
+    expect(canCollectFrom('NG')).toBe(true);
+    expect(canCollectFrom('CM')).toBe(true);
+    expect(canCollectFrom('ZA')).toBe(false);
+
+    expect(() => authorisationsFor({ sourceCountry: 'ZA', destinationCountry: 'NG' })).toThrow(
+      /No collection authorisation is defined for ZA/,
+    );
+    expect(() =>
+      assertCorridorMayMoveLiveFunds(
+        corridor({ id: 'ZA-NG', sourceCountry: 'ZA', destinationCountry: 'NG' }),
+        { liveFundsEnabled: true, held: [] },
+      ),
+    ).toThrow(/No collection authorisation is defined for ZA/);
+  });
+
+  it('names the francophone authorisations, and keeps the two CFA zones apart', () => {
+    expect(authorisationsFor({ sourceCountry: 'BJ', destinationCountry: 'CM' })).toEqual([
+      'BJ_DOMESTIC_COLLECTION',
+      'CM_PAYOUT_RAIL',
+    ]);
+    expect(authorisationsFor({ sourceCountry: 'CM', destinationCountry: 'BJ' })).toEqual([
+      'CM_DOMESTIC_COLLECTION',
+      'BJ_PAYOUT_RAIL',
+    ]);
+    // BCEAO and BEAC are separate regulators; holding one says nothing about
+    // the other, even though XAF and XOF are at par.
+    expect(() =>
+      assertCorridorMayMoveLiveFunds(
+        corridor({ id: 'CM-BJ', sourceCountry: 'CM', destinationCountry: 'BJ' }),
+        { liveFundsEnabled: true, held: ['BJ_DOMESTIC_COLLECTION', 'CM_PAYOUT_RAIL'] },
+      ),
+    ).toThrow(/CM_DOMESTIC_COLLECTION, BJ_PAYOUT_RAIL/);
+  });
+
+  it('treats every African origin as intra-African', () => {
+    for (const sourceCountry of ['NG', 'GH', 'CM', 'BJ'] as const) {
+      expect(corridorClass({ sourceCountry, destinationCountry: 'ZA' })).toBe('INTRA_AFRICAN');
+    }
   });
 
   it('parses a configured held set and rejects an unknown name', () => {

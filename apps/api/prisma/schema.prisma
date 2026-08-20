@@ -4,8 +4,9 @@
 //
 //  1. Money is BigInt minor units. There is no Float or Decimal anywhere near
 //     an amount. Guardrail: floating point money is a bug, always.
-//  2. Personal data lives in partition schemas (partition_ru / partition_ng /
-//     partition_gh); the neutral tier holds only tokenised references
+//  2. Personal data lives in partition schemas, one per residency
+//     (partition_ru / ng / gh / za / cm / bj); the neutral tier holds only
+//     tokenised references
 //     (BUILD_PLAN 12.1, guardrail G8). Locally these are schemas in one
 //     database; in production they are separate instances in separate
 //     jurisdictions and only the connection string changes.
@@ -19,7 +20,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["public", "partition_ru", "partition_ng", "partition_gh"]
+  schemas  = ["public", "partition_ru", "partition_ng", "partition_gh", "partition_za", "partition_cm", "partition_bj"]
 }
 
 // =============================================================================
@@ -856,4 +857,96 @@ model RecipientProfileGh {
 
   @@map("recipient_profile")
   @@schema("partition_gh")
+}
+
+
+/// Cameroonian-resident sender personal data. CEMAC/BEAC, Law 2024/017 on
+/// personal data protection.
+model SenderProfileCm {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Carte nationale d'identité number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet we debit to collect, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_cm")
+}
+
+/// Beninese-resident sender personal data. UEMOA/BCEAO, APDP oversight.
+model SenderProfileBj {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Numéro personnel d'identification (NPI).
+  nationalIdNo  String?  @map("national_id_no")
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_bj")
+}
+
+/// South African recipient personal data. POPIA.
+///
+/// There is deliberately no `SenderProfileZa`: South Africa receives and does
+/// not send until SARB exchange-control reporting is built, and the absence of
+/// a store is what makes a ZA sender unrepresentable rather than merely
+/// discouraged.
+model RecipientProfileZa {
+  piiToken      String   @id @map("pii_token")
+  accountNumber String   @map("account_number")
+  /// Universal branch code — identifies the bank, not a branch.
+  bankCode      String   @map("bank_code")
+  accountName   String   @map("account_name")
+  phone         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_za")
+}
+
+/// Cameroonian recipient personal data.
+model RecipientProfileCm {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_cm")
+}
+
+/// Beninese recipient personal data.
+model RecipientProfileBj {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_bj")
 }

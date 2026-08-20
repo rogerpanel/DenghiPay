@@ -215,6 +215,19 @@ The DoD above held only partly, and the exception is the interesting part. The c
 These two are also a different regulatory class from everything above them — domestic collection at both ends rather than an inbound remittance — so they carry a licence gate that the enabled flag alone could not express. See `docs/CORRIDORS.md`, and OPEN_ITEMS B6.
 _DoD:_ Both directions reach COMPLETED with no callback; the ledger balances in both currencies; with live funds on and the licences undeclared, neither corridor is reachable.
 
+**4.3b Pan-African mesh (added 2026-08-17, out of plan order).** South Africa, Cameroon and Benin, taking the intra-African mesh to **sixteen corridors** across four origins and five destinations. Every one completes end to end against simulators with the ledger closing to zero in all six currencies (`infra/scripts/smoke-all-corridors.sh`).
+
+Three things about these countries were new, and two of them changed what got built:
+
+- **The CFA francs have no decimals.** XAF and XOF carry an exponent of zero, so `minorUnits` counts whole francs. They are also at par with each other via a shared euro peg — which is a fact about the peg, not a licence to substitute one for the other, since BEAC and BCEAO are separate central banks.
+- **South Africa receives and does not send.** Outward transfers from South Africa fall under SARB exchange control, which needs balance-of-payments reporting and allowance tracking that this codebase does not model. Rather than build an origin that could not lawfully run, there is no ZA collection authorisation and no ZA sender store, and the licence gate _throws_ for a ZA-origin corridor rather than finding nothing missing. Tracked as OPEN_ITEMS B8.
+- **French was already there.** All three locales have shipped since the sender PWA, so the francophone markets needed translations of new strings, not a new i18n layer.
+
+Step 4.3a claimed adding an origin is a phase while adding a corridor is configuration. Doing it three more times bore that out and cost one refactor that should have happened earlier: the ledger's float account types carried the currency in the type name (`FLOAT_RUB`, `FLOAT_NGN`, `FLOAT_GHS`) beside a currency column holding the same fact. That is now one `FLOAT` type keyed by currency, migrated in place with balances untouched, so a seventh currency costs nothing.
+
+Two latent defects surfaced and were fixed: name enquiry chose a payout provider by fabricating an `RU-` corridor id from the recipient's country, and recipients were filed by payout **method**, which would have put a Johannesburg bank account in the Nigerian partition.
+_DoD:_ All sixteen corridors reach COMPLETED; the ledger nets to zero in NGN, GHS, ZAR, XAF, XOF and RUB; a ZA-origin corridor cannot be described, let alone seeded.
+
 **4.4 FX exposure tracking.** Every quote lock creates a tracked position; unhedged exposure is reported per currency in real time.
 _DoD:_ Treasury dashboard shows live open exposure by currency.
 
@@ -417,7 +430,7 @@ See `CLAUDE.md` at the repository root. It carries rules 1–10 from this plan p
 
 Native mobile apps · own IMTO/PSP licence applications · ~~additional corridors~~ · business/SME senders · agent networks · cash pickup · card issuing · Kubernetes · advanced ML fraud scoring · PAPSS integration.
 
-**Additional corridors moved out of this list on 2026-08-16.** NG→GH and GH→NG are built (step 4.3a). The deferral's reasoning still stands and is worth restating rather than deleting: building a corridor is not the same as opening one, and the intra-African pair adds _more_ regulatory surface than the ruble corridors, not less, because it makes us a domestic collector in two more countries. The licence gate in `licensing.ts` is what keeps the code ahead of the paperwork without the paperwork being skipped. A French-speaking corridor is the next candidate and is not started.
+**Additional corridors moved out of this list on 2026-08-16.** NG→GH and GH→NG are built (step 4.3a). The deferral's reasoning still stands and is worth restating rather than deleting: building a corridor is not the same as opening one, and the intra-African pair adds _more_ regulatory surface than the ruble corridors, not less, because it makes us a domestic collector in two more countries. The licence gate in `licensing.ts` is what keeps the code ahead of the paperwork without the paperwork being skipped. The French-speaking corridors landed in 4.3b. The next candidate is a country with a materially different regime again — Kenya or Côte d'Ivoire — and is not started.
 
 Each becomes a phase when the preceding gate is cleared. Adding any of them earlier increases regulatory surface before there is a working, reconciled corridor to protect.
 

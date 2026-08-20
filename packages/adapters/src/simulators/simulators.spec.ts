@@ -8,11 +8,17 @@ import {
 } from '@morapay/domain';
 import {
   PayoutSimulator,
+  createBeninPayoutSimulator,
+  createCameroonPayoutSimulator,
   createGhanaPayoutSimulator,
   createNigeriaPayoutSimulator,
+  createSouthAfricaPayoutSimulator,
+  institutionsForDestination,
 } from './payout.simulator';
 import {
   PayinSimulator,
+  createBeninPayinSimulator,
+  createCameroonPayinSimulator,
   createGhanaPayinSimulator,
   createNigeriaPayinSimulator,
   createRussiaPayinSimulator,
@@ -621,8 +627,45 @@ describe('rate source', () => {
     const source = new SimulatedRateSource({ wobbleBps: 0 });
     const out = await source.fetch('NGN', 'GHS');
     const back = await source.fetch('GHS', 'NGN');
-    expect(out.rate.toDecimalString()).toBe('0.0071340');
+    expect(out.rate.toDecimalString()).toBe('0.007134021');
     expect(back.rate.toDecimalString()).toBe('140.1734');
+  });
+
+  /**
+   * Sixteen ordered pairs are generated from one dollar-anchor table. If a
+   * corridor exists with no rate behind it, quoting halts — so this asserts
+   * coverage rather than any particular number.
+   */
+  it('quotes every intra-African corridor pair', async () => {
+    const source = new SimulatedRateSource({ wobbleBps: 0 });
+    const origins = ['NGN', 'GHS', 'XAF', 'XOF'] as const;
+    const destinations = ['NGN', 'GHS', 'ZAR', 'XAF', 'XOF'] as const;
+    let pairs = 0;
+    for (const from of origins) {
+      for (const to of destinations) {
+        if (from === to) continue;
+        const observation = await source.fetch(from, to);
+        expect(observation.rate.numerator > 0n).toBe(true);
+        pairs += 1;
+      }
+    }
+    expect(pairs).toBe(16);
+  });
+
+  /**
+   * XAF and XOF share the euro peg, so the cross is exactly one. That is a fact
+   * about the peg and not a licence to treat the two as one currency — the
+   * rate exists precisely so the conversion is an explicit, auditable step.
+   */
+  it('crosses the two CFA francs at par, in both directions', async () => {
+    const source = new SimulatedRateSource({ wobbleBps: 0 });
+    expect((await source.fetch('XAF', 'XOF')).rate.toDecimalString()).toBe('1.000000');
+    expect((await source.fetch('XOF', 'XAF')).rate.toDecimalString()).toBe('1.000000');
+  });
+
+  it('has no rate out of South Africa, because nobody sends from there', async () => {
+    const source = new SimulatedRateSource({ wobbleBps: 0 });
+    await expect(source.fetch('ZAR', 'NGN')).rejects.toThrow(/no rate/i);
   });
 
   /**
@@ -689,5 +732,231 @@ describe('provider registry', () => {
     expect(registry.payinById(payin.id)?.id).toBe(payin.id);
     expect(registry.describe()).toHaveLength(1);
     expect(registry.selectPayin(asCorridorId('BY-GH'))).toBeNull();
+  });
+});
+
+/**
+ * The three markets added alongside the francophone corridors. What is being
+ * checked is mostly that each market is treated as its own jurisdiction — its
+ * own institutions, its own number format, its own switch — rather than as a
+ * variation on Nigeria.
+ */
+describe('payout simulator — South Africa, Cameroon and Benin', () => {
+  const NG_ZA = asCorridorId('NG-ZA');
+  const NG_CM = asCorridorId('NG-CM');
+  const NG_BJ = asCorridorId('NG-BJ');
+
+  it('credits a South African bank by universal branch code', async () => {
+    const za = createSouthAfricaPayoutSimulator([NG_ZA]);
+    const result = await za.resolveRecipient({
+      corridorId: NG_ZA,
+      recipient: {
+        method: 'BANK_ACCOUNT',
+        country: 'ZA',
+        accountNumber: '1234567890',
+        bankCode: '470010',
+        declaredName: 'THABO MOLEFE',
+      },
+    });
+    expect(result._tag).toBe('RESOLVED');
+    if (result._tag === 'RESOLVED') expect(result.institution).toBe('Capitec Bank');
+  });
+
+  it('rejects a Nigerian bank code presented to the South African rail', async () => {
+    const za = createSouthAfricaPayoutSimulator([NG_ZA]);
+    const result = await za.resolveRecipient({
+      corridorId: NG_ZA,
+      recipient: {
+        method: 'BANK_ACCOUNT',
+        country: 'ZA',
+        accountNumber: '1234567890',
+        bankCode: '058',
+        declaredName: 'THABO MOLEFE',
+      },
+    });
+    expect(result._tag).toBe('UNSUPPORTED');
+  });
+
+  it('resolves Cameroonian and Beninese wallets on their own operators', async () => {
+    const cm = createCameroonPayoutSimulator([NG_CM]);
+    const orange = await cm.resolveRecipient({
+      corridorId: NG_CM,
+      recipient: {
+        method: 'MOBILE_MONEY',
+        country: 'CM',
+        msisdn: '237671234567',
+        network: 'ORANGE',
+        declaredName: 'MARIE NGONO',
+      },
+    });
+    expect(orange._tag).toBe('RESOLVED');
+
+    const bj = createBeninPayoutSimulator([NG_BJ]);
+    const moov = await bj.resolveRecipient({
+      corridorId: NG_BJ,
+      recipient: {
+        method: 'MOBILE_MONEY',
+        country: 'BJ',
+        msisdn: '22997123456',
+        network: 'MOOV',
+        declaredName: 'KOSSI DOSSOU',
+      },
+    });
+    expect(moov._tag).toBe('RESOLVED');
+  });
+
+  /**
+   * The same brand is a different licensee in each country. Telecel operates in
+   * Ghana and not in Benin, and accepting it there would produce a payout that
+   * is acknowledged and never arrives.
+   */
+  it('refuses a network that does not operate in the destination', async () => {
+    const bj = createBeninPayoutSimulator([NG_BJ]);
+    const result = await bj.resolveRecipient({
+      corridorId: NG_BJ,
+      recipient: {
+        method: 'MOBILE_MONEY',
+        country: 'BJ',
+        msisdn: '22997123456',
+        network: 'TELECEL' as never,
+        declaredName: 'KOSSI DOSSOU',
+      },
+    });
+    expect(result._tag).toBe('UNSUPPORTED');
+    if (result._tag === 'UNSUPPORTED') expect(result.reason).toMatch(/does not operate in BJ/);
+  });
+
+  it('refuses a Ghanaian number presented to the Cameroonian rail', async () => {
+    const cm = createCameroonPayoutSimulator([NG_CM]);
+    const result = await cm.resolveRecipient({
+      corridorId: NG_CM,
+      recipient: {
+        method: 'MOBILE_MONEY',
+        country: 'CM',
+        msisdn: '233241234567',
+        network: 'MTN',
+        declaredName: 'MARIE NGONO',
+      },
+    });
+    expect(result._tag).toBe('NOT_FOUND');
+  });
+
+  it('serves the institutions of one destination at a time', () => {
+    expect(institutionsForDestination('ZA').banks.map((b) => b.code)).toContain('470010');
+    expect(institutionsForDestination('ZA').networks).toHaveLength(0);
+    expect(institutionsForDestination('BJ').networks.map((n) => n.code)).toEqual([
+      'MTN',
+      'MOOV',
+      'CELTIIS',
+    ]);
+    expect(institutionsForDestination('BJ').banks).toHaveLength(0);
+  });
+
+  it('stamps each market with its own switch reference on settlement', async () => {
+    const cm = createCameroonPayoutSimulator([NG_CM]);
+    const ack = await cm.initiatePayout(
+      {
+        corridorId: NG_CM,
+        recipient: {
+          method: 'MOBILE_MONEY',
+          country: 'CM',
+          msisdn: '237671234567',
+          network: 'MTN',
+          declaredName: 'MARIE NGONO',
+        },
+        amount: Money.fromDecimalString('50000', 'XAF'),
+        reference: 'MP-TEST-NGCM',
+        narration: 'Family support',
+      },
+      asIdempotencyKey('cm-1'),
+    );
+    const outcome = await cm.getStatus(ack.providerRef);
+    expect(outcome._tag).toBe('SETTLED');
+    if (outcome._tag === 'SETTLED') expect(outcome.institutionRef).toMatch(/^GIMAC-/);
+  });
+});
+
+describe('pay-in simulator — the francophone markets', () => {
+  const CM_NG = asCorridorId('CM-NG');
+  const BJ_GH = asCorridorId('BJ-GH');
+
+  it('collects whole CFA francs against a wallet prompt', async () => {
+    const cm = createCameroonPayinSimulator([CM_NG], { autoConfirmAfterSeconds: null });
+    const ack = await cm.initiatePayin(
+      {
+        corridorId: CM_NG,
+        method: 'MOBILE_MONEY',
+        amount: Money.fromDecimalString('50000', 'XAF'),
+        reference: 'MP-TEST-CMNG',
+        senderToken: 'tok_sender_cm',
+        payer: { method: 'MOBILE_MONEY', msisdn: '237671234567', network: 'ORANGE' },
+      },
+      asIdempotencyKey('payin-cm-1'),
+    );
+    expect(ack.instructions.kind).toBe('MOBILE_MONEY');
+    if (ack.instructions.kind === 'MOBILE_MONEY') {
+      expect(ack.instructions.ussdFallback).toBe('#150#');
+    }
+
+    cm.markPaid(ack.providerRef);
+    const outcome = await cm.getStatus(ack.providerRef);
+    expect(outcome._tag).toBe('SETTLED');
+    if (outcome._tag === 'SETTLED') {
+      // Whole francs: 50 000 XAF is 50 000 minor units, not 5 000 000.
+      expect(outcome.receivedMinorUnits).toBe(50_000n);
+      expect(outcome.institutionRef).toMatch(/^GIMAC-/);
+    }
+  });
+
+  it('gives each Beninese operator its own recovery code', async () => {
+    const bj = createBeninPayinSimulator([BJ_GH], { autoConfirmAfterSeconds: null });
+    const ack = await bj.initiatePayin(
+      {
+        corridorId: BJ_GH,
+        method: 'MOBILE_MONEY',
+        amount: Money.fromDecimalString('25000', 'XOF'),
+        reference: 'MP-TEST-BJGH',
+        senderToken: 'tok_sender_bj',
+        payer: { method: 'MOBILE_MONEY', msisdn: '22997123456', network: 'MOOV' },
+      },
+      asIdempotencyKey('payin-bj-1'),
+    );
+    if (ack.instructions.kind === 'MOBILE_MONEY') {
+      expect(ack.instructions.ussdFallback).toBe('*855#');
+    }
+  });
+});
+
+describe('provider registry — routing by destination', () => {
+  /**
+   * Name enquiry runs before a corridor is chosen, so it has to find a provider
+   * by where the money is going. This is the replacement for the old trick of
+   * inventing an RU corridor from the recipient's country.
+   */
+  it('finds the provider that serves a destination, whatever the origin', () => {
+    const registry = new ProviderRegistry()
+      .registerPayout({
+        provider: createCameroonPayoutSimulator([asCorridorId('NG-CM'), asCorridorId('BJ-CM')]),
+        priority: 100,
+        enabled: true,
+      })
+      .registerPayout({
+        provider: createSouthAfricaPayoutSimulator([asCorridorId('NG-ZA')]),
+        priority: 100,
+        enabled: true,
+      });
+
+    expect(String(registry.selectPayoutForDestination('CM')?.id)).toBe('payout-cm-sim');
+    expect(String(registry.selectPayoutForDestination('ZA')?.id)).toBe('payout-za-sim');
+    expect(registry.selectPayoutForDestination('GH')).toBeNull();
+  });
+
+  it('will not route to a rail that is registered but disabled', () => {
+    const registry = new ProviderRegistry().registerPayout({
+      provider: createBeninPayoutSimulator([asCorridorId('NG-BJ')]),
+      priority: 100,
+      enabled: false,
+    });
+    expect(registry.selectPayoutForDestination('BJ')).toBeNull();
   });
 });

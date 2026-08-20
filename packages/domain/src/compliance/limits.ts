@@ -43,6 +43,21 @@ export type TierLimitTable = Readonly<
  *     as daily and monthly aggregates rather than per-transaction values, so
  *     the per-transfer cap here is set at the daily aggregate.
  *
+ *   - **XAF and XOF** follow the BEAC and BCEAO electronic-money tiers. The two
+ *     are at par, so the tables are identical — but they are still two rows,
+ *     because they are two currencies under two central banks and collapsing
+ *     them is exactly the mistake the parity invites.
+ *
+ * Watch the magnitudes on the CFA rows: those currencies have **no decimals**,
+ * so `200_000n` is two hundred thousand francs, not two thousand. Copying a
+ * naira figure across without dividing by a hundred is the obvious way to get
+ * this wrong by two orders of magnitude.
+ *
+ * **ZAR is deliberately absent.** South Africa receives and does not send, so
+ * the rand is never a send currency; `checkLimits` fails closed on a currency
+ * with no row, which means a ZAR-denominated send is refused by construction
+ * rather than by a flag someone could flip.
+ *
  * Like the ruble rows, these are placeholders pending the risk assessment in
  * docs/compliance, and the compliance officer owns the final numbers. What is
  * not a placeholder is that they exist at all: `checkLimits` refuses a currency
@@ -54,6 +69,8 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
     BYN: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
     NGN: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
     GHS: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    XAF: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    XOF: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
   },
   1: {
     // 15 000 ₽ per transfer, 30 000 ₽ per day, 100 000 ₽ per month.
@@ -78,6 +95,17 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       perTransferMinorUnits: 100_000n,
       dailyMinorUnits: 100_000n,
       monthlyMinorUnits: 300_000n,
+    },
+    // 200 000 FCFA per transfer and per day, 1 000 000 per month. Whole francs.
+    XAF: {
+      perTransferMinorUnits: 200_000n,
+      dailyMinorUnits: 200_000n,
+      monthlyMinorUnits: 1_000_000n,
+    },
+    XOF: {
+      perTransferMinorUnits: 200_000n,
+      dailyMinorUnits: 200_000n,
+      monthlyMinorUnits: 1_000_000n,
     },
   },
   2: {
@@ -104,6 +132,17 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       dailyMinorUnits: 500_000n,
       monthlyMinorUnits: 2_000_000n,
     },
+    // 1 000 000 FCFA per transfer, 2 000 000 per day, 5 000 000 per month.
+    XAF: {
+      perTransferMinorUnits: 1_000_000n,
+      dailyMinorUnits: 2_000_000n,
+      monthlyMinorUnits: 5_000_000n,
+    },
+    XOF: {
+      perTransferMinorUnits: 1_000_000n,
+      dailyMinorUnits: 2_000_000n,
+      monthlyMinorUnits: 5_000_000n,
+    },
   },
   3: {
     // Enhanced due diligence: higher caps, and every transfer still screened.
@@ -128,6 +167,17 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       perTransferMinorUnits: 1_000_000n,
       dailyMinorUnits: 1_000_000n,
       monthlyMinorUnits: 5_000_000n,
+    },
+    // 5 000 000 FCFA per transfer, 10 000 000 per day, 25 000 000 per month.
+    XAF: {
+      perTransferMinorUnits: 5_000_000n,
+      dailyMinorUnits: 10_000_000n,
+      monthlyMinorUnits: 25_000_000n,
+    },
+    XOF: {
+      perTransferMinorUnits: 5_000_000n,
+      dailyMinorUnits: 10_000_000n,
+      monthlyMinorUnits: 25_000_000n,
     },
   },
 };

@@ -105,6 +105,8 @@ the application at all.
 | `blocked@demo.morapay.local` | Matches the mock sanctions list — guardrail G3           |
 | `folake@demo.morapay.local`  | Lives in Lagos — sends naira to Ghana on NG→GH           |
 | `kofi@demo.morapay.local`    | Lives in Accra — sends cedis to Nigeria on GH→NG         |
+| `marie@demo.morapay.local`   | Lives in Yaoundé — sends CFA francs, francophone journey |
+| `kossi@demo.morapay.local`   | Lives in Cotonou — sends CFA francs to Cameroon, at par  |
 | `compliance@morapay.local`   | Compliance queue                                         |
 | `treasury@morapay.local`     | Requests prefunding                                      |
 | `treasury2@morapay.local`    | Approves it — the second pair of eyes                    |
@@ -200,7 +202,7 @@ any money is committed.
 
 ---
 
-## Act 2b — The other side of the map (4 minutes)
+## Act 2b — The other side of the map (6 minutes)
 
 Everything so far has been money leaving Russia. This act is the second product:
 transfers **between** African countries, both directions, with nothing Russian in
@@ -232,19 +234,43 @@ them at all.
 4. Back office → _Operations_ → the ledger view for either transfer. The
    postings are the same shape as the ruble ones, in naira and cedis.
 
+5. Sign in as `marie@demo.morapay.local` — Yaoundé — and send **25 000 FCFA**
+   to _Frère — Cotonou_.
+
+   Two things to point at on this screen. The app is usable in French, and has
+   been since it was built. And the amounts have **no decimal point**: the CFA
+   franc has no subunit, so 25 000 FCFA is twenty-five thousand francs and the
+   ledger counts whole francs. The rate to Benin is exactly 1.000000, because
+   XAF and XOF share the same euro peg — but it is still a conversion, across
+   two separate central banks, and the two currencies cannot be added together
+   anywhere in the system.
+
+6. Optional, if someone asks about South Africa: try to send _from_ there. You
+   cannot. It is not in the residency list at registration, there is no
+   corridor, and the licence gate refuses to describe one.
+
 **The question this act invites, and the honest answer.** Somebody will ask
-whether this doubles the business. It roughly doubles the _addressable_ flow and
-it more than doubles the regulatory surface: collecting naira inside Nigeria and
-debiting wallets inside Ghana are licensed activities in their own right, and
-neither is implied by the inbound-remittance arrangements the ruble corridors
-need. NG→GH does not authorise GH→NG either — they are two licences, not one.
+whether this multiplies the business. It multiplies the _addressable_ flow and
+it multiplies the regulatory surface faster: collecting naira inside Nigeria,
+debiting cedi wallets in Ghana, XAF wallets in Cameroon and XOF wallets in Benin
+are four licensed activities in their own right, and none is implied by the
+inbound-remittance arrangements the ruble corridors need. NG→GH does not
+authorise GH→NG. A BCEAO approval in Benin says nothing about BEAC in Cameroon,
+even though the two currencies are at par.
+
+South Africa is the sharpest version of the point, and worth making out loud: we
+deliberately did **not** build it as an origin. Outward payments from South
+Africa are reported under balance-of-payments codes and counted against each
+sender's annual allowance — a product we have not built, not merely a licence we
+have not signed. So South Africa receives and does not send, and the code makes a
+South African sender unrepresentable rather than merely discouraged.
 
 That is why the code carries a licence gate rather than a switch. With live funds
 on, a corridor is only reachable if the specific authorisations behind it are
 named in configuration; there is no wildcard and no override. Today none are
 named, which is correct, and the demonstration works anyway because nothing here
-moves real money. `docs/CORRIDORS.md` has the detail, and it is tracked as
-OPEN_ITEMS B6.
+moves real money. `docs/CORRIDORS.md` has the detail; OPEN_ITEMS B6, B7 and B8
+carry the commercial and legal work.
 
 ---
 

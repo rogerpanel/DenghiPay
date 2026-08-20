@@ -1,4 +1,14 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   BankListResponse,
   CreateRecipientRequest,
@@ -56,8 +66,16 @@ export class RecipientsController {
 export class InstitutionsController {
   constructor(private readonly recipients: RecipientsService) {}
 
+  /**
+   * `?country=GH` returns the institutions of one destination.
+   *
+   * The parameter is required in practice — an omitted country returns an empty
+   * list rather than everything, because "everything" is what the old shape
+   * returned and it offered Nigerian banks to somebody paying a Beninese
+   * wallet. An empty list is a visible bug; a wrong list is not.
+   */
   @Get()
-  list(): BankListResponse {
-    return this.recipients.institutions();
+  list(@Query('country') country?: string): BankListResponse {
+    return this.recipients.institutions(country ?? '');
   }
 }

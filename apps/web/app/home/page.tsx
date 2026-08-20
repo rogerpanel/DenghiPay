@@ -27,7 +27,15 @@ interface Corridor {
   open: boolean;
 }
 
-const FLAGS: Record<string, string> = { RU: '🇷🇺', BY: '🇧🇾', NG: '🇳🇬', GH: '🇬🇭' };
+const FLAGS: Record<string, string> = {
+  RU: '🇷🇺',
+  BY: '🇧🇾',
+  NG: '🇳🇬',
+  GH: '🇬🇭',
+  ZA: '🇿🇦',
+  CM: '🇨🇲',
+  BJ: '🇧🇯',
+};
 
 function HomeInner() {
   const { t, account } = useApp();

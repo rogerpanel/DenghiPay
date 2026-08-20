@@ -23,10 +23,20 @@ export const moneySchema = z.object({
 });
 export type MoneyDto = z.infer<typeof moneySchema>;
 
-export const currencyCodeSchema = z.enum(['RUB', 'BYN', 'NGN', 'GHS', 'USD', 'USDT']);
+export const currencyCodeSchema = z.enum([
+  'RUB',
+  'BYN',
+  'NGN',
+  'GHS',
+  'ZAR',
+  'XAF',
+  'XOF',
+  'USD',
+  'USDT',
+]);
 export type CurrencyCodeDto = z.infer<typeof currencyCodeSchema>;
 
-export const countryCodeSchema = z.enum(['RU', 'BY', 'NG', 'GH']);
+export const countryCodeSchema = z.enum(['RU', 'BY', 'NG', 'GH', 'ZA', 'CM', 'BJ']);
 export type CountryCodeDto = z.infer<typeof countryCodeSchema>;
 
 export const payoutMethodSchema = z.enum(['BANK_ACCOUNT', 'MOBILE_MONEY']);

@@ -50,6 +50,30 @@ export class ProviderRegistry {
     return candidates[0]?.provider ?? null;
   }
 
+  /**
+   * The provider that can resolve or credit an account in a given country,
+   * whatever corridor the money eventually travels on.
+   *
+   * Name enquiry needs this. It happens before a corridor is chosen — the
+   * sender is still deciding who to pay — so asking "which provider serves this
+   * corridor" has no answer yet. The API used to fabricate one, mapping a
+   * Nigerian recipient to `RU-NG` and everyone else to `RU-GH`, which worked
+   * only while those were the sole destinations and silently sent a Cameroonian
+   * wallet to the Ghanaian rail the moment they were not.
+   *
+   * Destination countries are derived from each provider's registered
+   * corridors, so nothing has to be declared twice.
+   */
+  selectPayoutForDestination(country: string): PayoutProvider | null {
+    const suffix = `-${country}`;
+    const candidates = this.payouts
+      .filter((e) => e.enabled)
+      .filter((e) => e.provider.supportedCorridors.some((id) => String(id).endsWith(suffix)))
+      .filter((e) => !this.unhealthy.has(String(e.provider.id)))
+      .sort((a, b) => a.priority - b.priority);
+    return candidates[0]?.provider ?? null;
+  }
+
   selectPayin(corridorId: CorridorId): PayinProvider | null {
     const candidates = this.payins
       .filter((e) => e.enabled)

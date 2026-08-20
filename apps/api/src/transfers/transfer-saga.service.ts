@@ -14,6 +14,7 @@ import { ProviderRegistry } from '@morapay/adapters';
 import {
   LedgerService,
   accountCode,
+  floatCode,
   payinConfirmed,
   postPayoutResult,
   settlementOut,
@@ -611,10 +612,8 @@ export class TransferSagaService implements OnModuleInit, OnModuleDestroy {
       userPayableDestination,
       partnerReceivableSource,
     ] = await Promise.all([
-      this.ledger.accountByCode(accountCode(floatTypeFor(sendCurrency), sendCurrency)),
-      this.ledger.accountByCode(
-        accountCode(floatTypeFor(destinationCurrency), destinationCurrency),
-      ),
+      this.ledger.accountByCode(floatCode(sendCurrency)),
+      this.ledger.accountByCode(floatCode(destinationCurrency)),
       this.ledger.accountByCode(accountCode('FEE_REVENUE', sendCurrency)),
       this.ledger.ensureAccount({
         type: 'USER_PAYABLE',
@@ -641,17 +640,6 @@ export class TransferSagaService implements OnModuleInit, OnModuleDestroy {
       userPayableDestination: userPayableDestination.id,
       partnerReceivableSource: partnerReceivableSource.id,
     };
-  }
-}
-
-function floatTypeFor(currency: CurrencyCode): 'FLOAT_RUB' | 'FLOAT_NGN' | 'FLOAT_GHS' {
-  switch (currency) {
-    case 'NGN':
-      return 'FLOAT_NGN';
-    case 'GHS':
-      return 'FLOAT_GHS';
-    default:
-      return 'FLOAT_RUB';
   }
 }
 

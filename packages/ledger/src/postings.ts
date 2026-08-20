@@ -28,7 +28,7 @@ export interface PayinConfirmedInput {
  * Pay-in confirmed: money arrives in our RUB float, and we owe the sender the
  * send amount. The fee is ours the moment we receive it.
  *
- *   DR FLOAT_RUB        total received
+ *   DR FLOAT (send ccy)  total received
  *     CR USER_PAYABLE     send amount
  *     CR FEE_REVENUE      fee
  */
@@ -68,7 +68,7 @@ export interface SettlementOutInput {
  * from the settlement partner.
  *
  *   DR PARTNER_RECEIVABLE   amount (source currency)
- *     CR FLOAT_RUB            amount
+ *     CR FLOAT (send ccy)     amount
  */
 export function settlementOut(input: SettlementOutInput): DraftTransaction {
   return {

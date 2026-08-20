@@ -134,10 +134,20 @@ export class ProviderCallbackController {
         return this.config.PROVIDER_SIGNING_SECRET_PAYIN_NG_SIM;
       case 'payin-gh-sim':
         return this.config.PROVIDER_SIGNING_SECRET_PAYIN_GH_SIM;
+      case 'payin-cm-sim':
+        return this.config.PROVIDER_SIGNING_SECRET_PAYIN_CM_SIM;
+      case 'payin-bj-sim':
+        return this.config.PROVIDER_SIGNING_SECRET_PAYIN_BJ_SIM;
       case 'payout-ng-sim':
         return this.config.PROVIDER_SIGNING_SECRET_PAYOUT_NG_SIM;
       case 'payout-gh-sim':
         return this.config.PROVIDER_SIGNING_SECRET_PAYOUT_GH_SIM;
+      case 'payout-za-sim':
+        return this.config.PROVIDER_SIGNING_SECRET_PAYOUT_ZA_SIM;
+      case 'payout-cm-sim':
+        return this.config.PROVIDER_SIGNING_SECRET_PAYOUT_CM_SIM;
+      case 'payout-bj-sim':
+        return this.config.PROVIDER_SIGNING_SECRET_PAYOUT_BJ_SIM;
       default:
         // An unknown provider gets the same 401 as a bad signature. We do not
         // confirm which provider identifiers exist.

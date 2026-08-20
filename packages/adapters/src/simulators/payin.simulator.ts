@@ -18,7 +18,7 @@ import { PayinProvider, PayinRequest } from '../ports/payin-provider';
 import { DateRange, RawCallback, StatementLine } from '../ports/payout-provider';
 
 /** Where the money is collected from, which decides the rails and the wording. */
-export type PayinMarket = 'RU' | 'NG' | 'GH';
+export type PayinMarket = 'RU' | 'NG' | 'GH' | 'CM' | 'BJ';
 
 interface SimulatedPayin {
   readonly providerRef: ProviderRef;
@@ -53,6 +53,11 @@ const METHODS_BY_MARKET: Readonly<Record<PayinMarket, readonly PayinMethod[]>> =
   // Ghana collects by debiting a mobile-money wallet. Bank transfer exists too,
   // but wallets are where the money is.
   GH: ['MOBILE_MONEY'],
+  // Cameroon and Benin are wallet-first markets by a wide margin. Both collect
+  // the same way Ghana does: we request the debit, the holder approves it on
+  // their handset.
+  CM: ['MOBILE_MONEY'],
+  BJ: ['MOBILE_MONEY'],
 };
 
 /** What the receiving switch calls its own reference, per market. */
@@ -60,29 +65,46 @@ const SWITCH_PREFIX: Readonly<Record<PayinMarket, string>> = {
   RU: 'SBP',
   NG: 'NIP',
   GH: 'GHIPSS',
+  CM: 'GIMAC',
+  BJ: 'GIM-UEMOA',
 };
 
-const GH_USSD_FALLBACK: Readonly<Record<string, string>> = {
-  MTN: '*170#',
-  TELECEL: '*110#',
-  AIRTELTIGO: '*110#',
+/**
+ * The short code a payer dials when the approval prompt never arrives, by
+ * market and network.
+ *
+ * These are the operators' published self-service codes. **Confirm each one
+ * with the operator before a pilot** — they change, they differ by handset
+ * region, and a wrong code turns a recoverable stall into a support call. The
+ * simulator is not the place that gets this wrong; a printed demo screen is.
+ */
+const USSD_FALLBACK: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  GH: { MTN: '*170#', TELECEL: '*110#', AIRTELTIGO: '*110#' },
+  CM: { MTN: '*126#', ORANGE: '#150#' },
+  BJ: { MTN: '*880#', MOOV: '*855#', CELTIIS: '*800#' },
 };
+
+function ussdFallbackFor(market: PayinMarket, network: string): string {
+  return USSD_FALLBACK[market]?.[network] ?? '*000#';
+}
 
 /**
  * Pay-in simulator (BUILD_PLAN 6.1).
  *
- * One class, three markets. Russia models SBP push, QR and virtual-account
- * credit; Nigeria models a dedicated NUBAN the sender pushes to; Ghana models a
- * mobile-money debit the sender approves on their handset. All three model the
- * awkward parts — duplicate webhooks, dropped webhooks, and a delay between the
- * sender pressing "pay" and the money actually being there.
+ * One class, five markets, and two collection shapes between them. Russia and
+ * Nigeria **wait to be pushed to** — an SBP link, a QR, or a dedicated account
+ * the sender transfers into. Ghana, Cameroon and Benin **pull**: we request a
+ * debit against a named wallet and its holder approves the prompt on their own
+ * handset. Every market models the awkward parts — duplicate webhooks, dropped
+ * webhooks, and a delay between the sender pressing "pay" and the money
+ * actually being there.
  *
  * The Russian leg is the one no partner currently fills
- * (TECHNICAL_ARCHITECTURE §1.1). The Nigerian and Ghanaian legs are unfilled for
- * a different reason: collecting from the public inside those countries is a
- * licensed activity we do not yet hold (see `assertCorridorMayMoveLiveFunds`).
- * All three stay simulators until those are signed agreements rather than
- * slides.
+ * (TECHNICAL_ARCHITECTURE §1.1). The four African legs are unfilled for a
+ * different reason: collecting from the public inside those countries is a
+ * licensed activity in its own right and we hold none of those licences (see
+ * `assertCorridorMayMoveLiveFunds`). All five stay simulators until those are
+ * signed agreements rather than slides.
  */
 export class PayinSimulator implements PayinProvider {
   readonly id: ProviderId;
@@ -205,7 +227,7 @@ export class PayinSimulator implements PayinProvider {
           kind: 'MOBILE_MONEY',
           msisdn: req.payer.msisdn,
           network: req.payer.network,
-          ussdFallback: GH_USSD_FALLBACK[req.payer.network] ?? '*110#',
+          ussdFallback: ussdFallbackFor(this.market, req.payer.network),
           expiresAt,
         };
       }
@@ -334,4 +356,18 @@ export function createGhanaPayinSimulator(
   options: PayinSimulatorOptions = DEFAULT_OPTIONS,
 ): PayinSimulator {
   return new PayinSimulator('payin-gh-sim', corridors, 'GH', options);
+}
+
+export function createCameroonPayinSimulator(
+  corridors: readonly CorridorId[],
+  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
+): PayinSimulator {
+  return new PayinSimulator('payin-cm-sim', corridors, 'CM', options);
+}
+
+export function createBeninPayinSimulator(
+  corridors: readonly CorridorId[],
+  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
+): PayinSimulator {
+  return new PayinSimulator('payin-bj-sim', corridors, 'BJ', options);
 }

@@ -103,9 +103,45 @@ describe('intra-African send limits', () => {
   });
 
   it('gives tier 0 a row in every send currency, so nobody moves money unverified', () => {
-    for (const currency of ['RUB', 'BYN', 'NGN', 'GHS'] as const) {
+    for (const currency of ['RUB', 'BYN', 'NGN', 'GHS', 'XAF', 'XOF'] as const) {
       expect(limitsFor(0, currency)?.perTransferMinorUnits).toBe(0n);
     }
+  });
+
+  /**
+   * The CFA francs have no decimals, so a limit reads as whole francs. A row
+   * copied across from a two-decimal currency would be wrong by a hundredfold
+   * and would still look like a plausible number, which is why this asserts the
+   * magnitude rather than merely the presence of the row.
+   */
+  it('caps a tier 1 CFA sender in whole francs', () => {
+    expect(limitsFor(1, 'XOF')?.perTransferMinorUnits).toBe(200_000n);
+    expect(checkLimits(1, Money.fromDecimalString('200000', 'XOF'), noUsage).allowed).toBe(true);
+
+    const decision = checkLimits(1, Money.fromDecimalString('200001', 'XOF'), noUsage);
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.window).toBe('PER_TRANSFER');
+  });
+
+  it('holds XAF and XOF at par but keeps them separate rows', () => {
+    expect(limitsFor(2, 'XAF')).toEqual(limitsFor(2, 'XOF'));
+    // Parity is a fact about the peg, not permission to substitute one for the
+    // other: the money type refuses to mix them.
+    expect(() =>
+      Money.fromDecimalString('1000', 'XAF').add(Money.fromDecimalString('1000', 'XOF') as never),
+    ).toThrow();
+  });
+
+  /**
+   * South Africa receives and does not send, pending exchange-control work, so
+   * the rand has no tier row at all. This test is the enforcement: if someone
+   * adds a ZA origin without building balance-of-payments reporting, the send
+   * is refused here rather than succeeding quietly.
+   */
+  it('refuses a rand send outright, because ZAR is not a send currency', () => {
+    const decision = checkLimits(3, Money.fromDecimalString('100.00', 'ZAR'), noUsage);
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.upgradeTo).toBeNull();
   });
 });
 

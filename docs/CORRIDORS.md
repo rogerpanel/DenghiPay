@@ -1,45 +1,70 @@
 # Corridors
 
-Four corridors run today, and they are not all the same kind of thing. The
-transfer code cannot tell them apart — that is the point of corridors being data
-— so the difference is written down here and enforced by a check that runs on
-every corridor read.
+Twenty corridors exist; eighteen are enabled. They are not all the same kind of
+thing, and the transfer code cannot tell them apart — that is the point of
+corridors being data — so the difference is written down here and enforced by a
+check that runs on every corridor read.
 
-| Corridor | Collect                        | Deliver                | Class              | Status                              |
-| -------- | ------------------------------ | ---------------------- | ------------------ | ----------------------------------- |
-| RU→NG    | RUB in Russia, via a partner   | NGN to a bank account  | Inbound remittance | Simulated. Blocked on OPEN_ITEMS B1 |
-| RU→GH    | RUB in Russia, via a partner   | GHS to a mobile wallet | Inbound remittance | Simulated. Blocked on B1 and B4     |
-| NG→GH    | NGN inside Nigeria, to a NUBAN | GHS to a mobile wallet | Intra-African      | Simulated. Blocked on B6            |
-| GH→NG    | GHS inside Ghana, wallet debit | NGN to a bank account  | Intra-African      | Simulated. Blocked on B6            |
+## The map
 
-BY→NG and BY→GH exist as rows and are disabled, awaiting a Belarusian
-collection partner.
+**Origins (4).** Nigeria, Ghana, Cameroon, Benin — plus Russia on the inbound
+corridors. **Destinations (5).** Those four, plus South Africa.
 
-## The two classes, and why the distinction is load-bearing
+| ↓ from / to → | NG                      | GH  | ZA  | CM  | BJ  |
+| ------------- | ----------------------- | --- | --- | --- | --- |
+| **NG**        | —                       | ✓   | ✓   | ✓   | ✓   |
+| **GH**        | ✓                       | —   | ✓   | ✓   | ✓   |
+| **CM**        | ✓                       | ✓   | ✓   | —   | ✓   |
+| **BJ**        | ✓                       | ✓   | ✓   | ✓   | —   |
+| **ZA**        | receive-only, see below |
+
+Sixteen intra-African corridors, plus RU→NG and RU→GH. BY→NG and BY→GH exist as
+rows and are disabled, awaiting a Belarusian collection partner.
+
+**South Africa receives and does not send.** Outward transfers from South Africa
+sit under SARB exchange control: every one is reported under a
+balance-of-payments category code and measured against the sender's annual
+allowance. That is not another licence to obtain, it is a different product, and
+this codebase models neither the codes nor the allowance. Rather than build a ZA
+origin that could not lawfully run, there is no ZA collection authorisation, no
+ZA sender store, and `authorisationsFor` **throws** for a ZA-origin corridor
+instead of returning an empty list a licence gate would wave through.
+
+## Currencies
+
+| Currency | Decimals | Note                                                               |
+| -------- | -------- | ------------------------------------------------------------------ |
+| NGN      | 2        |                                                                    |
+| GHS      | 2        |                                                                    |
+| ZAR      | 2        | Destination only                                                   |
+| XAF      | **0**    | Central African CFA franc, BEAC. Pegged to the euro                |
+| XOF      | **0**    | West African CFA franc, BCEAO. Same peg, therefore at par with XAF |
+
+The CFA francs are the detail most likely to be got wrong. They have **no
+subunit**: `minorUnits` counts whole francs, so `200_000n` is two hundred
+thousand francs, and a limit copied across from a naira row without dividing by
+a hundred is wrong by two orders of magnitude while still looking plausible.
+
+They are also at par with each other, which is a fact about the peg and not a
+licence to substitute one for the other. BEAC and BCEAO are separate central
+banks; a Benin→Cameroon transfer is a real cross-border conversion that happens
+to be 1:1, and the money type refuses to add XAF to XOF.
+
+## The two regulatory classes
 
 **Inbound remittance (RU→).** We collect in Russia through a licensed Russian
-partner, and the money arrives in Nigeria or Ghana as an inbound cross-border
-remittance — an activity the destination partner's own IMTO authorisation
-already covers. Our regulatory weight sits at the origin, and the open question
-is who that Russian partner is.
+partner, and the money arrives as an inbound cross-border remittance, which the
+destination partner's own IMTO authorisation covers. Our regulatory weight sits
+at the origin, and the open question is who that Russian partner is.
 
-**Intra-African (NG→, GH→).** Both ends are domestic. We take naira from a
-person who is _in Nigeria_ and pay cedis to a person who is _in Ghana_.
-Collecting money from the public inside Nigeria is a CBN-licensed activity in
-its own right; debiting mobile-money wallets inside Ghana sits under the Bank of
-Ghana's payment-systems regime. Neither is implied by holding an
-inbound-remittance arrangement.
-
-And neither direction implies the other. **NG→GH does not authorise GH→NG.**
-They are two corridors with two collection licences, and the fact that they look
-symmetrical on a diagram is exactly why it is worth stating.
-
-`BUILD_PLAN` Part 8 defers additional corridors until the first one is live and
-reconciled. This work runs ahead of that deliberately, at the CEO's direction,
-because the product question — can MoraPay carry intra-African flows at all? —
-is worth answering with a working demonstration rather than an estimate. What it
-does **not** do is move the regulatory position: nothing here can move a real
-naira or a real cedi.
+**Intra-African (NG→, GH→, CM→, BJ→).** Both ends are domestic. We take naira
+from a person who is _in Nigeria_ and pay cedis to a person who is _in Ghana_.
+Collecting from the public inside Nigeria is a CBN-licensed activity in its own
+right; so is debiting wallets under the Bank of Ghana's payment-systems regime,
+under BEAC/COBAC in Cameroon, and under BCEAO in Benin. None of these is implied
+by holding an inbound-remittance arrangement, and **none implies another**.
+NG→GH does not authorise GH→NG; a BCEAO approval says nothing about BEAC even
+though the currencies are at par.
 
 ## How that is enforced
 
@@ -52,11 +77,16 @@ rests on:
 | `BY_COLLECTION_PARTNER`  | The same, for Belarus                                         |
 | `NG_DOMESTIC_COLLECTION` | CBN authorisation to collect naira from the public in Nigeria |
 | `GH_DOMESTIC_COLLECTION` | Bank of Ghana authorisation to debit cedi wallets in Ghana    |
+| `CM_DOMESTIC_COLLECTION` | BEAC/COBAC authorisation to debit XAF wallets in Cameroon     |
+| `BJ_DOMESTIC_COLLECTION` | BCEAO authorisation to debit XOF wallets in Benin             |
 | `NG_PAYOUT_RAIL`         | A licensed rail crediting Nigerian bank accounts              |
 | `GH_PAYOUT_RAIL`         | A licensed rail crediting Ghanaian mobile-money wallets       |
+| `ZA_PAYOUT_RAIL`         | A licensed rail crediting South African bank accounts         |
+| `CM_PAYOUT_RAIL`         | A licensed rail crediting Cameroonian wallets                 |
+| `BJ_PAYOUT_RAIL`         | A licensed rail crediting Beninese wallets                    |
 
 With `LIVE_FUNDS_ENABLED=false` the check is a no-op: a simulated corridor moves
-no money and needs no licence, which is what lets both directions be built and
+no money and needs no licence, which is what lets every direction be built and
 shown today. With live funds on, a corridor is readable only if **every**
 authorisation it rests on is named in `LIVE_CORRIDOR_AUTHORISATIONS`. There is
 no wildcard and no skip flag; the only way through is to write the specific
@@ -79,34 +109,64 @@ it, so the corridor is re-read at confirmation rather than trusted from before.
 
 ## What each corridor collects with
 
-Collection is the part that differs most, and it is not symmetrical.
+Collection differs most between markets, and it is not symmetrical. Two shapes:
 
-- **Russia** — SBP push, QR, card, or a virtual account. The sender originates
-  the payment.
-- **Nigeria** — a dedicated ten-digit NUBAN the sender pushes to. Card is
-  deliberately absent: a card-funded remittance is a chargeback exposure we are
-  not taking on.
-- **Ghana** — a mobile-money debit. This one runs the other way round: we ask
-  the network to debit the sender's wallet and they approve a prompt on their
-  handset. That makes it the only rail that needs the sender's own account
-  details, so the wallet is captured at verification, stored in the GH
-  partition, and read into the outbound provider call at the moment of
-  collection — never written to the neutral tier. Approval prompts get dropped
-  often enough that the instructions carry the operator's USSD short code as a
-  fallback.
+**Push — the sender originates the payment.**
 
-A transfer whose Ghanaian sender has no verified wallet on file fails with
+- **Russia** — SBP link, QR, card, or a virtual account.
+- **Nigeria** — a dedicated ten-digit NUBAN. Card is deliberately absent: a
+  card-funded remittance is a chargeback exposure we are not taking on.
+
+**Pull — we request a debit and the holder approves it.**
+
+- **Ghana, Cameroon, Benin** — mobile money. We ask the network to debit the
+  sender's own wallet; they approve a prompt on their handset. This is the only
+  shape that needs the sender's own account details, so the wallet is captured
+  at verification, stored in that country's partition, and read into the
+  outbound provider call at the moment of collection — never written to the
+  neutral tier. Approval prompts get dropped often enough that the instructions
+  carry the operator's USSD short code as a fallback.
+
+  **Confirm those short codes with each operator before a pilot.** They change,
+  and a wrong one turns a recoverable stall into a support call.
+
+A transfer whose sender has no verified wallet on file fails with
 `NO_COLLECTION_WALLET` rather than sitting in `AWAITING_PAYIN` forever.
+
+Payout: Nigeria and South Africa credit bank accounts; Ghana, Cameroon and Benin
+credit wallets. A South African universal branch code is six digits and
+identifies the bank rather than a branch, which is why it is validated
+separately from a three-digit Nigerian bank code.
+
+Networks are country-scoped. MTN Ghana and MTN Cameroon are separate licensees
+on separate switches, so `TELECEL` offered for a Beninese wallet is rejected at
+the API boundary rather than accepted and never delivered.
 
 ## Residency
 
 A sender must be where the collection happens. Someone in Lagos cannot hand over
 rubles, so RU→NG is neither offered to them nor accepted from them —
-`CORRIDOR_RESIDENCY_MISMATCH`. Personal data follows the same line: Nigerian and
-Ghanaian senders are held in `partition_ng` and `partition_gh`, in their own
-stores, with the identifiers those jurisdictions actually use (a BVN, a Ghana
-Card). Belarus is the one exception, holding its senders in the RU store under
-the same regime.
+`CORRIDOR_RESIDENCY_MISMATCH`. Registration offers RU, BY, NG, GH, CM and BJ; it
+does not offer ZA, because there is no store to put a South African sender in.
+
+Personal data follows the same line. Six partitions, deliberately asymmetric:
+
+| Partition      | Senders | Recipients | Identifier held          |
+| -------------- | ------- | ---------- | ------------------------ |
+| `partition_ru` | ✓       | —          | Passport, migration card |
+| `partition_ng` | ✓       | ✓          | BVN                      |
+| `partition_gh` | ✓       | ✓          | Ghana Card               |
+| `partition_za` | —       | ✓          | —                        |
+| `partition_cm` | ✓       | ✓          | CNI number               |
+| `partition_bj` | ✓       | ✓          | NPI number               |
+
+Belarus is the one place where partition and country differ: BY senders live in
+the RU store under the same regime.
+
+Recipients are filed by **country**, not by payout method. Dispatching on method
+was sufficient while Nigeria was the only bank destination; with South Africa
+also crediting bank accounts it would have filed a Johannesburg account in the
+Nigerian store — a residency breach no happy-path test would notice.
 
 Screening is unchanged and unbypassable in every direction. `screeningSubject`
 returns null for a residency with no store behind it, and the compliance gate
@@ -114,40 +174,53 @@ treats an absent subject as unscreenable.
 
 ## Rates
 
-There is no deep direct NGN/GHS market; both legs cross the dollar in practice.
-The feed therefore carries `NGN:GHS` and `GHS:NGN` as explicit observations
-computed from the dollar cross, rather than pivoting through USD inside the
-quote engine. Crossing once, at the feed, keeps the quote to a single rounding
-step and a single staleness window, and avoids the ledger holding a USD leg for
-a transfer that never touches a dollar. The two directions are separate
-observations, not a rate and its reciprocal, because that is how they will
-arrive from a real feed — each with its own spread.
+None of these pairs has a deep direct market; every one crosses the dollar in
+practice. The feed therefore holds a **dollar anchor per currency** and derives
+all sixteen ordered pairs from it, rather than listing them by hand — sixteen
+hand-written rates would be sixteen chances for one to disagree with its own
+reciprocal by more than a spread, discovered at a treasury reconciliation.
+
+Crossing once, at the feed, keeps each quote to a single rounding step and a
+single staleness window, and avoids the ledger holding a USD leg for a transfer
+that never touches a dollar. XAF:XOF derives to exactly `1.000000`, which is the
+peg showing through.
+
+Rates are ingested at boot as well as every minute. Without the boot ingest
+there is a gap of up to a minute after each deploy where the newest observation
+is whatever the seed wrote — often already stale — and every quote is refused
+with `RATE_UNAVAILABLE`. Halting on stale rates is correct; being in that state
+because the process just started is not.
 
 ## Limits
 
-NGN and GHS are now send currencies, so they have tier rows of their own,
-anchored to the local regimes rather than converted from the ruble rows: NGN
-follows the shape of the CBN's three-tier KYC regime; GHS follows the Bank of
-Ghana's mobile-money tiers, which are stated as daily aggregates, so the
-per-transfer cap is set at the daily figure. The numbers are placeholders the
-compliance officer owns. What is not a placeholder is that the rows exist:
-`checkLimits` refuses a currency it has no row for, so an unlisted send currency
-fails closed.
+Every send currency has tier rows, anchored to its local regime rather than
+converted from the ruble rows: NGN follows the CBN's three-tier KYC shape, GHS
+the Bank of Ghana's mobile-money tiers, XAF and XOF the BEAC and BCEAO
+electronic-money tiers. The numbers are placeholders the compliance officer
+owns. What is not a placeholder is that the rows exist — `checkLimits` refuses a
+currency it has no row for, so **ZAR having no row is what makes a rand send
+impossible** rather than merely discouraged.
+
+## The ledger
+
+Float, fee revenue, FX P&L, suspense and settlement receivable exist in all
+seven ledger currencies. The float account type used to be `FLOAT_RUB`,
+`FLOAT_NGN`, `FLOAT_GHS` — the currency baked into the type name beside a
+currency column holding the same fact — which cost a new enum member and a new
+branch in two helpers per country. It is now a single `FLOAT` type keyed by
+currency, migrated in place so existing balances and entries were untouched.
 
 ## Adding the next one
 
-A French-speaking corridor is the stated next step. The work is:
-
-1. A row in `CORRIDORS` (seed) and the country in `CountryCode`.
-2. A currency in the registry, a `SEND_CURRENCY` entry, and tier limit rows.
-3. `FEE_REVENUE`, `FLOAT_*`, `SUSPENSE` and `PARTNER_RECEIVABLE` accounts in
-   that currency — the saga looks them up by code and a missing one stops a
-   transfer dead.
-4. Rate pairs in both directions.
-5. A collection rail, and if it pulls rather than waits to be pushed to, the
-   account to debit in that country's partition.
-6. A sender store in the new partition, plus its screening projection.
+1. A currency in the registry, with the right exponent, and a dollar anchor.
+2. The country in `CountryCode` and `SEND_CURRENCY`; tier limit rows.
+3. The currency in `LEDGER_CURRENCIES` — accounts are generated from it.
+4. A partition schema, a migration, and sender/recipient repositories.
+5. Collection and payout rails, plus the market profile (institutions, number
+   format, switch name).
+6. Origin and destination lists in the seed and `app.module.ts`.
 7. Authorisation names in `licensing.ts`, and the honest answer to what they
    require.
 
-Step 7 is the one that takes months. The other six take a day.
+Steps 1–6 take a day. Step 7 takes months, and for a country with exchange
+controls it is not only paperwork — as South Africa shows, it can be a feature.

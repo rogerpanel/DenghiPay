@@ -47,6 +47,129 @@ const STAFF = [
 
 const DEV_STAFF_PASSWORD = 'morapay-local-staff-2026';
 
+/**
+ * The intra-African mesh: every country that can collect, into every country
+ * that can receive.
+ *
+ * Generated rather than listed. Sixteen rows written by hand would be sixteen
+ * chances to transpose a currency, and the next country turns them into
+ * twenty-five. What varies between them is only the pricing, which is a
+ * function of the pair, so that is the only thing stated per corridor.
+ *
+ * South Africa appears as a destination and never as an origin: outward
+ * transfers from South Africa need SARB balance-of-payments reporting and
+ * allowance tracking that this codebase does not model, and
+ * `assertCorridorMayMoveLiveFunds` refuses to describe a ZA-origin corridor at
+ * all. Adding 'ZA' to ORIGINS below would fail at seed time, which is the
+ * intended outcome.
+ *
+ * These are enabled because with LIVE_FUNDS_ENABLED=false nothing moves and
+ * every direction needs to be demonstrable end to end. The licence gate is
+ * what stops them the moment live funds are switched on without the paperwork
+ * — see docs/CORRIDORS.md and OPEN_ITEMS B6.
+ */
+const ORIGINS = ['NG', 'GH', 'CM', 'BJ'] as const;
+const DESTINATIONS = ['NG', 'GH', 'ZA', 'CM', 'BJ'] as const;
+
+type AfricanCountry = (typeof DESTINATIONS)[number];
+
+/** Currency, collection rail and payout rail, per country. */
+const COUNTRY_RAILS: Readonly<
+  Record<
+    AfricanCountry,
+    {
+      currency: string;
+      payin: string[];
+      payout: string[];
+      /** Smallest and largest send, and the flat fee, in minor units. */
+      minSend: bigint;
+      maxSend: bigint;
+      fee: bigint;
+    }
+  >
+> = {
+  // Naira and cedi have two decimals; the CFA francs have none, so their
+  // figures are whole francs and look a hundredfold smaller for the same value.
+  NG: {
+    currency: 'NGN',
+    payin: ['VIRTUAL_ACCOUNT'],
+    payout: ['BANK_ACCOUNT'],
+    minSend: 100_000n, //      ₦1 000,00
+    maxSend: 500_000_000n, //  ₦5 000 000,00
+    fee: 50_000n, //           ₦500,00
+  },
+  GH: {
+    currency: 'GHS',
+    payin: ['MOBILE_MONEY'],
+    payout: ['MOBILE_MONEY'],
+    minSend: 1_000n, //        GH₵10,00
+    maxSend: 1_000_000n, //    GH₵10 000,00
+    fee: 350n, //              GH₵3,50
+  },
+  ZA: {
+    currency: 'ZAR',
+    payin: [], // Receive-only: no collection rail exists here.
+    payout: ['BANK_ACCOUNT'],
+    minSend: 0n,
+    maxSend: 0n,
+    fee: 0n,
+  },
+  CM: {
+    currency: 'XAF',
+    payin: ['MOBILE_MONEY'],
+    payout: ['MOBILE_MONEY'],
+    minSend: 500n, //          500 FCFA
+    maxSend: 5_000_000n, //    5 000 000 FCFA
+    fee: 200n, //              200 FCFA
+  },
+  BJ: {
+    currency: 'XOF',
+    payin: ['MOBILE_MONEY'],
+    payout: ['MOBILE_MONEY'],
+    minSend: 500n,
+    maxSend: 5_000_000n,
+    fee: 200n,
+  },
+};
+
+/**
+ * Margin in basis points.
+ *
+ * Wider than RU→NG because none of these pairs has a deep direct market — every
+ * one of them crosses the dollar in practice. The CFA pair is the exception:
+ * XAF and XOF share the euro peg, so there is no currency risk to price and the
+ * margin covers the rail alone.
+ */
+function marginFor(from: AfricanCountry, to: AfricanCountry): number {
+  const cfa = (c: AfricanCountry) => c === 'CM' || c === 'BJ';
+  if (cfa(from) && cfa(to)) return 90;
+  return 225;
+}
+
+function intraAfricanCorridors() {
+  return ORIGINS.flatMap((sourceCountry) =>
+    DESTINATIONS.filter((destinationCountry) => destinationCountry !== sourceCountry).map(
+      (destinationCountry) => {
+        const origin = COUNTRY_RAILS[sourceCountry];
+        const destination = COUNTRY_RAILS[destinationCountry];
+        return {
+          id: `${sourceCountry}-${destinationCountry}`,
+          sourceCountry,
+          sourceCurrency: origin.currency,
+          destinationCountry,
+          destinationCurrency: destination.currency,
+          payinMethods: origin.payin,
+          payoutMethods: destination.payout,
+          minSendMinorUnits: origin.minSend,
+          maxSendMinorUnits: origin.maxSend,
+          fixedFeeMinorUnits: origin.fee,
+          fxMarginBps: marginFor(sourceCountry, destinationCountry),
+        };
+      },
+    ),
+  );
+}
+
 const CORRIDORS = [
   {
     id: 'RU-NG',
@@ -74,47 +197,7 @@ const CORRIDORS = [
     fixedFeeMinorUnits: 15_000n,
     fxMarginBps: 175,
   },
-  /**
-   * The intra-African pair, both directions.
-   *
-   * These are a different kind of corridor from the ones above: we collect
-   * domestically at the origin rather than through a partner at a border, so
-   * each direction rests on its own local authorisation (see
-   * `assertCorridorMayMoveLiveFunds` and docs/CORRIDORS.md). They are enabled
-   * here because with `LIVE_FUNDS_ENABLED=false` nothing moves and both
-   * directions need to be demonstrable end to end; the licence gate is what
-   * stops them the moment live funds are switched on without the paperwork.
-   *
-   * The margin is wider than RU→NG because there is no deep direct NGN/GHS
-   * market — both legs cross the dollar — and the fee is flat in the sender's
-   * own currency at roughly the same real value in each direction.
-   */
-  {
-    id: 'NG-GH',
-    sourceCountry: 'NG',
-    sourceCurrency: 'NGN',
-    destinationCountry: 'GH',
-    destinationCurrency: 'GHS',
-    payinMethods: ['VIRTUAL_ACCOUNT'],
-    payoutMethods: ['MOBILE_MONEY'],
-    minSendMinorUnits: 100_000n, //       ₦1 000,00
-    maxSendMinorUnits: 500_000_000n, //   ₦5 000 000,00
-    fixedFeeMinorUnits: 50_000n, //       ₦500,00
-    fxMarginBps: 225,
-  },
-  {
-    id: 'GH-NG',
-    sourceCountry: 'GH',
-    sourceCurrency: 'GHS',
-    destinationCountry: 'NG',
-    destinationCurrency: 'NGN',
-    payinMethods: ['MOBILE_MONEY'],
-    payoutMethods: ['BANK_ACCOUNT'],
-    minSendMinorUnits: 1_000n, //         GH₵10,00
-    maxSendMinorUnits: 1_000_000n, //     GH₵10 000,00
-    fixedFeeMinorUnits: 350n, //          GH₵3,50
-    fxMarginBps: 225,
-  },
+  ...intraAfricanCorridors(),
   {
     id: 'BY-NG',
     sourceCountry: 'BY',
@@ -145,10 +228,20 @@ const CORRIDORS = [
   },
 ];
 
+/**
+ * When to top a float up, per currency, in minor units.
+ *
+ * Roughly a week of expected volume as the low watermark and a month as the
+ * target. The CFA rows look small beside the naira ones for the same real
+ * value, because those currencies have no decimals.
+ */
 const FLOAT_THRESHOLDS = [
   { currency: 'RUB', lowWatermarkMinorUnits: 50_000_000n, targetMinorUnits: 200_000_000n },
   { currency: 'NGN', lowWatermarkMinorUnits: 500_000_000n, targetMinorUnits: 2_000_000_000n },
   { currency: 'GHS', lowWatermarkMinorUnits: 5_000_000n, targetMinorUnits: 20_000_000n },
+  { currency: 'ZAR', lowWatermarkMinorUnits: 10_000_000n, targetMinorUnits: 40_000_000n },
+  { currency: 'XAF', lowWatermarkMinorUnits: 30_000_000n, targetMinorUnits: 120_000_000n },
+  { currency: 'XOF', lowWatermarkMinorUnits: 30_000_000n, targetMinorUnits: 120_000_000n },
 ];
 
 /**

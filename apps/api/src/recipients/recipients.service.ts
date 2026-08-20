@@ -1,6 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { asCorridorId, maskRecipientAccount, RecipientDetails } from '@morapay/domain';
-import { ProviderRegistry, GH_NETWORKS, NG_BANKS } from '@morapay/adapters';
+import {
+  CountryCode,
+  asCorridorId,
+  maskRecipientAccount,
+  networkServesCountry,
+  RecipientDetails,
+} from '@morapay/domain';
+import { PayoutMarket, ProviderRegistry, institutionsForDestination } from '@morapay/adapters';
 import { NameEnquiryResponse, RecipientDetailsDto, RecipientResponse } from '@morapay/contracts';
 import { PrismaService } from '../common/prisma.service';
 import { PartitionGateway } from '../partitions/partition-gateway.service';
@@ -33,12 +39,33 @@ export class RecipientsService {
    * name — at confirmation, so a recipient edited between the two is caught.
    */
   async nameEnquiry(details: RecipientDetailsDto): Promise<NameEnquiryResponse> {
-    const corridorId = asCorridorId(details.country === 'NG' ? 'RU-NG' : 'RU-GH');
-    const provider = this.registry.selectPayout(corridorId);
+    // A name enquiry happens before a corridor is chosen — the sender is still
+    // deciding who to pay — so the provider is found by where the money is
+    // going. This used to fabricate a corridor id from the country ('RU-NG' for
+    // Nigeria, 'RU-GH' for everyone else), which was right only while those
+    // were the only two destinations and would have sent a Cameroonian wallet
+    // to the Ghanaian rail.
+    const provider = this.registry.selectPayoutForDestination(details.country);
     if (provider === null) {
       return { status: 'UNSUPPORTED', reason: 'No payout provider is available for that country' };
     }
 
+    // The same brand is a different licensee in each country. Catching a
+    // mismatch here keeps the error about the wallet rather than about a rail
+    // the sender has never heard of.
+    if (
+      details.method === 'MOBILE_MONEY' &&
+      !networkServesCountry(details.country as CountryCode, details.network)
+    ) {
+      return {
+        status: 'UNSUPPORTED',
+        reason: `${details.network} does not operate in ${details.country}`,
+      };
+    }
+
+    // The corridor id is only a label on the outbound call here; the provider
+    // has already been chosen, and `resolveRecipient` routes on its own market.
+    const corridorId = asCorridorId(`ENQUIRY-${details.country}`);
     const resolution = await provider.resolveRecipient({
       corridorId,
       recipient: details as RecipientDetails,
@@ -76,7 +103,7 @@ export class RecipientsService {
     const piiToken = this.partitions.token('rcp', `${userId}:${identifierOf(details)}`);
     const partition = details.country;
 
-    await this.partitions.storeRecipient({ piiToken, details });
+    await this.partitions.storeRecipient({ piiToken, country: details.country, details });
 
     const existing = await this.prisma.recipient.findUnique({ where: { piiToken } });
     const row =
@@ -160,14 +187,23 @@ export class RecipientsService {
     return details as RecipientDetails;
   }
 
-  institutions(): {
+  /**
+   * What a given destination can be paid into.
+   *
+   * Served per country. It used to return every Nigerian bank alongside every
+   * Ghanaian network regardless of where the recipient lived, which was
+   * harmless with two destinations and offers a Ghanaian operator to somebody
+   * adding a Beninese wallet with five.
+   */
+  institutions(country: string): {
     banks: Array<{ code: string; name: string }>;
     networks: Array<{ code: string; name: string }>;
   } {
-    return {
-      banks: Object.entries(NG_BANKS).map(([code, name]) => ({ code, name })),
-      networks: Object.entries(GH_NETWORKS).map(([code, name]) => ({ code, name })),
-    };
+    const markets: readonly PayoutMarket[] = ['NG', 'GH', 'ZA', 'CM', 'BJ'];
+    if (!markets.includes(country as PayoutMarket)) {
+      return { banks: [], networks: [] };
+    }
+    return institutionsForDestination(country as PayoutMarket);
   }
 }
 
@@ -187,7 +223,7 @@ function toResponse(row: {
   return {
     id: row.id,
     method: row.method as 'BANK_ACCOUNT' | 'MOBILE_MONEY',
-    country: row.country as 'NG' | 'GH',
+    country: row.country as CountryCode,
     maskedAccount: row.maskedAccount,
     resolvedName: row.resolvedName,
     nickname: row.nickname,

@@ -4,7 +4,7 @@ What stands between this codebase and a first live transfer. Kept short and
 honest: each item has an owner, a date and a definition of done, or it is not on
 this list.
 
-Status as at 2026-08-16.
+Status as at 2026-08-17.
 
 ## Blocking — nothing moves without these
 
@@ -16,6 +16,8 @@ Status as at 2026-08-16.
 | B4  | **Ghana payout rail**                                                                                                                             | Commercial         | CEO   | Ghana is not in Paycrest's live coverage. Fincra's EPSP or equivalent. The corridor and the simulator are built; the rail is not signed.                                                                                                                                                                                                                                                                                                       |
 | B5  | **A compliance officer, appointed and trained**                                                                                                   | Organisational     | CEO   | Named in the go-live gate. The compliance queue is built and has nobody to staff it.                                                                                                                                                                                                                                                                                                                                                           |
 | B6  | **Domestic collection licences in Nigeria and Ghana** — CBN for naira collection, Bank of Ghana for wallet debits                                 | Legal / Commercial | CEO   | The intra-African corridors (NG→GH, GH→NG) collect from the public _inside_ those countries, which is a licensed activity in its own right and is not implied by any inbound-remittance arrangement. Each direction needs its own: NG→GH does not authorise GH→NG. Both corridors are built and demonstrable; `LIVE_CORRIDOR_AUTHORISATIONS` is what stops them moving real money, and it is empty. Added 2026-08-16. See `docs/CORRIDORS.md`. |
+| B7  | **Domestic collection licences in Cameroon and Benin, and a South African payout rail**                                                           | Legal / Commercial | CEO   | The same shape as B6, in two more jurisdictions: BEAC/COBAC for XAF wallet debits in Cameroon, BCEAO for XOF in Benin. The CFA parity is not a shortcut — they are two central banks and two approvals. South Africa needs only a payout rail, because it receives and does not send. Added 2026-08-17.                                                                                                                                        |
+| B8  | **SARB exchange-control capability, if South Africa is ever to be an origin**                                                                     | Legal / Product    | CEO   | Outward transfers from South Africa are reported under balance-of-payments category codes and measured against each sender's annual allowance. This is a product gap, not just a licence: neither the codes nor the allowance is modelled. Until it is built, `authorisationsFor` refuses to describe a ZA-origin corridor at all. Added 2026-08-17.                                                                                           |
 
 ## Needed before a pilot, not before a demo
 

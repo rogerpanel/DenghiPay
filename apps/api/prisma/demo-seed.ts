@@ -29,7 +29,7 @@ function tokenise(kind: string, value: string): string {
 interface DemoSender {
   email: string;
   /** Which partition holds this person. Also decides which corridors they see. */
-  residency: 'RU' | 'NG' | 'GH';
+  residency: 'RU' | 'NG' | 'GH' | 'CM' | 'BJ';
   kycTier: number;
   verified: boolean;
   person: {
@@ -44,6 +44,8 @@ interface DemoSender {
     bvn?: string;
     /** Ghana: the national identifier, and the wallet we debit to collect. */
     ghanaCardNo?: string;
+    /** Cameroon and Benin: the CNI or NPI number. */
+    nationalIdNo?: string;
     walletMsisdn?: string;
     walletNetwork?: string;
   };
@@ -141,11 +143,51 @@ const SENDERS: DemoSender[] = [
     },
     note: 'Accra resident, tier 2 — sends GHS to Nigeria on GH-NG',
   },
+  {
+    // The francophone origins. Both collect by wallet debit, and both send in a
+    // zero-decimal currency, which is the detail most likely to be got wrong.
+    email: 'marie@demo.morapay.local',
+    residency: 'CM',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Marie',
+      lastName: 'Ngono',
+      dateOfBirth: '1991-04-03',
+      nationality: 'CM',
+      phone: '237671234567',
+      addressLine: '42 rue Joseph Essono Balla, Bastos',
+      city: 'Yaoundé',
+      nationalIdNo: 'CM-1991-0403778',
+      walletMsisdn: '237671234567',
+      walletNetwork: 'ORANGE',
+    },
+    note: 'Yaoundé resident, tier 2 — sends XAF, francophone journey',
+  },
+  {
+    email: 'kossi@demo.morapay.local',
+    residency: 'BJ',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Kossi',
+      lastName: 'Dossou',
+      dateOfBirth: '1988-12-19',
+      nationality: 'BJ',
+      phone: '22997123456',
+      addressLine: '11 rue des Cheminots, Cadjèhoun',
+      city: 'Cotonou',
+      nationalIdNo: 'BJ-8812-19004',
+      walletMsisdn: '22997123456',
+      walletNetwork: 'MOOV',
+    },
+    note: 'Cotonou resident, tier 2 — sends XOF, francophone journey',
+  },
 ];
 
 interface DemoRecipient {
   ownerEmail: string;
-  country: 'NG' | 'GH';
+  country: 'NG' | 'GH' | 'ZA' | 'CM' | 'BJ';
   nickname: string;
   accountNumber?: string;
   bankCode?: string;
@@ -209,6 +251,42 @@ const RECIPIENTS: DemoRecipient[] = [
     bankCode: '058',
     name: 'ADEBAYO OKONKWO',
     note: 'GH-NG: cedi wallet debited in Accra, naira delivered over NIP',
+  },
+  {
+    ownerEmail: 'marie@demo.morapay.local',
+    country: 'BJ',
+    nickname: 'Frère — Cotonou',
+    msisdn: '22997123456',
+    network: 'MTN',
+    name: 'KOSSI DOSSOU',
+    note: 'CM-BJ: the CFA pair, XAF to XOF at par across two central banks',
+  },
+  {
+    ownerEmail: 'marie@demo.morapay.local',
+    country: 'ZA',
+    nickname: 'Cousin — Johannesburg',
+    accountNumber: '1234567890',
+    bankCode: '470010',
+    name: 'THABO MOLEFE',
+    note: 'CM-ZA: South Africa receives; it never sends',
+  },
+  {
+    ownerEmail: 'kossi@demo.morapay.local',
+    country: 'CM',
+    nickname: 'Sœur — Douala',
+    msisdn: '237671234567',
+    network: 'MTN',
+    name: 'MARIE NGONO',
+    note: 'BJ-CM: the CFA pair, the other way',
+  },
+  {
+    ownerEmail: 'folake@demo.morapay.local',
+    country: 'ZA',
+    nickname: 'Friend — Cape Town',
+    accountNumber: '9876543210',
+    bankCode: '632005',
+    name: 'THABO MOLEFE',
+    note: 'NG-ZA: naira collected in Lagos, rand delivered to an Absa account',
   },
 ];
 
@@ -312,6 +390,24 @@ async function main(): Promise<void> {
           documents: localDocuments,
         },
       });
+    } else if (sender.residency === 'CM' || sender.residency === 'BJ') {
+      // Written out twice rather than through a shared variable: Prisma
+      // generates a distinct delegate type per model, so a union of two of them
+      // is not callable. The duplication is three lines and the alternative is
+      // an `any`.
+      const data = {
+        piiToken,
+        ...common,
+        nationalIdNo: sender.person.nationalIdNo ?? null,
+        walletMsisdn: sender.person.walletMsisdn ?? null,
+        walletNetwork: sender.person.walletNetwork ?? null,
+        documents: localDocuments,
+      };
+      if (sender.residency === 'CM') {
+        await prisma.senderProfileCm.upsert({ where: { piiToken }, update: {}, create: data });
+      } else {
+        await prisma.senderProfileBj.upsert({ where: { piiToken }, update: {}, create: data });
+      }
     } else if (sender.residency === 'GH') {
       await prisma.senderProfileGh.upsert({
         where: { piiToken },
@@ -377,30 +473,40 @@ async function main(): Promise<void> {
     const piiToken = tokenise('rcp', `${owner.id}:${identifier}`);
     const resolvedName = resolvedNameFor(identifier);
 
-    if (recipient.country === 'NG') {
-      await prisma.recipientProfileNg.upsert({
-        where: { piiToken },
-        update: {},
-        create: {
-          piiToken,
-          accountNumber: recipient.accountNumber ?? '',
-          bankCode: recipient.bankCode ?? '058',
-          // The institution's record of the name, which is what a name enquiry
-          // returns. Kept in step with the simulator so the demo is coherent.
-          accountName: resolvedName,
-        },
-      });
-    } else {
-      await prisma.recipientProfileGh.upsert({
-        where: { piiToken },
-        update: {},
-        create: {
-          piiToken,
-          msisdn: recipient.msisdn ?? '',
-          network: recipient.network ?? 'MTN',
-          accountName: resolvedName,
-        },
-      });
+    // Recipients go to the partition of the country they live in — dispatching
+    // on payout method would file a Johannesburg account in the Nigerian store.
+    const bankData = {
+      piiToken,
+      accountNumber: recipient.accountNumber ?? '',
+      bankCode: recipient.bankCode ?? '058',
+      // The institution's record of the name, which is what a name enquiry
+      // returns. Kept in step with the simulator so the demo is coherent.
+      accountName: resolvedName,
+    };
+    const walletData = {
+      piiToken,
+      msisdn: recipient.msisdn ?? '',
+      network: recipient.network ?? 'MTN',
+      accountName: resolvedName,
+    };
+    const where = { piiToken };
+
+    switch (recipient.country) {
+      case 'NG':
+        await prisma.recipientProfileNg.upsert({ where, update: {}, create: bankData });
+        break;
+      case 'ZA':
+        await prisma.recipientProfileZa.upsert({ where, update: {}, create: bankData });
+        break;
+      case 'GH':
+        await prisma.recipientProfileGh.upsert({ where, update: {}, create: walletData });
+        break;
+      case 'CM':
+        await prisma.recipientProfileCm.upsert({ where, update: {}, create: walletData });
+        break;
+      case 'BJ':
+        await prisma.recipientProfileBj.upsert({ where, update: {}, create: walletData });
+        break;
     }
 
     await prisma.recipient.upsert({
@@ -408,7 +514,10 @@ async function main(): Promise<void> {
       update: { resolvedName, nickname: recipient.nickname, archivedAt: null },
       create: {
         userId: owner.id,
-        method: recipient.country === 'NG' ? 'BANK_ACCOUNT' : 'MOBILE_MONEY',
+        method:
+          recipient.country === 'NG' || recipient.country === 'ZA'
+            ? 'BANK_ACCOUNT'
+            : 'MOBILE_MONEY',
         country: recipient.country,
         piiToken,
         piiPartition: recipient.country,

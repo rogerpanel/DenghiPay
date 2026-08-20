@@ -8,22 +8,25 @@
 #
 #   usage: infra/scripts/smoke-transfer.sh [recipient-identifier] [expected-final-state]
 #
-# CORRIDOR selects the leg. Four run today:
+# CORRIDOR selects the leg. Twenty exist; eighteen are enabled.
 #
-#   RU-NG  rubles collected in Russia   → a ten-digit Nigerian NUBAN
-#   RU-GH  rubles collected in Russia   → a Ghanaian wallet (233 + nine digits)
-#   NG-GH  naira pushed to a NUBAN      → a Ghanaian wallet
-#   GH-NG  a cedi wallet debited        → a Nigerian bank account
+#   RU-NG, RU-GH        rubles collected in Russia, into Nigeria or Ghana
+#   {NG,GH,CM,BJ}-{NG,GH,ZA,CM,BJ}   the intra-African mesh, sixteen corridors
 #
-# The last two are the intra-African pair, and they use their own senders,
-# because a corridor is only offered to someone who lives at its origin.
+# Each origin has its own demo sender, because a corridor is only offered to
+# someone who lives where the collection happens. South Africa appears only as
+# a destination: it receives and does not send until SARB exchange-control
+# reporting exists.
+#
 # The simulator picks its behaviour from the last four digits of the recipient
 # identifier, so the same scenario suffixes work on every corridor:
 #
 #   CORRIDOR=RU-NG infra/scripts/smoke-transfer.sh 0123456789 COMPLETED
 #   CORRIDOR=RU-GH infra/scripts/smoke-transfer.sh 233241116666 REFUNDED
-#   CORRIDOR=NG-GH infra/scripts/smoke-transfer.sh
-#   CORRIDOR=GH-NG infra/scripts/smoke-transfer.sh
+#   CORRIDOR=NG-ZA infra/scripts/smoke-transfer.sh
+#   CORRIDOR=BJ-CM infra/scripts/smoke-transfer.sh
+#
+# `infra/scripts/smoke-all-corridors.sh` runs every enabled corridor in turn.
 #
 # Sending limits aggregate over real transfer history, so repeated runs against
 # one database eventually exhaust the sender's daily cap and the script stops
@@ -35,8 +38,6 @@ API="${API:-http://localhost:4000}"
 PASSWORD="${PASSWORD:-morapay-demo-2026}"
 CORRIDOR="${CORRIDOR:-RU-NG}"
 EXPECT="${2:-COMPLETED}"
-BANK_CODE="${BANK_CODE:-058}"
-NETWORK="${NETWORK:-MTN}"
 
 # The recipient shape follows the destination; the sender, the amount and the
 # collection rail follow the origin. Both are read off the corridor id rather
@@ -46,21 +47,51 @@ case "$DESTINATION" in
   NG)
     ACCOUNT="${1:-0123456789}"
     DECLARED="ADEBAYO OKONKWO"
+    BANK_CODE="${BANK_CODE:-058}"
     DETAILS_FOR() {
       printf '{"method":"BANK_ACCOUNT","country":"NG","accountNumber":"%s","bankCode":"%s","declaredName":"%s"}' \
+        "$ACCOUNT" "$BANK_CODE" "$1"
+    }
+    ;;
+  ZA)
+    # A South African universal branch code identifies the bank, not a branch.
+    ACCOUNT="${1:-1234567890}"
+    DECLARED="THABO MOLEFE"
+    BANK_CODE="${BANK_CODE:-470010}"
+    DETAILS_FOR() {
+      printf '{"method":"BANK_ACCOUNT","country":"ZA","accountNumber":"%s","bankCode":"%s","declaredName":"%s"}' \
         "$ACCOUNT" "$BANK_CODE" "$1"
     }
     ;;
   GH)
     ACCOUNT="${1:-233241234567}"
     DECLARED="KWAME MENSAH"
+    NETWORK="${NETWORK:-MTN}"
     DETAILS_FOR() {
       printf '{"method":"MOBILE_MONEY","country":"GH","msisdn":"%s","network":"%s","declaredName":"%s"}' \
         "$ACCOUNT" "$NETWORK" "$1"
     }
     ;;
+  CM)
+    ACCOUNT="${1:-237671234567}"
+    DECLARED="MARIE NGONO"
+    NETWORK="${NETWORK:-MTN}"
+    DETAILS_FOR() {
+      printf '{"method":"MOBILE_MONEY","country":"CM","msisdn":"%s","network":"%s","declaredName":"%s"}' \
+        "$ACCOUNT" "$NETWORK" "$1"
+    }
+    ;;
+  BJ)
+    ACCOUNT="${1:-22997123456}"
+    DECLARED="KOSSI DOSSOU"
+    NETWORK="${NETWORK:-MTN}"
+    DETAILS_FOR() {
+      printf '{"method":"MOBILE_MONEY","country":"BJ","msisdn":"%s","network":"%s","declaredName":"%s"}' \
+        "$ACCOUNT" "$NETWORK" "$1"
+    }
+    ;;
   *)
-    echo "unknown destination in CORRIDOR '$CORRIDOR' (expected a -NG or -GH corridor)" >&2
+    echo "unknown destination in CORRIDOR '$CORRIDOR'" >&2
     exit 64
     ;;
 esac
@@ -83,6 +114,24 @@ case "$CORRIDOR" in
     EMAIL="${EMAIL:-kofi@demo.morapay.local}"
     AMOUNT="${AMOUNT:-50000}"
     PAYIN_METHOD="${PAYIN_METHOD:-MOBILE_MONEY}"
+    ;;
+  # The CFA francs have no decimals, so these amounts are whole francs:
+  # 25 000 FCFA, not 250. Dividing by a hundred here is the classic error.
+  CM-*)
+    EMAIL="${EMAIL:-marie@demo.morapay.local}"
+    AMOUNT="${AMOUNT:-25000}"
+    PAYIN_METHOD="${PAYIN_METHOD:-MOBILE_MONEY}"
+    ;;
+  BJ-*)
+    EMAIL="${EMAIL:-kossi@demo.morapay.local}"
+    AMOUNT="${AMOUNT:-25000}"
+    PAYIN_METHOD="${PAYIN_METHOD:-MOBILE_MONEY}"
+    ;;
+  ZA-*)
+    echo "South Africa is a destination, not an origin: no ZA-* corridor exists." >&2
+    echo "Outward transfers from South Africa need SARB balance-of-payments" >&2
+    echo "reporting and allowance tracking, which is not built. See docs/CORRIDORS.md." >&2
+    exit 64
     ;;
   *)
     echo "unknown origin in CORRIDOR '$CORRIDOR'" >&2

@@ -84,13 +84,13 @@ async function main(): Promise<void> {
   // not of whatever business logic assembled the entries.
   const rub = requireCurrencyCode('RUB');
   const debit = await store.ensureAccount({
-    type: 'FLOAT_RUB',
+    type: 'FLOAT',
     currency: rub,
     partition: 'NEUTRAL',
     scope: 'BENCH_A',
   });
   const credit = await store.ensureAccount({
-    type: 'FLOAT_RUB',
+    type: 'FLOAT',
     currency: rub,
     partition: 'NEUTRAL',
     scope: 'BENCH_B',

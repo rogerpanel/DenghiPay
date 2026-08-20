@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CurrencyCode, ExchangeRate, RateUnavailableError } from '@morapay/domain';
 import { RateSource } from '@morapay/adapters';
@@ -15,7 +15,7 @@ import { APP_CONFIG, RATE_SOURCE } from '../config/tokens';
  * uncertainty. It stops and raises an alert.
  */
 @Injectable()
-export class RatesService {
+export class RatesService implements OnModuleInit {
   private readonly logger = new Logger(RatesService.name);
 
   constructor(
@@ -23,6 +23,23 @@ export class RatesService {
     @Inject(RATE_SOURCE) private readonly source: RateSource,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
+
+  /**
+   * Ingest once at boot, so the application can quote as soon as it answers.
+   *
+   * Without this there is a gap of up to a minute after every deploy in which
+   * the newest observation is whatever the seed wrote — possibly already past
+   * the staleness threshold — and every quote is refused with
+   * RATE_UNAVAILABLE. The halt is correct behaviour; being in that state
+   * immediately after a deploy, for a reason unrelated to the feed, is not.
+   *
+   * Failures are logged and swallowed: a rate feed that is down must not stop
+   * the API from starting, because everything else it does still works and
+   * quoting will halt on its own once the observations age out.
+   */
+  async onModuleInit(): Promise<void> {
+    await this.ingest();
+  }
 
   /** Poll the feed and persist observations. Every minute is ample for FX at our size. */
   @Cron(CronExpression.EVERY_MINUTE)

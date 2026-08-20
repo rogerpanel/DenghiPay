@@ -7,10 +7,59 @@ import { CurrencyCode } from '../money/currency';
  * branch in the transfer logic knows the name of a country.
  */
 
-export type CountryCode = 'RU' | 'BY' | 'NG' | 'GH';
+export type CountryCode = 'RU' | 'BY' | 'NG' | 'GH' | 'ZA' | 'CM' | 'BJ';
 
 export const PAYOUT_METHODS = ['BANK_ACCOUNT', 'MOBILE_MONEY'] as const;
 export type PayoutMethod = (typeof PAYOUT_METHODS)[number];
+
+/**
+ * Mobile-money networks, by the country that licenses them.
+ *
+ * The same brand is a different operator under a different regulator in each
+ * country — MTN Ghana and MTN Cameroon are separate licensees on separate
+ * switches — so a network is only ever meaningful alongside its country. This
+ * map is what makes "MTN" in Benin resolvable and "TELECEL" in Benin an error
+ * rather than a silent acceptance.
+ */
+export const MOBILE_MONEY_NETWORKS = {
+  GH: ['MTN', 'TELECEL', 'AIRTELTIGO'],
+  CM: ['MTN', 'ORANGE'],
+  BJ: ['MTN', 'MOOV', 'CELTIIS'],
+} as const satisfies Partial<Record<CountryCode, readonly string[]>>;
+
+export const MOBILE_MONEY_NETWORK_CODES = [
+  'MTN',
+  'TELECEL',
+  'AIRTELTIGO',
+  'ORANGE',
+  'MOOV',
+  'CELTIIS',
+] as const;
+export type MobileMoneyNetwork = (typeof MOBILE_MONEY_NETWORK_CODES)[number];
+
+export function networksFor(country: CountryCode): readonly MobileMoneyNetwork[] {
+  return (
+    (MOBILE_MONEY_NETWORKS as Partial<Record<CountryCode, readonly MobileMoneyNetwork[]>>)[
+      country
+    ] ?? []
+  );
+}
+
+/** Does this country license this network? Wrong pairings fail closed. */
+export function networkServesCountry(country: CountryCode, network: string): boolean {
+  return (networksFor(country) as readonly string[]).includes(network);
+}
+
+/**
+ * The international dialling prefix a mobile-money number must carry, per
+ * country. A Ghanaian wallet number handed to the Beninese rail is a mistake
+ * worth catching before it becomes a failed payout.
+ */
+export const MSISDN_PREFIX: Readonly<Partial<Record<CountryCode, string>>> = {
+  GH: '233',
+  CM: '237',
+  BJ: '229',
+};
 
 /**
  * How we collect from the sender.
@@ -99,6 +148,9 @@ const SEND_CURRENCY: Readonly<Record<CountryCode, CurrencyCode>> = {
   BY: 'BYN',
   NG: 'NGN',
   GH: 'GHS',
+  ZA: 'ZAR',
+  CM: 'XAF',
+  BJ: 'XOF',
 };
 
 export function sendCurrencyFor(country: string): CurrencyCode {

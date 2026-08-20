@@ -9,9 +9,17 @@ import { CurrencyCode } from '@morapay/domain';
 export const ACCOUNT_TYPES = [
   /** Our liability to a sender: their money, held by us, until payout confirms. */
   'USER_PAYABLE',
-  'FLOAT_RUB',
-  'FLOAT_NGN',
-  'FLOAT_GHS',
+  /**
+   * Money we hold at a partner or bank, ready to pay out, in one currency.
+   *
+   * One type, not one per currency. It used to be `FLOAT_RUB`, `FLOAT_NGN`,
+   * `FLOAT_GHS` — the currency baked into the type name, duplicated in the
+   * `currency` column beside it, and needing a new enum member plus a new
+   * branch in two `floatTypeFor` functions for every country we opened. At
+   * three currencies that was tolerable; at six it was a chore that would be
+   * got wrong. The currency lives in the currency column, where it always was.
+   */
+  'FLOAT',
   'TREASURY_USD',
   'FEE_REVENUE',
   'FX_PNL',
@@ -31,9 +39,7 @@ export type AccountType = (typeof ACCOUNT_TYPES)[number];
  */
 export const NORMAL_BALANCE: Readonly<Record<AccountType, 'DEBIT' | 'CREDIT'>> = {
   USER_PAYABLE: 'CREDIT',
-  FLOAT_RUB: 'DEBIT',
-  FLOAT_NGN: 'DEBIT',
-  FLOAT_GHS: 'DEBIT',
+  FLOAT: 'DEBIT',
   TREASURY_USD: 'DEBIT',
   FEE_REVENUE: 'CREDIT',
   FX_PNL: 'CREDIT',
@@ -41,11 +47,8 @@ export const NORMAL_BALANCE: Readonly<Record<AccountType, 'DEBIT' | 'CREDIT'>> =
   SUSPENSE: 'DEBIT',
 };
 
-/** The currency each float/treasury account must be denominated in. */
+/** The currency an account type must be denominated in, where it is fixed. */
 export const FIXED_CURRENCY: Readonly<Partial<Record<AccountType, CurrencyCode>>> = {
-  FLOAT_RUB: 'RUB',
-  FLOAT_NGN: 'NGN',
-  FLOAT_GHS: 'GHS',
   TREASURY_USD: 'USD',
 };
 
@@ -76,8 +79,35 @@ export function userPayableCode(currency: CurrencyCode, userRef: string): string
 }
 
 /**
+ * Currencies the ledger holds positions in.
+ *
+ * Every one of these gets a float, a fee-revenue account, an FX P&L account, a
+ * suspense account and a settlement receivable. That is more accounts than the
+ * strict minimum — a destination-only currency never earns a fee, because fees
+ * are charged at the origin — but the cost of an unused account is a row, and
+ * the cost of a missing one is a transfer that cannot post. The saga looks
+ * accounts up by code, so a gap is a hard failure at settlement time rather
+ * than a warning at boot.
+ *
+ * USD is absent: it is the treasury asset, not a corridor currency, and it has
+ * its own fixed-currency account type.
+ */
+export const LEDGER_CURRENCIES: readonly CurrencyCode[] = [
+  'RUB',
+  'BYN',
+  'NGN',
+  'GHS',
+  'ZAR',
+  'XAF',
+  'XOF',
+];
+
+/**
  * The system accounts every environment must have. Per-user `USER_PAYABLE`
  * accounts are created on demand; everything here is created by the seed.
+ *
+ * Generated rather than listed, so opening a country is one entry in
+ * `LEDGER_CURRENCIES` instead of five easily-forgotten rows.
  */
 export const SYSTEM_ACCOUNTS: ReadonlyArray<{
   readonly type: AccountType;
@@ -85,28 +115,25 @@ export const SYSTEM_ACCOUNTS: ReadonlyArray<{
   readonly partition: Partition;
   readonly scope?: string;
 }> = [
-  { type: 'FLOAT_RUB', currency: 'RUB', partition: 'NEUTRAL' },
-  { type: 'FLOAT_NGN', currency: 'NGN', partition: 'NEUTRAL' },
-  { type: 'FLOAT_GHS', currency: 'GHS', partition: 'NEUTRAL' },
-  { type: 'TREASURY_USD', currency: 'USD', partition: 'NEUTRAL' },
-  { type: 'FEE_REVENUE', currency: 'RUB', partition: 'NEUTRAL' },
-  { type: 'FEE_REVENUE', currency: 'BYN', partition: 'NEUTRAL' },
-  { type: 'FX_PNL', currency: 'RUB', partition: 'NEUTRAL' },
-  { type: 'FX_PNL', currency: 'NGN', partition: 'NEUTRAL' },
-  { type: 'FX_PNL', currency: 'GHS', partition: 'NEUTRAL' },
-  { type: 'PARTNER_RECEIVABLE', currency: 'RUB', partition: 'NEUTRAL', scope: 'SETTLEMENT' },
-  { type: 'PARTNER_RECEIVABLE', currency: 'BYN', partition: 'NEUTRAL', scope: 'SETTLEMENT' },
-  { type: 'PARTNER_RECEIVABLE', currency: 'NGN', partition: 'NEUTRAL', scope: 'SETTLEMENT' },
-  { type: 'PARTNER_RECEIVABLE', currency: 'GHS', partition: 'NEUTRAL', scope: 'SETTLEMENT' },
-  { type: 'FEE_REVENUE', currency: 'NGN', partition: 'NEUTRAL' },
-  // Fees are charged in the send currency, so a cedi origin needs a cedi
-  // revenue account. Without it a GH→NG transfer cannot post at all — the saga
-  // looks the account up by code and there is nothing to find.
-  { type: 'FEE_REVENUE', currency: 'GHS', partition: 'NEUTRAL' },
-  { type: 'SUSPENSE', currency: 'RUB', partition: 'NEUTRAL' },
-  { type: 'SUSPENSE', currency: 'NGN', partition: 'NEUTRAL' },
-  { type: 'SUSPENSE', currency: 'GHS', partition: 'NEUTRAL' },
+  { type: 'TREASURY_USD' as const, currency: 'USD' as const, partition: 'NEUTRAL' as const },
+  ...LEDGER_CURRENCIES.flatMap((currency) => [
+    { type: 'FLOAT' as const, currency, partition: 'NEUTRAL' as const },
+    { type: 'FEE_REVENUE' as const, currency, partition: 'NEUTRAL' as const },
+    { type: 'FX_PNL' as const, currency, partition: 'NEUTRAL' as const },
+    { type: 'SUSPENSE' as const, currency, partition: 'NEUTRAL' as const },
+    {
+      type: 'PARTNER_RECEIVABLE' as const,
+      currency,
+      partition: 'NEUTRAL' as const,
+      scope: 'SETTLEMENT',
+    },
+  ]),
 ];
+
+/** The float account holding our position in a currency. */
+export function floatCode(currency: CurrencyCode): string {
+  return accountCode('FLOAT', currency);
+}
 
 export function assertAccountCurrency(type: AccountType, currency: CurrencyCode): void {
   const required = FIXED_CURRENCY[type];

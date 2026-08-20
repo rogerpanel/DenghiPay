@@ -99,14 +99,19 @@ function SendFlow() {
     () => corridors.find((c) => c.id === corridorId) ?? null,
     [corridors, corridorId],
   );
-  const destinationIsGhana = corridor?.destinationCountry === 'GH';
+  /* Whether this destination is paid by wallet or by bank account.
+     This used to ask `destinationCountry === 'GH'`, which was the same question
+     while Ghana was the only wallet destination. With Cameroon and Benin also
+     paying wallets and South Africa paying bank accounts, the country is the
+     wrong thing to ask about — the corridor already states its payout methods. */
+  const destinationPaysWallets = corridor?.payoutMethods.includes('MOBILE_MONEY') ?? false;
+  const destinationCountry = corridor?.destinationCountry ?? null;
 
   useEffect(() => {
     void (async () => {
-      const [corridorList, recipientList, institutionList] = await Promise.all([
+      const [corridorList, recipientList] = await Promise.all([
         api<{ corridors: Corridor[] }>('/corridors'),
         api<{ recipients: Recipient[] }>('/recipients'),
-        api<Institutions>('/institutions'),
       ]);
       // Only corridors that start where this sender lives. Someone in Lagos
       // has no way to hand over rubles, and offering RU→NG to them produces a
@@ -122,9 +127,22 @@ function SendFlow() {
         usable.length > 0 && !usable.some((c) => c.id === current) ? usable[0]!.id : current,
       );
       setRecipients(recipientList.recipients);
-      setInstitutions(institutionList);
     })().catch(() => setError(t('error.generic')));
   }, [t, residency]);
+
+  /* Institutions belong to a destination, so they are fetched when one is
+     chosen rather than once at load. Offering every Nigerian bank to somebody
+     adding a Beninese wallet is how a recipient ends up unreachable. */
+  useEffect(() => {
+    if (destinationCountry === null) return;
+    void (async () => {
+      const list = await api<Institutions>(`/institutions?country=${destinationCountry}`);
+      setInstitutions(list);
+      // Default to the first option this destination actually offers.
+      if (list.banks[0] !== undefined) setNewBankCode(list.banks[0].code);
+      if (list.networks[0] !== undefined) setNewNetwork(list.networks[0].code);
+    })().catch(() => setError(t('error.generic')));
+  }, [destinationCountry, t]);
 
   /* A corridor collects on the rails it has. When the sender changes corridor,
      the previously chosen method may not exist on the new one — SBP does not
@@ -171,26 +189,36 @@ function SendFlow() {
     }
   }, [amountText, corridorId, t]);
 
+  /* The recipient the sender is describing, in the shape the API expects.
+     Built in one place because the enquiry and the save must describe the same
+     person — the confirmation step compares the name returned by the first
+     against the name stored by the second, and a divergence here would read as
+     a name mismatch. `declaredName` differs between the two calls: the sender's
+     own spelling first, the institution's spelling once resolved. */
+  function recipientDetails(declaredName: string = newName) {
+    return destinationPaysWallets
+      ? {
+          method: 'MOBILE_MONEY' as const,
+          country: destinationCountry ?? '',
+          msisdn: newMsisdn,
+          network: newNetwork,
+          declaredName,
+        }
+      : {
+          method: 'BANK_ACCOUNT' as const,
+          country: destinationCountry ?? '',
+          accountNumber: newAccount,
+          bankCode: newBankCode,
+          declaredName,
+        };
+  }
+
   async function runNameEnquiry() {
     setBusy(true);
     setError(null);
     setEnquiry(null);
     try {
-      const details = destinationIsGhana
-        ? {
-            method: 'MOBILE_MONEY' as const,
-            country: 'GH' as const,
-            msisdn: newMsisdn,
-            network: newNetwork as 'MTN' | 'TELECEL' | 'AIRTELTIGO',
-            declaredName: newName,
-          }
-        : {
-            method: 'BANK_ACCOUNT' as const,
-            country: 'NG' as const,
-            accountNumber: newAccount,
-            bankCode: newBankCode,
-            declaredName: newName,
-          };
+      const details = recipientDetails();
       const result = await api<NameEnquiry>('/recipients/name-enquiry', {
         method: 'POST',
         body: { details },
@@ -208,21 +236,7 @@ function SendFlow() {
     setBusy(true);
     setError(null);
     try {
-      const details = destinationIsGhana
-        ? {
-            method: 'MOBILE_MONEY' as const,
-            country: 'GH' as const,
-            msisdn: newMsisdn,
-            network: newNetwork as 'MTN' | 'TELECEL' | 'AIRTELTIGO',
-            declaredName: enquiry.resolvedName,
-          }
-        : {
-            method: 'BANK_ACCOUNT' as const,
-            country: 'NG' as const,
-            accountNumber: newAccount,
-            bankCode: newBankCode,
-            declaredName: enquiry.resolvedName,
-          };
+      const details = recipientDetails(enquiry.resolvedName);
       const saved = await api<Recipient>('/recipients', { method: 'POST', body: { details } });
       setRecipients((current) => [saved, ...current]);
       setSelectedRecipient(saved);
@@ -310,7 +324,7 @@ function SendFlow() {
 
       {step === 1 ? (
         <RecipientStep
-          destinationIsGhana={destinationIsGhana}
+          destinationPaysWallets={destinationPaysWallets}
           recipients={recipients.filter((r) => r.country === corridor?.destinationCountry)}
           institutions={institutions}
           selected={selectedRecipient}
@@ -512,7 +526,7 @@ function QuoteBreakdown({ quote }: { quote: Quote }) {
 /* --------------------------------------------------------- step: recipient */
 
 function RecipientStep(props: {
-  destinationIsGhana: boolean;
+  destinationPaysWallets: boolean;
   recipients: Recipient[];
   institutions: Institutions;
   selected: Recipient | null;
@@ -571,7 +585,7 @@ function RecipientStep(props: {
       <section className="mp-card mp-stack">
         <h2 className="mp-card__title">{t('send.recipient.new')}</h2>
 
-        {props.destinationIsGhana ? (
+        {props.destinationPaysWallets ? (
           <>
             <Field label={t('send.recipient.network')}>
               <select
@@ -646,7 +660,7 @@ function RecipientStep(props: {
           <div className="mp-stack mp-stack--tight">
             <div className="mp-notice mp-notice--info">
               <div className="mp-small">
-                {props.destinationIsGhana
+                {props.destinationPaysWallets
                   ? t('send.recipient.resolvedMomo')
                   : t('send.recipient.resolved')}
               </div>
