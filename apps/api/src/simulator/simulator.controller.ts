@@ -16,6 +16,8 @@ import { AppConfig } from '../config/config';
 import { APP_CONFIG } from '../config/tokens';
 import { TransferSagaService } from '../transfers/transfer-saga.service';
 import { OutboxService } from '../notifications/outbox.service';
+import { SchedulesService } from '../transfers/schedules.service';
+import { RateAlertsService } from '../quoting/rate-alerts.service';
 
 /**
  * Simulator control surface.
@@ -33,6 +35,8 @@ export class SimulatorController {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     private readonly saga: TransferSagaService,
     private readonly outbox: OutboxService,
+    private readonly schedules: SchedulesService,
+    private readonly rateAlerts: RateAlertsService,
   ) {}
 
   private assertSimulatorAllowed(): void {
@@ -171,6 +175,28 @@ export class SimulatorController {
    * Verification links land here in development, so a demo can complete
    * onboarding without a mail server. Disabled with the rest of the simulator.
    */
+  /**
+   * Run the standing instructions that are due, now.
+   *
+   * The runner is hourly, which is right for a weekly or monthly instruction
+   * and useless in a demonstration. This is the same method the cron calls —
+   * not a shortcut around it — so what a demo shows is what production does.
+   */
+  @Post('schedules/run')
+  @HttpCode(200)
+  async runSchedules(): Promise<{ prepared: number; failed: number }> {
+    this.assertSimulatorAllowed();
+    return this.schedules.runDue();
+  }
+
+  /** Check rate alerts now rather than on the next minute boundary. */
+  @Post('rate-alerts/check')
+  @HttpCode(200)
+  async checkRateAlerts(): Promise<{ fired: number }> {
+    this.assertSimulatorAllowed();
+    return { fired: await this.rateAlerts.check() };
+  }
+
   @Get('outbox')
   async mailbox(): Promise<{ messages: Awaited<ReturnType<OutboxService['recent']>> }> {
     this.assertSimulatorAllowed();

@@ -28,6 +28,7 @@ import { PartitionGateway } from '../partitions/partition-gateway.service';
 import { AuditService } from '../audit/audit.service';
 import { MetricsService } from '../common/metrics.service';
 import { OutboxService } from '../notifications/outbox.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { moneyDtoFrom, toMoney } from '../common/money.util';
 
 export interface TransitionActor {
@@ -58,6 +59,7 @@ export class TransfersService {
     private readonly audit: AuditService,
     private readonly metrics: MetricsService,
     private readonly outbox: OutboxService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -378,7 +380,7 @@ export class TransfersService {
       after: { state: to },
     });
 
-    await this.notifySender(current.userId, current.reference, to);
+    await this.notifySender(current.userId, current.reference, to, transferId);
 
     return to;
   }
@@ -387,6 +389,7 @@ export class TransfersService {
     userId: string,
     reference: string,
     state: TransferState,
+    transferId: string,
   ): Promise<void> {
     const notifiable: TransferState[] = [
       'AWAITING_PAYIN',
@@ -405,10 +408,18 @@ export class TransfersService {
     });
     if (user === null) return;
 
-    await this.outbox.notifyTransferUpdate({
-      email: user.email,
-      reference,
-      senderStatus: SENDER_FACING_STATUS[state],
+    const senderStatus = SENDER_FACING_STATUS[state];
+    await this.outbox.notifyTransferUpdate({ email: user.email, reference, senderStatus });
+
+    // The same news, where the sender will actually look for it. Written beside
+    // the email rather than instead of it: an update that reaches the inbox and
+    // not the app is a support ticket waiting to happen.
+    await this.notifications.notify({
+      userId,
+      kind: 'TRANSFER_UPDATE',
+      title: reference,
+      body: senderStatus,
+      link: `/transfers/${transferId}`,
     });
   }
 

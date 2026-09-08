@@ -56,6 +56,15 @@ import { KycService } from './kyc/kyc.service';
 import { KycController } from './kyc/kyc.controller';
 import { TransfersService } from './transfers/transfers.service';
 import { TransfersController } from './transfers/transfers.controller';
+import { ReceiptsService } from './transfers/receipts.service';
+import { SchedulesService } from './transfers/schedules.service';
+import { SchedulesController } from './transfers/schedules.controller';
+import { RateAlertsService } from './quoting/rate-alerts.service';
+import { RateAlertsController } from './quoting/rate-alerts.controller';
+import { SupportService } from './support/support.service';
+import { SupportController } from './support/support.controller';
+import { NotificationsService } from './notifications/notifications.service';
+import { NotificationsController } from './notifications/notifications.controller';
 import { TransferSagaService } from './transfers/transfer-saga.service';
 import { ProviderCallbackController } from './webhooks/provider-callback.controller';
 import { SimulatorController } from './simulator/simulator.controller';
@@ -205,6 +214,10 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
     InstitutionsController,
     KycController,
     TransfersController,
+    NotificationsController,
+    SchedulesController,
+    RateAlertsController,
+    SupportController,
     ProviderCallbackController,
     SimulatorController,
     AdminAuthController,
@@ -250,6 +263,11 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
     ComplianceService,
     KycService,
     TransfersService,
+    ReceiptsService,
+    NotificationsService,
+    SchedulesService,
+    RateAlertsService,
+    SupportService,
     TransferSagaService,
     TreasuryService,
     ReconciliationService,

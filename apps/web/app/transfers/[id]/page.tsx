@@ -24,13 +24,16 @@ interface PayinInstructions {
 interface Transfer {
   id: string;
   reference: string;
+  corridorId: string;
+  purpose: string;
+  recipientId?: string;
   state: string;
   senderStatus: string;
   sendAmount: MoneyDto;
   fee: MoneyDto;
   totalToPay: MoneyDto;
   recipientAmount: MoneyDto;
-  recipient: { maskedAccount: string; resolvedName: string | null; country: string };
+  recipient: { id: string; maskedAccount: string; resolvedName: string | null; country: string };
   payinMethod: string;
   payinInstructions: PayinInstructions | null;
   failureReason: string | null;
@@ -164,6 +167,34 @@ function TransferDetail({ id }: { id: string }) {
           })}
         </ol>
       </section>
+
+      {/* A finished transfer has two things a sender wants next: the paperwork,
+          and the same payment again next month. Send-again is prefill only —
+          the send flow re-quotes, re-screens and re-checks limits exactly as it
+          does for a transfer started from scratch. */}
+      {transfer.state === 'COMPLETED' || transfer.state === 'REFUNDED' ? (
+        <>
+          <Link
+            href={`/transfers/${transfer.id}/receipt`}
+            className="mp-button mp-button--secondary mp-button--block"
+          >
+            {t('receipt.view')}
+          </Link>
+          {transfer.state === 'COMPLETED' ? (
+            <Link
+              href={
+                `/send?corridorId=${encodeURIComponent(transfer.corridorId)}` +
+                `&recipientId=${encodeURIComponent(transfer.recipient.id)}` +
+                `&amount=${encodeURIComponent(transfer.sendAmount.amount)}` +
+                `&purpose=${encodeURIComponent(transfer.purpose)}`
+              }
+              className="mp-button mp-button--primary mp-button--block"
+            >
+              {t('transfer.sendAgain')}
+            </Link>
+          ) : null}
+        </>
+      ) : null}
 
       <Link href="/transfers" className="mp-button mp-button--ghost mp-button--block">
         {t('nav.transfers')}

@@ -12,6 +12,11 @@ const CONSOLES = [
     label: 'Operations',
     roles: ['SUPPORT', 'COMPLIANCE_OFFICER', 'ADMIN', 'TREASURY_OPERATOR'],
   },
+  {
+    href: '/support',
+    label: 'Support',
+    roles: ['SUPPORT', 'COMPLIANCE_OFFICER', 'ADMIN'],
+  },
   { href: '/treasury', label: 'Treasury', roles: ['TREASURY_OPERATOR', 'ADMIN'] },
   // Compliance only, matching the API. The extract joins a name to a national
   // identity number, and the segregation that keeps an administrator out of

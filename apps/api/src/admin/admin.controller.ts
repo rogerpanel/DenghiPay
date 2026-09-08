@@ -44,6 +44,7 @@ import { TreasuryService } from '../treasury/treasury.service';
 import { ReconciliationService } from '../reconciliation/reconciliation.service';
 import { AuditService } from '../audit/audit.service';
 import { ExchangeControlService } from '../compliance/exchange-control.service';
+import { SupportService } from '../support/support.service';
 import { moneyDtoFrom, toMoneyDto } from '../common/money.util';
 
 /** Back-office authentication. Separate session from the customer app. */
@@ -99,6 +100,7 @@ export class AdminController {
     private readonly reconciliation: ReconciliationService,
     private readonly audit: AuditService,
     private readonly exchangeControl: ExchangeControlService,
+    private readonly support: SupportService,
   ) {}
 
   // ------------------------------------------------------------- 9.1 compliance
@@ -570,6 +572,50 @@ export class AdminController {
       });
     }
     return { marked: await this.exchangeControl.markReported(ids, staff.id) };
+  }
+
+  // --------------------------------------------------------- support console
+
+  /**
+   * The support queue.
+   *
+   * SUPPORT and ADMIN, and compliance too — an officer looking at a case often
+   * needs the customer's own account of it. This is customer correspondence,
+   * not a regulated decision record, which is why it is a different queue from
+   * `compliance/cases` and has none of the four-eyes machinery.
+   */
+  @Get('support/threads')
+  @StaffRoles('SUPPORT', 'COMPLIANCE_OFFICER', 'ADMIN')
+  async supportThreads(@Query('status') status?: string) {
+    return { threads: await this.support.queue(status) };
+  }
+
+  @Post('support/threads/:id/reply')
+  @HttpCode(200)
+  @StaffRoles('SUPPORT', 'COMPLIANCE_OFFICER', 'ADMIN')
+  async supportReply(
+    @CurrentStaff() staff: AuthenticatedStaff,
+    @Param('id') id: string,
+    @Body() body: { body?: string },
+  ) {
+    const text = (body?.body ?? '').trim();
+    if (text.length < 1 || text.length > 4000) {
+      throw new BadRequestException({
+        code: 'INVALID_REPLY',
+        message: 'A reply needs between 1 and 4000 characters',
+      });
+    }
+    return this.support.staffReply(id, staff.id, staff.displayName, text);
+  }
+
+  @Post('support/threads/:id/resolve')
+  @HttpCode(204)
+  @StaffRoles('SUPPORT', 'COMPLIANCE_OFFICER', 'ADMIN')
+  async supportResolve(
+    @CurrentStaff() staff: AuthenticatedStaff,
+    @Param('id') id: string,
+  ): Promise<void> {
+    await this.support.resolve(id, staff.id);
   }
 
   // ------------------------------------------------------------- 9.4 reporting

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/app/providers';
 import { ApiError, api, newIdempotencyKey } from '@/lib/api';
@@ -99,14 +99,23 @@ const PURPOSES = ['FAMILY_SUPPORT', 'EDUCATION', 'MEDICAL', 'GIFT', 'OWN_ACCOUNT
 function SendFlow() {
   const { t, account } = useApp();
   const router = useRouter();
+  /* "Send again" arrives here as query parameters. Prefill only: the corridor,
+     the recipient and the amount are filled in, and then every check runs
+     exactly as it would for a transfer typed from scratch — a fresh quote at
+     today's rate, screening, and the limit check. Nothing is inherited from the
+     transfer being repeated. */
+  const params = useSearchParams();
+  const repeatCorridorId = params.get('corridorId');
+  const repeatRecipientId = params.get('recipientId');
+  const repeatAmount = params.get('amount');
 
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const [corridors, setCorridors] = useState<Corridor[]>([]);
-  const [corridorId, setCorridorId] = useState('RU-NG');
-  const [amountText, setAmountText] = useState('100000');
+  const [corridorId, setCorridorId] = useState(repeatCorridorId ?? 'RU-NG');
+  const [amountText, setAmountText] = useState(repeatAmount ?? '100000');
   const [quote, setQuote] = useState<Quote | null>(null);
   const [secondsLeft, setSecondsLeft] = useState(0);
 
@@ -169,8 +178,15 @@ function SendFlow() {
         usable.length > 0 && !usable.some((c) => c.id === current) ? usable[0]!.id : current,
       );
       setRecipients(recipientList.recipients);
+
+      // A repeat names its recipient, so the sender should not have to pick the
+      // same person again. The quote is still theirs to request.
+      if (repeatRecipientId !== null) {
+        const repeat = recipientList.recipients.find((r) => r.id === repeatRecipientId);
+        if (repeat !== undefined) setSelectedRecipient(repeat);
+      }
     })().catch(() => setError(t('error.generic')));
-  }, [t, residency]);
+  }, [t, residency, repeatRecipientId]);
 
   /* Institutions belong to a destination, so they are fetched when one is
      chosen rather than once at load. Offering every Nigerian bank to somebody

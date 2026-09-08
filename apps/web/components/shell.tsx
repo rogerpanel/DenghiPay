@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { api } from '@/lib/api';
 import { useApp } from '@/app/providers';
 import type { TranslationKey } from '@/lib/i18n';
 
@@ -68,12 +69,78 @@ export function AppShell({
       <header className="mp-header">
         <div className={`mp-header__inner${wide ? ' mp-header__inner--wide' : ''}`}>
           <Logo />
+          {showNav ? <NotificationBell /> : null}
         </div>
       </header>
       <OfflineBanner />
       <main className={`mp-main${wide ? ' mp-main--wide' : ''}`}>{children}</main>
       {showNav ? <BottomNav /> : null}
     </div>
+  );
+}
+
+/**
+ * The unread count, and a way into the list.
+ *
+ * Polled rather than pushed. A remittance app is opened deliberately, a few
+ * times a month, so a socket held open for hours to deliver a handful of events
+ * costs battery on exactly the low-end phones our senders carry.
+ */
+export function NotificationBell() {
+  const { account } = useApp();
+  const [unread, setUnread] = useState(0);
+
+  const refresh = useCallback(async () => {
+    if (account === null) return;
+    try {
+      const result = await api<{ unread: number }>('/notifications');
+      setUnread(result.unread);
+    } catch {
+      // A failed count is not worth an error banner; the list will say so.
+    }
+  }, [account]);
+
+  useEffect(() => {
+    void refresh();
+    const timer = setInterval(() => void refresh(), 60_000);
+    return () => clearInterval(timer);
+  }, [refresh]);
+
+  if (account === null) return null;
+
+  return (
+    <Link
+      href="/notifications"
+      className="mp-button mp-button--ghost"
+      style={{ minHeight: 40, padding: '0 12px', position: 'relative' }}
+      aria-label={unread === 0 ? 'Notifications' : `Notifications, ${unread} unread`}
+    >
+      <span aria-hidden style={{ fontSize: 18 }}>
+        ☰
+      </span>
+      {unread > 0 ? (
+        <span
+          aria-hidden
+          style={{
+            position: 'absolute',
+            top: 2,
+            right: 4,
+            minWidth: 18,
+            height: 18,
+            borderRadius: 9,
+            background: 'var(--danger, #c0392b)',
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 700,
+            lineHeight: '18px',
+            textAlign: 'center',
+            padding: '0 4px',
+          }}
+        >
+          {unread > 9 ? '9+' : unread}
+        </span>
+      ) : null}
+    </Link>
   );
 }
 

@@ -5,3 +5,4 @@ export * from './recipients';
 export * from './quotes';
 export * from './transfers';
 export * from './admin';
+export * from './product';

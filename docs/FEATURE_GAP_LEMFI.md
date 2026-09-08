@@ -13,14 +13,14 @@ engineering work, and two are a different regulated business.
 | Live rate, transparent fee         | **Built** (more transparent than LemFi) | —                                           |
 | Bank and mobile-money payout       | **Built**, 20 corridors                 | —                                           |
 | Transfer history and live status   | **Built**                               | —                                           |
-| Status notifications               | Partial — written, email only           | Small                                       |
-| Receipt / proof of payment         | Missing                                 | Small, high value                           |
-| "Send again" from history          | Missing                                 | Small, high value                           |
+| Status notifications               | **Built** — in-app and email            | —                                           |
+| Receipt / proof of payment         | **Built** (14.2)                        | —                                           |
+| "Send again" from history          | **Built** (14.3)                        | —                                           |
 | Recipient nicknames and favourites | Partial                                 | Small                                       |
-| Scheduled and recurring transfers  | Missing                                 | Medium                                      |
-| Rate alerts                        | Missing                                 | Medium                                      |
+| Scheduled and recurring transfers  | **Built** (14.4)                        | —                                           |
+| Rate alerts                        | **Built** (14.5)                        | —                                           |
 | Referral programme                 | Missing                                 | Medium, plus an AML wrinkle                 |
-| In-app support thread              | Missing                                 | Medium                                      |
+| In-app support thread              | **Built** (14.6)                        | —                                           |
 | **Multi-currency held balances**   | Missing                                 | **A different licence. See below.**         |
 | **Virtual USD cards**              | Missing                                 | **Out of scope — BIN sponsor, card scheme** |
 | **Bill payment / airtime top-up**  | Missing                                 | **Conflicts with guardrail 2**              |
@@ -60,11 +60,24 @@ merchants, which is the commercial-payments business guardrail 2 exists to keep
 us out of. Sending money to a family member who then buys airtime is our
 product. Buying the airtime for them is somebody else's.
 
-## Recommended build order
+## Build order
 
-Everything here is inside our existing licensing posture.
+Tranches A and B shipped on 2026-09-08 as BUILD_PLAN Phase 14. What each turned
+out to be is recorded there; two things are worth repeating here because they
+were design decisions rather than implementation details.
 
-**Tranche A — the things a sender notices immediately.**
+**A standing instruction prepares a transfer; it does not authorise one.** Every
+occurrence re-quotes, re-screens and re-checks limits through the same call the
+send screen makes. And it does not pay — without a direct-debit mandate it
+creates a transfer awaiting the sender's payment, which is what the screen says
+in those words. Corridors under exchange control cannot be scheduled at all.
+
+**A rate alert watches the rate we would quote**, margin included, not the
+mid-market rate. It fires once and disarms.
+
+Tranche C remains open.
+
+**Tranche A — the things a sender notices immediately.** _Shipped._
 
 1. **Receipt / proof of payment.** A shareable, printable record per completed
    transfer: reference, amounts both sides, rate, fee, recipient name, value
@@ -77,7 +90,7 @@ Everything here is inside our existing licensing posture.
    status updates should also reach the app. Push where the PWA allows it,
    in-app otherwise.
 
-**Tranche B — retention.**
+**Tranche B — retention.** _Shipped._
 
 4. **Scheduled and recurring transfers.** Every occurrence is still a fresh
    quote, a fresh screening and a fresh limit check — a schedule may not

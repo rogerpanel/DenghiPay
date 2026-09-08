@@ -46,6 +46,19 @@ function SettingsInner() {
         </Link>
       </section>
 
+      <section className="mp-card mp-stack">
+        <h2 className="mp-card__title">{t('settings.manage')}</h2>
+        <Link href="/schedules" className="mp-button mp-button--ghost mp-button--block">
+          {t('schedules.title')}
+        </Link>
+        <Link href="/alerts" className="mp-button mp-button--ghost mp-button--block">
+          {t('alerts.title')}
+        </Link>
+        <Link href="/support" className="mp-button mp-button--ghost mp-button--block">
+          {t('support.title')}
+        </Link>
+      </section>
+
       <section className="mp-card">
         <h2 className="mp-card__title">{t('settings.install')}</h2>
         <p className="mp-small mp-muted">{t('settings.installHint')}</p>

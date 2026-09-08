@@ -82,6 +82,10 @@ model User {
   quotes            Quote[]
   transfers         Transfer[]
   kycCases          KycCase[]
+  notifications     UserNotification[]
+  schedules         TransferSchedule[]
+  rateAlerts        RateAlert[]
+  supportThreads    SupportThread[]
 
   @@map("app_user")
   @@schema("public")
@@ -347,6 +351,8 @@ model Corridor {
 
   quotes    Quote[]
   transfers Transfer[]
+  schedules TransferSchedule[]
+  rateAlerts RateAlert[]
 
   @@map("corridor")
   @@schema("public")
@@ -422,6 +428,7 @@ model Recipient {
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   transfers Transfer[]
+  schedules TransferSchedule[]
 
   @@index([userId])
   @@map("recipient")
@@ -1030,5 +1037,153 @@ model ExchangeControlDeclaration {
   @@index([userId, allowanceYear])
   @@index([reportedAt])
   @@map("exchange_control_declaration")
+  @@schema("public")
+}
+
+// =============================================================================
+// Sender-facing product surface (BUILD_PLAN 14) — notifications, schedules,
+// rate alerts and support. None of it touches financial state; all of it exists
+// to keep a sender informed and to save them retyping.
+// =============================================================================
+
+/// An in-app notification.
+///
+/// The outbox delivers to the outside world; this is what the sender sees when
+/// they open the app. Both are written from the same place, because a status
+/// change the sender cannot see in the app is a support ticket.
+model UserNotification {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  kind       String
+  title      String
+  body       String
+  /// The thing to open when tapped, as an in-app path. Never an external URL.
+  link       String?
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("user_notification")
+  @@schema("public")
+}
+
+/// A standing instruction to prepare a transfer on a cadence.
+///
+/// It prepares; it does not pay. There is no direct-debit mandate behind this,
+/// so each occurrence creates a transfer awaiting the sender's payment and
+/// tells them it is waiting. That is the honest shape: automating the payment
+/// itself would need an authorisation we do not have.
+///
+/// Every occurrence re-quotes, re-screens and re-checks limits. A schedule
+/// never pre-authorises anything — otherwise it would be a way around the
+/// controls that apply to a transfer made by hand.
+model TransferSchedule {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  corridorId     String    @map("corridor_id")
+  recipientId    String    @map("recipient_id")
+  sendMinorUnits BigInt    @map("send_minor_units")
+  sendCurrency   String    @map("send_currency")
+  payinMethod    String    @map("payin_method")
+  purpose        String
+  /// WEEKLY or MONTHLY. Anything shorter is a standing order, not a remittance.
+  frequency      String
+  /// Day of month (1-28) for MONTHLY, ISO weekday (1-7) for WEEKLY. Capped at
+  /// 28 deliberately: a schedule set for the 31st would skip four months a year.
+  dayOfPeriod    Int       @map("day_of_period")
+  nextRunAt      DateTime  @map("next_run_at")
+  lastRunAt      DateTime? @map("last_run_at")
+  /// Why the last occurrence did not produce a transfer, if it did not.
+  lastFailure    String?   @map("last_failure")
+  occurrences    Int       @default(0)
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  corridor  Corridor  @relation(fields: [corridorId], references: [id])
+  recipient Recipient @relation(fields: [recipientId], references: [id])
+
+  @@index([active, nextRunAt])
+  @@index([userId])
+  @@map("transfer_schedule")
+  @@schema("public")
+}
+
+/// "Tell me when this corridor's rate passes X."
+///
+/// Fires once and disarms. A repeating alert on a rate that hovers around the
+/// threshold is a notification every minute, which teaches people to ignore
+/// notifications.
+model RateAlert {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  corridorId      String    @map("corridor_id")
+  /// ABOVE or BELOW, judged against the effective rate we would quote.
+  direction       String
+  /// Threshold as a decimal string. Never a float.
+  thresholdRate   String    @map("threshold_rate")
+  active          Boolean   @default(true)
+  triggeredAt     DateTime? @map("triggered_at")
+  /// The rate that tripped it, kept so the notification can be explained later.
+  triggeredRate   String?   @map("triggered_rate")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  corridor Corridor @relation(fields: [corridorId], references: [id])
+
+  @@index([active, corridorId])
+  @@index([userId])
+  @@map("rate_alert")
+  @@schema("public")
+}
+
+/// Customer support correspondence.
+///
+/// Deliberately not a ComplianceCase. A compliance case is a regulated record
+/// with a decision and a reason; a support thread is a conversation about a
+/// delayed payment. Merging them would either put customer chatter into the
+/// compliance queue or put regulated decisions somewhere without four-eyes.
+///
+/// The bodies live in the neutral tier because correspondence is not identity
+/// data. Staff must not paste identity numbers into a reply — there is a
+/// partition for that, and this is not it.
+model SupportThread {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  subject    String
+  /// OPEN, ANSWERED or RESOLVED.
+  status     String    @default("OPEN")
+  /// The transfer this is about, when it is about one.
+  transferId String?   @map("transfer_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages SupportMessage[]
+
+  @@index([userId])
+  @@index([status, updatedAt])
+  @@map("support_thread")
+  @@schema("public")
+}
+
+model SupportMessage {
+  id         String   @id @default(uuid())
+  threadId   String   @map("thread_id")
+  /// USER or STAFF. Never SYSTEM — a support thread is between two people.
+  authorType String   @map("author_type")
+  authorId   String   @map("author_id")
+  body       String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  thread SupportThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("support_message")
   @@schema("public")
 }

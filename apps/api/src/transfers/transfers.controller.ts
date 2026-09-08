@@ -13,12 +13,14 @@ import {
   CancelTransferRequest,
   CreateTransferRequest,
   ExchangeControlInfo,
+  ReceiptDto,
   TransferResponse,
   cancelTransferRequestSchema,
   createTransferRequestSchema,
   idempotencyKeySchema,
 } from '@morapay/contracts';
 import { TransfersService } from './transfers.service';
+import { ReceiptsService } from './receipts.service';
 import { TransferSagaService } from './transfer-saga.service';
 import { ExchangeControlService } from '../compliance/exchange-control.service';
 import { CorridorsService } from '../quoting/corridors.service';
@@ -38,6 +40,7 @@ import { zodBody } from '../common/zod.pipe';
 export class TransfersController {
   constructor(
     private readonly transfers: TransfersService,
+    private readonly receipts: ReceiptsService,
     private readonly saga: TransferSagaService,
     private readonly exchangeControl: ExchangeControlService,
     private readonly corridors: CorridorsService,
@@ -110,6 +113,21 @@ export class TransfersController {
       declaredElsewhereMinorUnits: status.usage.declaredElsewhereMinorUnits.toString(),
       currency: status.regime.currency,
     };
+  }
+
+  /**
+   * Proof of payment for a finished transfer.
+   *
+   * Separate from the transfer response because it says more: it names the
+   * payer, and that name comes from the residency partition rather than the
+   * neutral tier. Issued only for a terminal state.
+   */
+  @Get(':id/receipt')
+  async receipt(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ): Promise<ReceiptDto> {
+    return this.receipts.forTransfer(user.id, id);
   }
 
   @Post()
