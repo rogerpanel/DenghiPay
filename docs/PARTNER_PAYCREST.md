@@ -111,7 +111,8 @@ regardless. Confirm we agree on where their obligation ends and ours begins.
 
 8. **API documentation, sandbox credentials, and a Postman collection** — how
    soon? We can have an adapter running against a sandbox in days, not weeks,
-   because the port already exists.
+   because the port already exists. The full technical list to hand their
+   integration engineer is [`PARTNER_INTEGRATION_SPEC.md`](PARTNER_INTEGRATION_SPEC.md).
 9. **Do you offer name enquiry / account-name resolution** before payout? We
    show the recipient's real name to the sender before they commit, and we will
    not ship a corridor without it.
