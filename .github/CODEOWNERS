@@ -22,3 +22,28 @@
 /docs/BUILD_PLAN.md     @rogerpanel
 /.github/               @rogerpanel
 /infra/                 @rogerpanel
+
+# ---------------------------------------------------------------------------
+# External integration engineers
+# ---------------------------------------------------------------------------
+#
+# A partner's engineer writing a payment adapter never needs to see the ledger,
+# and the port is what makes that true: `PayoutProvider` is five methods and
+# none of them exposes financial state. So an adapter folder can be theirs
+# while everything above stays ours.
+#
+# Add the contractor's handle to their own adapter directory when an engagement
+# starts, e.g.:
+#
+#   /packages/adapters/src/paycrest/  @rogerpanel @their-handle
+#
+# The catch-all `*` rule above still requires an owner's review on every pull
+# request, so this widens who may *write* a directory, never who may merge it.
+#
+# None of this takes effect until branch protection is enabled on the working
+# branch with "require review from Code Owners". CODEOWNERS on its own is
+# documentation. See docs/DECISION_STABLECOIN_ROUTE.md §4.
+
+# The port definitions are read-only to a contractor: changing the shape of the
+# boundary is a decision about the whole system, not about one provider.
+/packages/adapters/src/ports/ @rogerpanel
