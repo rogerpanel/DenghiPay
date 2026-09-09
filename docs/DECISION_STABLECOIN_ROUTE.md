@@ -94,7 +94,23 @@ It is also precisely the number that is _not_ the official rate, which matters
 for anything we have to report. Worth understanding before it becomes a
 reconciliation argument, not after.
 
-### 1.5 It does not solve Russia
+### 1.5 Check which direction they actually do
+
+Paycrest's own integration guide has been describing the Sender API as
+**stablecoin-to-fiat (offramp) only**, with fiat-to-stablecoin (onramp) listed
+as forthcoming. That date has long passed and Noblocks visibly performs
+NGN→USDT today, so onramp plainly exists in some form — but possibly through
+the P2P provision-node network rather than through the Sender API a partner
+integrates against.
+
+This matters directly for NG→CM. Offramp-only would mean they can deliver XAF
+in Cameroon but **cannot collect the naira in Nigeria**, which is exactly the
+leg `PARTNER_INTEGRATION_SPEC.md` §1 says to pin down first.
+
+**Ask:** which API does the NGN collection leg use, is it the same Sender API,
+and is it generally available or still limited to the Noblocks front end?
+
+### 1.6 It does not solve Russia
 
 The RUB collection leg (OPEN_ITEMS B1) is untouched by any of this. Worth
 saying because a stablecoin route can look, in a diagram, as though it solves
@@ -139,9 +155,23 @@ collection partner, written legal opinions, domestic collection licences, a
 compliance officer, and liquidity.
 
 **What we actually want from Paycrest is a rail, not a codebase.** API access
-to a sandbox is the ask, and that is normally free. If they will not give
-sandbox access without $3,000, that itself is information about how the
-partnership will go.
+is the ask.
+
+On whether that access should cost anything: for **Fincra** this is documented
+and self-serve — they publish a sandbox with its own base URL
+(`sandboxapi.fincra.com`), test keys issued from the dashboard, and simulated
+card and mobile-money flows, at no stated cost. See
+[Sandbox (Test)](https://docs.fincra.com/docs/sandbox-environment),
+[Environments](https://docs.fincra.com/docs/api-environments) and
+[Authentication](https://docs.fincra.com/docs/authentication).
+
+For **Paycrest** we have not been able to confirm it. Their published
+integration guide describes retrieving an API key and secret from a Sender
+Dashboard, with no fee mentioned
+([Sender API Integration](https://docs.paycrest.io/implementation-guides/sender-api-integration)),
+but that is not the same as a documented free sandbox, and it should be asked
+rather than assumed. If they will not give test access without $3,000, that is
+itself information about how the partnership will go.
 
 **Spend the $3,000 on the legal opinion instead**, if it is going to be spent.
 That is the thing standing between us and a live transfer.
