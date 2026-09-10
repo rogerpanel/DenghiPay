@@ -220,7 +220,7 @@ const en = {
   'kyc.wallet': 'Mobile money wallet we will debit',
   'kyc.walletHint': 'It must be registered in the name you gave above.',
   'kyc.walletNetwork': 'Network',
-  'kyc.nationalId': 'South African identity number',
+  'kyc.nationalId': 'National identity number',
   'kyc.taxReference': 'SARS tax reference (optional)',
   'kyc.taxReferenceHint':
     'Only needed for the investment allowance. The discretionary allowance does not ask for it.',
@@ -547,7 +547,7 @@ const ru: Record<TranslationKey, string> = {
   'kyc.wallet': 'Кошелёк мобильных денег для списания',
   'kyc.walletHint': 'Он должен быть зарегистрирован на указанное выше имя.',
   'kyc.walletNetwork': 'Оператор',
-  'kyc.nationalId': 'Южноафриканский идентификационный номер',
+  'kyc.nationalId': 'Национальный идентификационный номер',
   'kyc.taxReference': 'Налоговый номер SARS (необязательно)',
   'kyc.taxReferenceHint':
     'Нужен только для инвестиционного лимита. Для дискреционного он не требуется.',
@@ -874,7 +874,7 @@ const fr: Record<TranslationKey, string> = {
   'kyc.wallet': 'Portefeuille mobile money à débiter',
   'kyc.walletHint': 'Il doit être enregistré au nom indiqué ci-dessus.',
   'kyc.walletNetwork': 'Opérateur',
-  'kyc.nationalId': 'Numéro d’identité sud-africain',
+  'kyc.nationalId': 'Numéro d’identité nationale',
   'kyc.taxReference': 'Référence fiscale SARS (facultatif)',
   'kyc.taxReferenceHint':
     'Nécessaire uniquement pour le plafond d’investissement. Le plafond discrétionnaire ne l’exige pas.',
