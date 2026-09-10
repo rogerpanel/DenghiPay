@@ -48,10 +48,15 @@ export type TierLimitTable = Readonly<
  *     because they are two currencies under two central banks and collapsing
  *     them is exactly the mistake the parity invites.
  *
- * Watch the magnitudes on the CFA rows: those currencies have **no decimals**,
- * so `200_000n` is two hundred thousand francs, not two thousand. Copying a
- * naira figure across without dividing by a hundred is the obvious way to get
- * this wrong by two orders of magnitude.
+ * Watch the magnitudes on the CFA and shilling rows. **XAF, XOF and UGX have
+ * no decimals**, so `200_000n` is two hundred thousand francs and `500_000n` is
+ * five hundred thousand shillings — not two thousand and five thousand. Copying
+ * a naira or a Kenyan-shilling figure across without dividing by a hundred is
+ * the obvious way to get this wrong by two orders of magnitude, and the wrong
+ * number still reads as plausible.
+ *
+ * UGX is the newest member of that set and the easiest to miss, because KES and
+ * TZS sit beside it and both have two decimals.
  *
  *   - **ZAR** rows exist as of BUILD_PLAN 4.3c, when South Africa became an
  *     origin. They are the tier caps only. The binding constraint on a South
@@ -73,6 +78,12 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
     XAF: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
     XOF: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
     ZAR: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    CDF: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    UGX: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    KES: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    TZS: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    ZMW: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
+    GMD: { perTransferMinorUnits: 0n, dailyMinorUnits: 0n, monthlyMinorUnits: 0n },
   },
   1: {
     // 15 000 ₽ per transfer, 30 000 ₽ per day, 100 000 ₽ per month.
@@ -114,6 +125,45 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       perTransferMinorUnits: 200_000n,
       dailyMinorUnits: 200_000n,
       monthlyMinorUnits: 1_000_000n,
+    },
+    // FC 500 000 per transfer, FC 1 000 000 per day. Two decimals.
+    CDF: {
+      perTransferMinorUnits: 50_000_000n,
+      dailyMinorUnits: 100_000_000n,
+      monthlyMinorUnits: 300_000_000n,
+    },
+    // USh 500 000 per transfer and per day — the Bank of Uganda's low-KYC
+    // wallet band. **Whole shillings**: UGX has no minor unit, so this is five
+    // hundred thousand, not five thousand.
+    UGX: {
+      perTransferMinorUnits: 500_000n,
+      dailyMinorUnits: 500_000n,
+      monthlyMinorUnits: 2_000_000n,
+    },
+    // KSh 70 000 per transaction is the long-standing M-Pesa ceiling; the daily
+    // aggregate sits above it.
+    KES: {
+      perTransferMinorUnits: 7_000_000n,
+      dailyMinorUnits: 15_000_000n,
+      monthlyMinorUnits: 50_000_000n,
+    },
+    // TSh 1 000 000 per transfer, 3 000 000 per day.
+    TZS: {
+      perTransferMinorUnits: 100_000_000n,
+      dailyMinorUnits: 300_000_000n,
+      monthlyMinorUnits: 1_000_000_000n,
+    },
+    // ZK 5 000 per transfer, ZK 10 000 per day.
+    ZMW: {
+      perTransferMinorUnits: 500_000n,
+      dailyMinorUnits: 1_000_000n,
+      monthlyMinorUnits: 3_000_000n,
+    },
+    // D 5 000 per transfer, D 10 000 per day.
+    GMD: {
+      perTransferMinorUnits: 500_000n,
+      dailyMinorUnits: 1_000_000n,
+      monthlyMinorUnits: 3_000_000n,
     },
   },
   2: {
@@ -157,6 +207,38 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       dailyMinorUnits: 2_000_000n,
       monthlyMinorUnits: 5_000_000n,
     },
+    CDF: {
+      perTransferMinorUnits: 300_000_000n,
+      dailyMinorUnits: 600_000_000n,
+      monthlyMinorUnits: 2_000_000_000n,
+    },
+    // USh 5 000 000 per transfer. Whole shillings.
+    UGX: {
+      perTransferMinorUnits: 5_000_000n,
+      dailyMinorUnits: 10_000_000n,
+      monthlyMinorUnits: 30_000_000n,
+    },
+    // KSh 500 000 per transfer, the enhanced wallet band.
+    KES: {
+      perTransferMinorUnits: 50_000_000n,
+      dailyMinorUnits: 100_000_000n,
+      monthlyMinorUnits: 300_000_000n,
+    },
+    TZS: {
+      perTransferMinorUnits: 500_000_000n,
+      dailyMinorUnits: 1_000_000_000n,
+      monthlyMinorUnits: 3_000_000_000n,
+    },
+    ZMW: {
+      perTransferMinorUnits: 5_000_000n,
+      dailyMinorUnits: 10_000_000n,
+      monthlyMinorUnits: 30_000_000n,
+    },
+    GMD: {
+      perTransferMinorUnits: 5_000_000n,
+      dailyMinorUnits: 10_000_000n,
+      monthlyMinorUnits: 30_000_000n,
+    },
   },
   3: {
     // Enhanced due diligence: higher caps, and every transfer still screened.
@@ -199,6 +281,37 @@ export const DEFAULT_TIER_LIMITS: TierLimitTable = {
       perTransferMinorUnits: 5_000_000n,
       dailyMinorUnits: 10_000_000n,
       monthlyMinorUnits: 25_000_000n,
+    },
+    CDF: {
+      perTransferMinorUnits: 1_500_000_000n,
+      dailyMinorUnits: 3_000_000_000n,
+      monthlyMinorUnits: 10_000_000_000n,
+    },
+    // USh 25 000 000 per transfer. Whole shillings.
+    UGX: {
+      perTransferMinorUnits: 25_000_000n,
+      dailyMinorUnits: 50_000_000n,
+      monthlyMinorUnits: 150_000_000n,
+    },
+    KES: {
+      perTransferMinorUnits: 250_000_000n,
+      dailyMinorUnits: 500_000_000n,
+      monthlyMinorUnits: 1_500_000_000n,
+    },
+    TZS: {
+      perTransferMinorUnits: 2_500_000_000n,
+      dailyMinorUnits: 5_000_000_000n,
+      monthlyMinorUnits: 15_000_000_000n,
+    },
+    ZMW: {
+      perTransferMinorUnits: 25_000_000n,
+      dailyMinorUnits: 50_000_000n,
+      monthlyMinorUnits: 150_000_000n,
+    },
+    GMD: {
+      perTransferMinorUnits: 25_000_000n,
+      dailyMinorUnits: 50_000_000n,
+      monthlyMinorUnits: 150_000_000n,
     },
   },
 };

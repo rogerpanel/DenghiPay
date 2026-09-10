@@ -34,8 +34,28 @@ describe('currency registry', () => {
 
   it('throws on an unknown code from an external system rather than defaulting', () => {
     expect(requireCurrencyCode('NGN')).toBe('NGN');
-    expect(() => requireCurrencyCode('CDF')).toThrow();
+    // A real ISO code we have not registered. This was CDF until the Congolese
+    // franc was added with the Paycrest markets — the example has to be
+    // replaced each time the registry grows, which is the point of it.
+    expect(() => requireCurrencyCode('ETB')).toThrow();
     expect(() => requireCurrencyCode(null)).toThrow();
+  });
+
+  /**
+   * The zero-decimal set. Getting an exponent wrong is a hundredfold error in
+   * every amount in that currency, and it looks plausible at every step, so the
+   * exponents are asserted rather than trusted.
+   */
+  it('knows which currencies have no minor unit', () => {
+    for (const code of ['XAF', 'XOF', 'UGX'] as const) {
+      expect(getCurrency(code).exponent).toBe(0);
+    }
+    // Their neighbours do have one, which is what makes the above easy to miss.
+    for (const code of ['KES', 'TZS', 'CDF', 'ZMW', 'GMD'] as const) {
+      expect(getCurrency(code).exponent).toBe(2);
+    }
+    // The settlement asset is neither.
+    expect(getCurrency('USDT').exponent).toBe(6);
   });
 });
 

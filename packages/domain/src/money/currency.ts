@@ -30,6 +30,23 @@ export const CURRENCIES = {
    */
   XAF: { code: 'XAF', exponent: 0, name: 'Central African CFA franc', symbol: 'FCFA' },
   XOF: { code: 'XOF', exponent: 0, name: 'West African CFA franc', symbol: 'CFA' },
+
+  /**
+   * East, Central and West African currencies added with the Paycrest coverage
+   * markets.
+   *
+   * **UGX is the one to be careful with.** Like the CFA francs it has an
+   * exponent of zero — the Ugandan cent was withdrawn decades ago — so
+   * `minorUnits` counts whole shillings. A limit or an amount copied across
+   * from KES or TZS, which do have two decimals, is wrong by a hundredfold and
+   * still reads as a plausible number.
+   */
+  CDF: { code: 'CDF', exponent: 2, name: 'Congolese franc', symbol: 'FC' },
+  UGX: { code: 'UGX', exponent: 0, name: 'Ugandan shilling', symbol: 'USh' },
+  KES: { code: 'KES', exponent: 2, name: 'Kenyan shilling', symbol: 'KSh' },
+  TZS: { code: 'TZS', exponent: 2, name: 'Tanzanian shilling', symbol: 'TSh' },
+  ZMW: { code: 'ZMW', exponent: 2, name: 'Zambian kwacha', symbol: 'ZK' },
+  GMD: { code: 'GMD', exponent: 2, name: 'Gambian dalasi', symbol: 'D' },
   USD: { code: 'USD', exponent: 2, name: 'United States dollar', symbol: '$' },
   /** Settlement asset. Six decimals, per the ERC-20 contract — not two. */
   USDT: { code: 'USDT', exponent: 6, name: 'Tether USD', symbol: 'USDT' },

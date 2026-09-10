@@ -1,4 +1,4 @@
-import { CountryCode, Corridor } from './corridor';
+import { AFRICAN_COUNTRIES, CountryCode, Corridor } from './corridor';
 
 /**
  * Which authorisation each leg of a corridor rests on.
@@ -57,6 +57,47 @@ export const AUTHORISATIONS = [
   'CM_PAYOUT_RAIL',
   /** A licensed rail that credits Beninese mobile-money wallets. */
   'BJ_PAYOUT_RAIL',
+
+  /*
+   * The Paycrest coverage markets.
+   *
+   * Every one of these is two authorisations, not one, and every one is a
+   * different regulator. Four of them share a currency — Benin, Niger, Mali and
+   * Senegal are all BCEAO and all use XOF — and that shared currency buys
+   * exactly nothing in licensing terms: a BCEAO approval is granted per member
+   * state, so four countries is four approvals. The same is true of XAF across
+   * Cameroon and the Republic of the Congo.
+   */
+  /** BCC authorisation to collect Congolese francs inside the DRC. */
+  'CD_DOMESTIC_COLLECTION',
+  'CD_PAYOUT_RAIL',
+  /** BEAC/COBAC again, but for the Republic of the Congo rather than Cameroon. */
+  'CG_DOMESTIC_COLLECTION',
+  'CG_PAYOUT_RAIL',
+  /** Bank of Uganda authorisation to debit shilling wallets. */
+  'UG_DOMESTIC_COLLECTION',
+  'UG_PAYOUT_RAIL',
+  /** CBK authorisation to collect inside Kenya; M-Pesa is the dominant rail. */
+  'KE_DOMESTIC_COLLECTION',
+  'KE_PAYOUT_RAIL',
+  /** Bank of Tanzania authorisation to debit shilling wallets. */
+  'TZ_DOMESTIC_COLLECTION',
+  'TZ_PAYOUT_RAIL',
+  /** Bank of Zambia authorisation to collect kwacha. */
+  'ZM_DOMESTIC_COLLECTION',
+  'ZM_PAYOUT_RAIL',
+  /** Central Bank of The Gambia authorisation to collect dalasi. */
+  'GM_DOMESTIC_COLLECTION',
+  'GM_PAYOUT_RAIL',
+  /** BCEAO, Niger. Separate from Benin's despite the shared currency. */
+  'NE_DOMESTIC_COLLECTION',
+  'NE_PAYOUT_RAIL',
+  /** BCEAO, Mali. */
+  'ML_DOMESTIC_COLLECTION',
+  'ML_PAYOUT_RAIL',
+  /** BCEAO, Senegal. */
+  'SN_DOMESTIC_COLLECTION',
+  'SN_PAYOUT_RAIL',
 ] as const;
 
 export type Authorisation = (typeof AUTHORISATIONS)[number];
@@ -83,6 +124,16 @@ const COLLECTION_AUTHORISATION: Readonly<Partial<Record<CountryCode, Authorisati
   ZA: 'ZA_DOMESTIC_COLLECTION',
   CM: 'CM_DOMESTIC_COLLECTION',
   BJ: 'BJ_DOMESTIC_COLLECTION',
+  CD: 'CD_DOMESTIC_COLLECTION',
+  CG: 'CG_DOMESTIC_COLLECTION',
+  UG: 'UG_DOMESTIC_COLLECTION',
+  KE: 'KE_DOMESTIC_COLLECTION',
+  TZ: 'TZ_DOMESTIC_COLLECTION',
+  ZM: 'ZM_DOMESTIC_COLLECTION',
+  GM: 'GM_DOMESTIC_COLLECTION',
+  NE: 'NE_DOMESTIC_COLLECTION',
+  ML: 'ML_DOMESTIC_COLLECTION',
+  SN: 'SN_DOMESTIC_COLLECTION',
 };
 
 const PAYOUT_AUTHORISATION: Readonly<Partial<Record<CountryCode, Authorisation>>> = {
@@ -91,6 +142,16 @@ const PAYOUT_AUTHORISATION: Readonly<Partial<Record<CountryCode, Authorisation>>
   ZA: 'ZA_PAYOUT_RAIL',
   CM: 'CM_PAYOUT_RAIL',
   BJ: 'BJ_PAYOUT_RAIL',
+  CD: 'CD_PAYOUT_RAIL',
+  CG: 'CG_PAYOUT_RAIL',
+  UG: 'UG_PAYOUT_RAIL',
+  KE: 'KE_PAYOUT_RAIL',
+  TZ: 'TZ_PAYOUT_RAIL',
+  ZM: 'ZM_PAYOUT_RAIL',
+  GM: 'GM_PAYOUT_RAIL',
+  NE: 'NE_PAYOUT_RAIL',
+  ML: 'ML_PAYOUT_RAIL',
+  SN: 'SN_PAYOUT_RAIL',
 };
 
 /** Countries we can collect from at all. A corridor cannot start anywhere else. */
@@ -105,7 +166,12 @@ export function canCollectFrom(country: CountryCode): boolean {
 export type CorridorClass = 'INBOUND_REMITTANCE' | 'INTRA_AFRICAN';
 
 /** Origins whose collection leg is domestic rather than a border crossing. */
-const AFRICAN_ORIGINS: readonly CountryCode[] = ['NG', 'GH', 'ZA', 'CM', 'BJ'];
+/**
+ * Reads the shared list rather than repeating it. This used to enumerate the
+ * African origins by hand, which meant adding a country silently classified its
+ * corridors as inbound remittances until somebody noticed.
+ */
+const AFRICAN_ORIGINS: readonly CountryCode[] = AFRICAN_COUNTRIES;
 
 export function corridorClass(corridor: {
   readonly sourceCountry: CountryCode;

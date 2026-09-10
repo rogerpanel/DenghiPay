@@ -7,7 +7,63 @@ import { CurrencyCode } from '../money/currency';
  * branch in the transfer logic knows the name of a country.
  */
 
-export type CountryCode = 'RU' | 'BY' | 'NG' | 'GH' | 'ZA' | 'CM' | 'BJ';
+export type CountryCode =
+  // Inbound-remittance origins.
+  | 'RU'
+  | 'BY'
+  // The African mesh. Every one of these both sends and receives.
+  | 'NG'
+  | 'GH'
+  | 'ZA'
+  | 'CM'
+  | 'BJ'
+  // Added with the Paycrest coverage markets. Note CD and CG are two different
+  // countries with two different central banks: the Democratic Republic of the
+  // Congo uses the Congolese franc, the Republic of the Congo uses the Central
+  // African CFA franc and sits in the BEAC zone beside Cameroon. Treating
+  // "Congo" as one country is the mistake this pair exists to prevent.
+  | 'CD'
+  | 'CG'
+  | 'UG'
+  | 'KE'
+  | 'TZ'
+  | 'ZM'
+  | 'GM'
+  | 'NE'
+  | 'ML'
+  | 'SN';
+
+/**
+ * The African countries that form the mesh, in one place.
+ *
+ * Everything that needs "all the African origins" or "all the African
+ * destinations" reads this rather than repeating the list, so adding the next
+ * country is one line here instead of a search for every array that happened to
+ * enumerate them.
+ */
+export const AFRICAN_COUNTRIES = [
+  'NG',
+  'GH',
+  'ZA',
+  'CM',
+  'BJ',
+  'CD',
+  'CG',
+  'UG',
+  'KE',
+  'TZ',
+  'ZM',
+  'GM',
+  'NE',
+  'ML',
+  'SN',
+] as const satisfies readonly CountryCode[];
+
+export type AfricanCountry = (typeof AFRICAN_COUNTRIES)[number];
+
+export function isAfricanCountry(country: string): country is AfricanCountry {
+  return (AFRICAN_COUNTRIES as readonly string[]).includes(country);
+}
 
 export const PAYOUT_METHODS = ['BANK_ACCOUNT', 'MOBILE_MONEY'] as const;
 export type PayoutMethod = (typeof PAYOUT_METHODS)[number];
@@ -25,6 +81,22 @@ export const MOBILE_MONEY_NETWORKS = {
   GH: ['MTN', 'TELECEL', 'AIRTELTIGO'],
   CM: ['MTN', 'ORANGE'],
   BJ: ['MTN', 'MOOV', 'CELTIIS'],
+  // East Africa. M-Pesa is the case that proves the rule about brands: it is
+  // Safaricom in Kenya and Vodacom in Tanzania and the DRC — three licensees,
+  // three switches, one name.
+  KE: ['MPESA', 'AIRTEL'],
+  UG: ['MTN', 'AIRTEL'],
+  TZ: ['MPESA', 'AIRTEL', 'TIGO', 'HALOPESA'],
+  ZM: ['MTN', 'AIRTEL', 'ZAMTEL'],
+  // Central Africa.
+  CD: ['MPESA', 'ORANGE', 'AIRTEL', 'AFRICELL'],
+  CG: ['MTN', 'AIRTEL'],
+  // West Africa. Wave is a payments licensee rather than a mobile operator,
+  // which is why it appears beside the networks and not inside one.
+  SN: ['ORANGE', 'WAVE', 'FREE'],
+  ML: ['ORANGE', 'MOOV', 'WAVE'],
+  NE: ['AIRTEL', 'MOOV', 'ORANGE'],
+  GM: ['AFRICELL', 'QMONEY', 'WAVE'],
 } as const satisfies Partial<Record<CountryCode, readonly string[]>>;
 
 export const MOBILE_MONEY_NETWORK_CODES = [
@@ -34,6 +106,15 @@ export const MOBILE_MONEY_NETWORK_CODES = [
   'ORANGE',
   'MOOV',
   'CELTIIS',
+  'MPESA',
+  'AIRTEL',
+  'TIGO',
+  'HALOPESA',
+  'ZAMTEL',
+  'AFRICELL',
+  'WAVE',
+  'FREE',
+  'QMONEY',
 ] as const;
 export type MobileMoneyNetwork = (typeof MOBILE_MONEY_NETWORK_CODES)[number];
 
@@ -59,6 +140,16 @@ export const MSISDN_PREFIX: Readonly<Partial<Record<CountryCode, string>>> = {
   GH: '233',
   CM: '237',
   BJ: '229',
+  KE: '254',
+  UG: '256',
+  TZ: '255',
+  ZM: '260',
+  CD: '243',
+  CG: '242',
+  SN: '221',
+  ML: '223',
+  NE: '227',
+  GM: '220',
 };
 
 /**
@@ -151,6 +242,19 @@ const SEND_CURRENCY: Readonly<Record<CountryCode, CurrencyCode>> = {
   ZA: 'ZAR',
   CM: 'XAF',
   BJ: 'XOF',
+  CD: 'CDF',
+  // Republic of the Congo is in the BEAC zone with Cameroon, so it shares XAF.
+  CG: 'XAF',
+  UG: 'UGX',
+  KE: 'KES',
+  TZ: 'TZS',
+  ZM: 'ZMW',
+  GM: 'GMD',
+  // Niger, Mali and Senegal are all BCEAO members and share XOF with Benin.
+  // Four countries, one currency, four separate collection authorisations.
+  NE: 'XOF',
+  ML: 'XOF',
+  SN: 'XOF',
 };
 
 export function sendCurrencyFor(country: string): CurrencyCode {

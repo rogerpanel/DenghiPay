@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ALWAYS_OPEN, Corridor, corridorIdFor, isCorridorOpen } from './corridor';
+import {
+  AFRICAN_COUNTRIES,
+  ALWAYS_OPEN,
+  Corridor,
+  corridorIdFor,
+  isCorridorOpen,
+} from './corridor';
 import {
   Authorisation,
   CorridorNotAuthorisedError,
@@ -120,28 +126,30 @@ describe('corridor authorisations', () => {
    * the refusal is a throw rather than an empty list — an empty list would read
    * to the licence gate as "nothing missing" and wave the corridor through.
    *
-   * South Africa was the case that motivated this rule and has stopped being an
-   * example of it: exchange control was built in 4.3c, so ZA now has a
-   * collection authorisation of its own. Every country in `CountryCode` can
-   * collect today, so the test reaches for one that is not in the type at all.
+   * Two countries have now been promoted out of being examples of it. South
+   * Africa gained a collection authorisation when exchange control was built in
+   * 4.3c, and Kenya gained one when the Paycrest coverage markets landed — the
+   * stand-in has to be replaced each time, which is the rule working rather
+   * than the test rotting. Every country in `CountryCode` can collect today, so
+   * this reaches for one that is not in the type at all.
    */
   it('refuses to describe a corridor starting where we cannot collect', () => {
-    for (const country of ['NG', 'GH', 'ZA', 'CM', 'BJ', 'RU', 'BY'] as const) {
+    for (const country of [...AFRICAN_COUNTRIES, 'RU', 'BY'] as const) {
       expect(canCollectFrom(country)).toBe(true);
     }
 
     // A country the map has never heard of. Cast because CountryCode does not
     // admit it — which is the first line of defence; this is the second.
-    const unknown = 'KE' as never;
+    const unknown = 'ET' as never;
     expect(() => authorisationsFor({ sourceCountry: unknown, destinationCountry: 'NG' })).toThrow(
-      /No collection authorisation is defined for KE/,
+      /No collection authorisation is defined for ET/,
     );
     expect(() =>
       assertCorridorMayMoveLiveFunds(
-        corridor({ id: 'KE-NG', sourceCountry: unknown, destinationCountry: 'NG' }),
+        corridor({ id: 'ET-NG', sourceCountry: unknown, destinationCountry: 'NG' }),
         { liveFundsEnabled: true, held: [] },
       ),
-    ).toThrow(/No collection authorisation is defined for KE/);
+    ).toThrow(/No collection authorisation is defined for ET/);
   });
 
   /**
@@ -188,6 +196,66 @@ describe('corridor authorisations', () => {
   it('treats every African origin as intra-African', () => {
     for (const sourceCountry of ['NG', 'GH', 'CM', 'BJ'] as const) {
       expect(corridorClass({ sourceCountry, destinationCountry: 'ZA' })).toBe('INTRA_AFRICAN');
+    }
+  });
+
+  /**
+   * The Paycrest coverage markets. Two facts this pins down, both of which the
+   * shared currencies invite getting wrong.
+   *
+   * A currency union is not a licensing union: Benin, Niger, Mali and Senegal
+   * all use XOF under the BCEAO, and each still needs its own approval. Holding
+   * Senegal's says nothing about Mali's.
+   *
+   * And "Congo" is two countries. The DRC is its own central bank and its own
+   * currency; the Republic of the Congo is BEAC and XAF, beside Cameroon.
+   */
+  it('keeps the BCEAO countries licensed separately despite sharing XOF', () => {
+    for (const country of ['BJ', 'NE', 'ML', 'SN'] as const) {
+      expect(canCollectFrom(country)).toBe(true);
+    }
+
+    expect(authorisationsFor({ sourceCountry: 'SN', destinationCountry: 'ML' })).toEqual([
+      'SN_DOMESTIC_COLLECTION',
+      'ML_PAYOUT_RAIL',
+    ]);
+
+    // Holding Senegal's pair does not open Mali→Senegal, even though both legs
+    // are XOF and the conversion is 1:1.
+    expect(() =>
+      assertCorridorMayMoveLiveFunds(
+        corridor({ id: 'ML-SN', sourceCountry: 'ML', destinationCountry: 'SN' }),
+        { liveFundsEnabled: true, held: ['SN_DOMESTIC_COLLECTION', 'ML_PAYOUT_RAIL'] },
+      ),
+    ).toThrow(/ML_DOMESTIC_COLLECTION, SN_PAYOUT_RAIL/);
+  });
+
+  it('treats the two Congos as two countries', () => {
+    expect(authorisationsFor({ sourceCountry: 'CD', destinationCountry: 'CG' })).toEqual([
+      'CD_DOMESTIC_COLLECTION',
+      'CG_PAYOUT_RAIL',
+    ]);
+    expect(authorisationsFor({ sourceCountry: 'CG', destinationCountry: 'CD' })).toEqual([
+      'CG_DOMESTIC_COLLECTION',
+      'CD_PAYOUT_RAIL',
+    ]);
+  });
+
+  it('classifies every country in the mesh as intra-African', () => {
+    for (const sourceCountry of AFRICAN_COUNTRIES) {
+      if (sourceCountry === 'KE') continue;
+      expect(corridorClass({ sourceCountry, destinationCountry: 'KE' })).toBe('INTRA_AFRICAN');
+    }
+  });
+
+  /** Every country in the mesh can both collect and be paid into. */
+  it('gives every mesh country both authorisations', () => {
+    for (const country of AFRICAN_COUNTRIES) {
+      expect(canCollectFrom(country)).toBe(true);
+      const other = country === 'NG' ? 'GH' : 'NG';
+      expect(authorisationsFor({ sourceCountry: country, destinationCountry: other })).toHaveLength(
+        2,
+      );
     }
   });
 

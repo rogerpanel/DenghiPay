@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Money } from '../money/money';
 import { checkLimits, detectStructuring, limitsFor } from './limits';
+import { AFRICAN_COUNTRIES, sendCurrencyFor } from '../corridors/corridor';
 import {
   TRANSFER_PURPOSES,
   formatTransferReference,
@@ -103,9 +104,75 @@ describe('intra-African send limits', () => {
   });
 
   it('gives tier 0 a row in every send currency, so nobody moves money unverified', () => {
-    for (const currency of ['RUB', 'BYN', 'NGN', 'GHS', 'ZAR', 'XAF', 'XOF'] as const) {
+    for (const currency of [
+      'RUB',
+      'BYN',
+      'NGN',
+      'GHS',
+      'ZAR',
+      'XAF',
+      'XOF',
+      'CDF',
+      'UGX',
+      'KES',
+      'TZS',
+      'ZMW',
+      'GMD',
+    ] as const) {
       expect(limitsFor(0, currency)?.perTransferMinorUnits).toBe(0n);
     }
+  });
+
+  /**
+   * The load-bearing test for the Paycrest markets.
+   *
+   * `checkLimits` fails closed on a missing row, so a send currency without
+   * tier rows is a currency nobody can send — and the failure reads as "no
+   * configured limit" rather than as a missing table, which is a confusing way
+   * to discover it. Every currency any country in the mesh sends in must have a
+   * row at every tier.
+   */
+  it('gives every send currency a row at every tier', () => {
+    const sendCurrencies = new Set(AFRICAN_COUNTRIES.map((country) => sendCurrencyFor(country)));
+    for (const currency of sendCurrencies) {
+      for (const tier of [0, 1, 2, 3] as const) {
+        expect(limitsFor(tier, currency), `${currency} at tier ${tier}`).toBeDefined();
+      }
+    }
+  });
+
+  /**
+   * UGX has no minor unit, and it sits between KES and TZS which both have two.
+   * A shilling row copied from its neighbours would be wrong by a hundredfold
+   * and would still look like a plausible cap, so this asserts the magnitude
+   * rather than merely the presence of the row.
+   */
+  it('caps a tier 1 Ugandan sender in whole shillings', () => {
+    expect(limitsFor(1, 'UGX')?.perTransferMinorUnits).toBe(500_000n);
+    expect(checkLimits(1, Money.fromDecimalString('500000', 'UGX'), noUsage).allowed).toBe(true);
+
+    const decision = checkLimits(1, Money.fromDecimalString('500001', 'UGX'), noUsage);
+    expect(decision.allowed).toBe(false);
+    if (!decision.allowed) expect(decision.window).toBe('PER_TRANSFER');
+  });
+
+  /**
+   * Four countries share XOF and two share XAF. That is a fact about currency
+   * unions and says nothing about limits being interchangeable between the
+   * countries — but it does mean one row serves several senders, so the row had
+   * better exist.
+   */
+  it('serves the shared-currency countries from one row each', () => {
+    for (const country of ['BJ', 'NE', 'ML', 'SN'] as const) {
+      expect(sendCurrencyFor(country)).toBe('XOF');
+    }
+    for (const country of ['CM', 'CG'] as const) {
+      expect(sendCurrencyFor(country)).toBe('XAF');
+    }
+    // The Congos are the pair most likely to be conflated, and they are not
+    // even in the same monetary zone.
+    expect(sendCurrencyFor('CD')).toBe('CDF');
+    expect(sendCurrencyFor('CG')).toBe('XAF');
   });
 
   /**
