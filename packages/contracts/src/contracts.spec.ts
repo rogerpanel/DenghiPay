@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { COUNTRY_CODES } from '@morapay/domain';
 import {
   createQuoteRequestSchema,
   createTransferRequestSchema,
@@ -188,23 +189,42 @@ describe('registration', () => {
   });
 
   /**
-   * NG and GH joined this list when the intra-African corridors landed, and
-   * only because sender stores were built for those partitions at the same
-   * time. The rule the test protects is unchanged: a residency is accepted if
-   * and only if there is somewhere lawful to put that person's data.
+   * The rule has not changed since this test was written for four countries: a
+   * residency is accepted if and only if there is somewhere lawful to put that
+   * person's data. What changed is the list, twice — NG and GH with the
+   * intra-African corridors, then ten more with the Paycrest markets — so it is
+   * asserted against the registry rather than a copy of it.
+   *
+   * Being accepted here is not permission to send. That is the licence gate's
+   * question, and it refuses corridors this schema is happy to register.
    */
-  it('accepts only residencies we have a data partition for', () => {
+  it('accepts every residency the domain has a partition for', () => {
     const base = {
       email: 'a@b.com',
       password: 'a-reasonable-passphrase',
       acceptedTerms: true,
     };
-    for (const residencyCountry of ['RU', 'BY', 'NG', 'GH'] as const) {
+    for (const residencyCountry of COUNTRY_CODES) {
       expect(registerRequestSchema.parse({ ...base, residencyCountry }).residencyCountry).toBe(
         residencyCountry,
       );
     }
-    // Kenya is a plausible next corridor and has no store, so it is refused.
-    expect(() => registerRequestSchema.parse({ ...base, residencyCountry: 'KE' })).toThrow();
+    expect(COUNTRY_CODES).toHaveLength(17);
+  });
+
+  it('refuses a residency with no partition behind it', () => {
+    const base = {
+      email: 'a@b.com',
+      password: 'a-reasonable-passphrase',
+      acceptedTerms: true,
+    };
+    // Zimbabwe is the live example rather than a made-up one: it was left out
+    // of the Paycrest tranche deliberately, pending confirmation of which
+    // currency settles there. Until that answer arrives there is no ZW schema,
+    // so a Zimbabwean resident has nowhere lawful to be stored and registration
+    // refuses rather than filing them somewhere plausible.
+    expect(() => registerRequestSchema.parse({ ...base, residencyCountry: 'ZW' })).toThrow();
+    expect(() => registerRequestSchema.parse({ ...base, residencyCountry: 'ke' })).toThrow();
+    expect(() => registerRequestSchema.parse({ ...base, residencyCountry: 'XX' })).toThrow();
   });
 });

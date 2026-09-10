@@ -3,24 +3,15 @@ import { APP_GUARD, Reflector } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { asCorridorId } from '@morapay/domain';
+import { AFRICAN_COUNTRIES, AfricanCountry, asCorridorId } from '@morapay/domain';
 import { LedgerService } from '@morapay/ledger';
 import {
   MockKycProvider,
   MockScreeningProvider,
   ProviderRegistry,
   SimulatedRateSource,
-  createBeninPayinSimulator,
-  createBeninPayoutSimulator,
-  createCameroonPayinSimulator,
-  createCameroonPayoutSimulator,
-  createGhanaPayinSimulator,
-  createGhanaPayoutSimulator,
-  createNigeriaPayinSimulator,
-  createNigeriaPayoutSimulator,
-  createRussiaPayinSimulator,
-  createSouthAfricaPayinSimulator,
-  createSouthAfricaPayoutSimulator,
+  createPayinSimulator,
+  createPayoutSimulator,
 } from '@morapay/adapters';
 
 import { AppConfig, loadConfig } from './config/config';
@@ -90,20 +81,23 @@ const config = loadConfig();
  * only implementation, and that is enough to build and test everything above it.
  */
 /**
- * Every corridor the rails must serve.
+ * Every corridor the rails must serve: the four inbound Russian ones plus the
+ * full African mesh, 210 pairs across fifteen countries.
  *
- * The intra-African mesh is generated from the same origin/destination lists
- * the seed uses, so a corridor row cannot exist without a rail behind it — the
- * failure that produces is a transfer stuck in AWAITING_PAYIN with a log line
- * nobody is watching.
+ * The mesh is generated from `AFRICAN_COUNTRIES` in the domain — the same list
+ * the seed and the licence gate read — so a corridor row cannot exist without a
+ * rail behind it, and adding a country cannot leave one of the three out of
+ * step. This file used to keep its own copy of that list, which is exactly how
+ * the licence gate came to classify new corridors as inbound remittances.
+ *
+ * A corridor with no rail produces a transfer stuck in AWAITING_PAYIN with a
+ * log line nobody is watching, which is why the two are derived together rather
+ * than maintained together.
  */
-const AFRICAN_ORIGINS = ['NG', 'GH', 'ZA', 'CM', 'BJ'] as const;
-const AFRICAN_DESTINATIONS = ['NG', 'GH', 'ZA', 'CM', 'BJ'] as const;
-
 function corridorIds(): string[] {
   const inbound = ['RU-NG', 'RU-GH', 'BY-NG', 'BY-GH'];
-  const intraAfrican = AFRICAN_ORIGINS.flatMap((from) =>
-    AFRICAN_DESTINATIONS.filter((to) => to !== from).map((to) => `${from}-${to}`),
+  const intraAfrican = AFRICAN_COUNTRIES.flatMap((from) =>
+    AFRICAN_COUNTRIES.filter((to) => to !== from).map((to) => `${from}-${to}`),
   );
   return [...inbound, ...intraAfrican];
 }
@@ -122,74 +116,57 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
       cfg.SIMULATOR_AUTOCONFIRM_SECONDS === 0 ? null : cfg.SIMULATOR_AUTOCONFIRM_SECONDS,
   };
 
-  return (
-    new ProviderRegistry()
-      .registerPayin({
-        provider: createRussiaPayinSimulator([...from('RU'), ...from('BY')], payinOptions),
-        priority: 100,
-        enabled: !cfg.PAYIN_RU_PARTNER_ENABLED,
-      })
-      // Domestic collection inside the four African origins. Simulators for the
-      // same reason as the Russian leg, but a different unfilled prerequisite:
-      // these need a local collection licence, not a partner bank. The corridor
-      // licence gate is what enforces that; registering them here only makes the
-      // rails exist.
-      //
-      // South Africa collects too, since exchange control was built
-      // (BUILD_PLAN 4.3c). Its outward payments need a declaration and an
-      // allowance check that no other origin does, and both live above this
-      // layer — the rail itself is an ordinary push.
-      .registerPayin({
-        provider: createNigeriaPayinSimulator(from('NG'), payinOptions),
-        priority: 100,
-        enabled: true,
-      })
-      .registerPayin({
-        provider: createGhanaPayinSimulator(from('GH'), payinOptions),
-        priority: 100,
-        enabled: true,
-      })
-      .registerPayin({
-        provider: createSouthAfricaPayinSimulator(from('ZA'), payinOptions),
-        priority: 100,
-        enabled: true,
-      })
-      .registerPayin({
-        provider: createCameroonPayinSimulator(from('CM'), payinOptions),
-        priority: 100,
-        enabled: true,
-      })
-      .registerPayin({
-        provider: createBeninPayinSimulator(from('BJ'), payinOptions),
-        priority: 100,
-        enabled: true,
-      })
-      .registerPayout({
-        provider: createNigeriaPayoutSimulator(to('NG')),
-        priority: 100,
-        enabled: !cfg.PAYCREST_ENABLED && !cfg.FINCRA_ENABLED,
-      })
-      .registerPayout({
-        provider: createGhanaPayoutSimulator(to('GH')),
-        priority: 100,
-        enabled: !cfg.FINCRA_ENABLED,
-      })
-      .registerPayout({
-        provider: createSouthAfricaPayoutSimulator(to('ZA')),
-        priority: 100,
-        enabled: true,
-      })
-      .registerPayout({
-        provider: createCameroonPayoutSimulator(to('CM')),
-        priority: 100,
-        enabled: true,
-      })
-      .registerPayout({
-        provider: createBeninPayoutSimulator(to('BJ')),
-        priority: 100,
-        enabled: true,
-      })
-  );
+  const registry = new ProviderRegistry().registerPayin({
+    provider: createPayinSimulator('RU', [...from('RU'), ...from('BY')], payinOptions),
+    priority: 100,
+    enabled: !cfg.PAYIN_RU_PARTNER_ENABLED,
+  });
+
+  // Domestic collection and payout inside each African country. Simulators for
+  // the same reason as the Russian leg, but a different unfilled prerequisite:
+  // these need a local collection licence, not a partner bank. The corridor
+  // licence gate is what enforces that; registering them here only makes the
+  // rails exist.
+  //
+  // South Africa collects too, since exchange control was built (BUILD_PLAN
+  // 4.3c). Its outward payments need a declaration and an allowance check that
+  // no other origin does, and both live above this layer — the rail itself is
+  // an ordinary push.
+  for (const market of AFRICAN_COUNTRIES) {
+    registry.registerPayin({
+      provider: createPayinSimulator(market, from(market), payinOptions),
+      priority: 100,
+      enabled: true,
+    });
+    registry.registerPayout({
+      provider: createPayoutSimulator(market, to(market)),
+      priority: 100,
+      enabled: payoutSimulatorEnabled(market, cfg),
+    });
+  }
+
+  return registry;
+}
+
+/**
+ * A payout simulator is enabled exactly when no real provider covers that
+ * destination yet.
+ *
+ * Two destinations have a real one behind a flag, and both flags default to
+ * false (guardrail G1), so today every simulator is on. The list is here rather
+ * than inline so that turning a provider on is a one-line change in one place —
+ * and so that "which destinations have a real rail?" has an answer you can read
+ * rather than one you have to assemble.
+ */
+function payoutSimulatorEnabled(market: AfricanCountry, cfg: AppConfig): boolean {
+  switch (market) {
+    case 'NG':
+      return !cfg.PAYCREST_ENABLED && !cfg.FINCRA_ENABLED;
+    case 'GH':
+      return !cfg.FINCRA_ENABLED;
+    default:
+      return true;
+  }
 }
 
 @Module({

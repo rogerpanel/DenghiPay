@@ -15,6 +15,11 @@ import { RecipientProfileCmRepository } from './cm/recipient-profile.repository'
 import { SenderProfileCmRepository } from './cm/sender-profile.repository';
 import { RecipientProfileBjRepository } from './bj/recipient-profile.repository';
 import { SenderProfileBjRepository } from './bj/sender-profile.repository';
+import {
+  STANDARD_PARTITIONS,
+  StandardPartition,
+  StandardPartitionRepository,
+} from './standard/standard-partition.repository';
 
 /**
  * What a partition can answer about a sender.
@@ -25,10 +30,42 @@ import { SenderProfileBjRepository } from './bj/sender-profile.repository';
  * stub that returns null forever keeps the absence visible in the type.
  */
 interface SenderStore {
+  upsert(input: SenderProfileInput): Promise<void>;
   screeningProjection(
     piiToken: string,
   ): Promise<{ fullName: string; dateOfBirth: string; nationality: string } | null>;
   collectionWallet?(piiToken: string): Promise<{ msisdn: string; network: string } | null>;
+}
+
+/**
+ * The union of every sender field any partition keeps.
+ *
+ * A store takes this whole shape and persists the subset its jurisdiction
+ * defines — Nigeria reads `bvn` and ignores `taxReference`, South Africa the
+ * reverse. The alternative, a per-partition input type reaching the caller,
+ * would put the shape of Nigerian identity documents in the registration
+ * controller, which is precisely what the gateway exists to prevent.
+ */
+interface SenderProfileInput {
+  readonly piiToken: string;
+  readonly partition: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly middleName?: string;
+  readonly dateOfBirth: string;
+  readonly nationality: string;
+  readonly phone?: string;
+  readonly addressLine?: string;
+  readonly city?: string;
+  readonly postcode?: string;
+  readonly bvn?: string;
+  readonly ghanaCardNo?: string;
+  readonly nationalIdNo?: string;
+  readonly taxReference?: string;
+  readonly exchangeControlStatus?: string;
+  readonly walletMsisdn?: string;
+  readonly walletNetwork?: string;
+  readonly documents: ReadonlyArray<Record<string, unknown>>;
 }
 
 /** What a wallet-based partition can answer about a recipient. */
@@ -54,17 +91,26 @@ interface BankRecipientStore {
   ): Promise<{ accountNumber: string; bankCode: string; accountName: string } | null>;
 }
 
+/** Destinations credited by bank transfer. Two, and unlikely to grow quickly. */
+type BankRecipientCountry = 'NG' | 'ZA';
+
+/**
+ * Destinations credited to a wallet. Thirteen: the three hand-written ones and
+ * the ten standard partitions, which are wallet-only by definition.
+ */
+type WalletRecipientCountry = 'GH' | 'CM' | 'BJ' | StandardPartition;
+
 export type RecipientProjection =
   | {
       method: 'BANK_ACCOUNT';
-      country: 'NG' | 'ZA';
+      country: BankRecipientCountry;
       accountNumber: string;
       bankCode: string;
       declaredName: string;
     }
   | {
       method: 'MOBILE_MONEY';
-      country: 'GH' | 'CM' | 'BJ';
+      country: WalletRecipientCountry;
       msisdn: string;
       network: MobileMoneyNetwork;
       declaredName: string;
@@ -84,11 +130,18 @@ export type RecipientProjection =
  * separate instances in separate jurisdictions, and only the connection string
  * changes.
  *
- * Six partitions, and they are not symmetrical: Russia holds senders only, the
- * other five hold both. Every lookup dispatches on the partition rather than on
- * the shape of the data, which is the fix for a bug an earlier version carried —
- * recipients were routed by payout **method**, so any bank account landed in the
- * Nigerian store regardless of which country it belonged to.
+ * Sixteen partitions, and they are not symmetrical: Russia holds senders only,
+ * the other fifteen hold both. Every lookup dispatches on the partition rather
+ * than on the shape of the data, which is the fix for a bug an earlier version
+ * carried — recipients were routed by payout **method**, so any bank account
+ * landed in the Nigerian store regardless of which country it belonged to.
+ *
+ * Six partitions have a repository of their own because their jurisdiction
+ * demands fields nobody else has. The other ten are served by
+ * `StandardPartitionRepository`, which keeps their schemas separate but their
+ * code common. From here that distinction is invisible: both kinds arrive in
+ * the same three maps and every method below dispatches on a lookup, not a
+ * switch.
  */
 @Injectable()
 export class PartitionGateway {
@@ -110,8 +163,9 @@ export class PartitionGateway {
     private readonly cmSender: SenderProfileCmRepository,
     private readonly bj: RecipientProfileBjRepository,
     private readonly bjSender: SenderProfileBjRepository,
+    private readonly standard: StandardPartitionRepository,
   ) {
-    this.senderStores = {
+    const senderStores: Record<string, SenderStore> = {
       RU: this.ru,
       NG: this.ngSender,
       GH: this.ghSender,
@@ -119,7 +173,18 @@ export class PartitionGateway {
       CM: this.cmSender,
       BJ: this.bjSender,
     };
-    this.walletRecipients = { GH: this.gh, CM: this.cm, BJ: this.bj };
+    const walletRecipients: Record<string, WalletRecipientStore> = {
+      GH: this.gh,
+      CM: this.cm,
+      BJ: this.bj,
+    };
+    for (const partition of STANDARD_PARTITIONS) {
+      senderStores[partition] = this.standard.senderStore(partition);
+      walletRecipients[partition] = this.standard.recipientStore(partition);
+    }
+
+    this.senderStores = senderStores;
+    this.walletRecipients = walletRecipients;
     this.bankRecipients = { NG: this.ng, ZA: this.za };
   }
 
@@ -130,62 +195,25 @@ export class PartitionGateway {
   // ------------------------------------------------------------------ sender
 
   /**
-   * Senders live in five partitions, one per residency that can originate.
+   * Senders live in sixteen partitions, one per residency that can originate.
    *
    * The identifiers differ by jurisdiction — a passport and migration card in
-   * Russia, a BVN in Nigeria, a Ghana Card in Ghana, a national identity number
-   * in Cameroon and Benin — so each store keeps its own shape rather than a
-   * lowest common denominator with most columns null.
+   * Russia, a BVN in Nigeria, a Ghana Card in Ghana, a South African identity
+   * number and tax reference, and a single national identity number in the
+   * other twelve — so each store keeps its own shape rather than a lowest
+   * common denominator with most columns null. The caller passes every field
+   * it holds and the store persists what its jurisdiction defines.
    *
-   * South Africa joined this list when exchange control was built (BUILD_PLAN
-   * 4.3c). Its store carries two fields no other partition needs — an identity
-   * number the Authorised Dealer reports against, and a tax reference the
-   * larger allowance requires — which is why it is a store of its own rather
-   * than nullable columns on somebody else's.
+   * Throwing on an unconfigured partition is the point of the last branch. A
+   * residency we cannot store personal data for must not silently acquire a
+   * profile that exists nowhere; the registration fails and is visible.
    */
-  async upsertSenderProfile(input: {
-    readonly piiToken: string;
-    readonly partition: string;
-    readonly firstName: string;
-    readonly lastName: string;
-    readonly middleName?: string;
-    readonly dateOfBirth: string;
-    readonly nationality: string;
-    readonly phone?: string;
-    readonly addressLine?: string;
-    readonly city?: string;
-    readonly postcode?: string;
-    readonly bvn?: string;
-    readonly ghanaCardNo?: string;
-    readonly nationalIdNo?: string;
-    readonly taxReference?: string;
-    readonly exchangeControlStatus?: string;
-    readonly walletMsisdn?: string;
-    readonly walletNetwork?: string;
-    readonly documents: ReadonlyArray<Record<string, unknown>>;
-  }): Promise<void> {
-    switch (input.partition) {
-      case 'RU':
-        await this.ru.upsert(input);
-        return;
-      case 'NG':
-        await this.ngSender.upsert(input);
-        return;
-      case 'GH':
-        await this.ghSender.upsert(input);
-        return;
-      case 'ZA':
-        await this.zaSender.upsert(input);
-        return;
-      case 'CM':
-        await this.cmSender.upsert(input);
-        return;
-      case 'BJ':
-        await this.bjSender.upsert(input);
-        return;
-      default:
-        throw new Error(`No sender partition configured for ${input.partition}`);
+  async upsertSenderProfile(input: SenderProfileInput): Promise<void> {
+    const store = this.senderStores[input.partition];
+    if (store === undefined) {
+      throw new Error(`No sender partition configured for ${input.partition}`);
     }
+    await store.upsert(input);
   }
 
   /**
@@ -299,7 +327,7 @@ export class PartitionGateway {
         ? null
         : {
             method: 'BANK_ACCOUNT',
-            country: partition as 'NG' | 'ZA',
+            country: partition as BankRecipientCountry,
             accountNumber: row.accountNumber,
             bankCode: row.bankCode,
             declaredName: row.accountName,
@@ -313,7 +341,7 @@ export class PartitionGateway {
         ? null
         : {
             method: 'MOBILE_MONEY',
-            country: partition as 'GH' | 'CM' | 'BJ',
+            country: partition as WalletRecipientCountry,
             msisdn: row.msisdn,
             network: row.network as MobileMoneyNetwork,
             declaredName: row.accountName,
@@ -358,7 +386,14 @@ export class PartitionGateway {
     return this.zaSender.reportingSubject(piiToken);
   }
 
-  /** Health of each partition store, for the readiness endpoint. */
+  /**
+   * Health of each partition store, for the readiness endpoint.
+   *
+   * A partition is healthy when both of its tables answer. Counting is the
+   * cheapest query that proves the schema exists and is reachable — which is
+   * the thing that actually breaks when a residency is misconfigured, and it
+   * reads no personal data to find out.
+   */
   async health(): Promise<Record<string, boolean>> {
     const probe = async (fn: () => Promise<unknown>): Promise<boolean> => {
       try {
@@ -368,33 +403,46 @@ export class PartitionGateway {
         return false;
       }
     };
-    return {
+
+    // The six hand-written partitions are probed one by one: each pair of
+    // delegates is a distinct generated type, so a loop over them would only
+    // buy repetition back as casts.
+    const result: Record<string, boolean> = {
       RU: await probe(() => this.prisma.senderProfileRu.count()),
       NG: await probe(
         async () =>
-          (await this.prisma.recipientProfileNg.count()) +
-          (await this.prisma.senderProfileNg.count()),
+          (await this.prisma.senderProfileNg.count()) +
+          (await this.prisma.recipientProfileNg.count()),
       ),
       GH: await probe(
         async () =>
-          (await this.prisma.recipientProfileGh.count()) +
-          (await this.prisma.senderProfileGh.count()),
+          (await this.prisma.senderProfileGh.count()) +
+          (await this.prisma.recipientProfileGh.count()),
       ),
       ZA: await probe(
         async () =>
-          (await this.prisma.recipientProfileZa.count()) +
-          (await this.prisma.senderProfileZa.count()),
+          (await this.prisma.senderProfileZa.count()) +
+          (await this.prisma.recipientProfileZa.count()),
       ),
       CM: await probe(
         async () =>
-          (await this.prisma.recipientProfileCm.count()) +
-          (await this.prisma.senderProfileCm.count()),
+          (await this.prisma.senderProfileCm.count()) +
+          (await this.prisma.recipientProfileCm.count()),
       ),
       BJ: await probe(
         async () =>
-          (await this.prisma.recipientProfileBj.count()) +
-          (await this.prisma.senderProfileBj.count()),
+          (await this.prisma.senderProfileBj.count()) +
+          (await this.prisma.recipientProfileBj.count()),
       ),
     };
+
+    for (const partition of STANDARD_PARTITIONS) {
+      result[partition] = await probe(
+        async () =>
+          (await this.standard.senderStore(partition).count()) +
+          (await this.standard.recipientStore(partition).count()),
+      );
+    }
+    return result;
   }
 }

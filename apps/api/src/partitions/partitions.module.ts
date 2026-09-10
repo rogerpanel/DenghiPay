@@ -14,6 +14,7 @@ import { RecipientProfileCmRepository } from './cm/recipient-profile.repository'
 import { SenderProfileCmRepository } from './cm/sender-profile.repository';
 import { RecipientProfileBjRepository } from './bj/recipient-profile.repository';
 import { SenderProfileBjRepository } from './bj/sender-profile.repository';
+import { StandardPartitionRepository } from './standard/standard-partition.repository';
 
 /**
  * The partition boundary, as a module.
@@ -25,8 +26,11 @@ import { SenderProfileBjRepository } from './bj/sender-profile.repository';
  * outside `src/partitions/` imports a repository directly, and with this module
  * in place there is no reason for anyone to.
  *
- * Six residencies, eleven stores. South Africa's sender store is the newest and
- * the only one carrying exchange-control fields.
+ * Sixteen residencies. Six have a repository of their own because their
+ * jurisdiction demands fields nobody else has; the other ten share
+ * `StandardPartitionRepository`, which is one provider serving twenty schemas.
+ * Sharing the provider does not share the data — the schemas stay separate, and
+ * in production separate instances.
  */
 @Module({
   providers: [
@@ -43,6 +47,7 @@ import { SenderProfileBjRepository } from './bj/sender-profile.repository';
     SenderProfileCmRepository,
     RecipientProfileBjRepository,
     SenderProfileBjRepository,
+    StandardPartitionRepository,
     PartitionGateway,
   ],
   exports: [PartitionGateway],

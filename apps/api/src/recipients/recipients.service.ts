@@ -6,7 +6,12 @@ import {
   networkServesCountry,
   RecipientDetails,
 } from '@morapay/domain';
-import { PayoutMarket, ProviderRegistry, institutionsForDestination } from '@morapay/adapters';
+import {
+  PAYOUT_MARKETS,
+  PayoutMarket,
+  ProviderRegistry,
+  institutionsForDestination,
+} from '@morapay/adapters';
 import { NameEnquiryResponse, RecipientDetailsDto, RecipientResponse } from '@morapay/contracts';
 import { PrismaService } from '../common/prisma.service';
 import { PartitionGateway } from '../partitions/partition-gateway.service';
@@ -193,14 +198,17 @@ export class RecipientsService {
    * Served per country. It used to return every Nigerian bank alongside every
    * Ghanaian network regardless of where the recipient lived, which was
    * harmless with two destinations and offers a Ghanaian operator to somebody
-   * adding a Beninese wallet with five.
+   * adding a Beninese wallet with five. At fifteen it would be unusable.
+   *
+   * The known set is `PAYOUT_MARKETS` from the adapters rather than a list
+   * kept here: a destination with no rail has no institutions to offer, and
+   * that is exactly the question the registry already answers.
    */
   institutions(country: string): {
     banks: Array<{ code: string; name: string }>;
     networks: Array<{ code: string; name: string }>;
   } {
-    const markets: readonly PayoutMarket[] = ['NG', 'GH', 'ZA', 'CM', 'BJ'];
-    if (!markets.includes(country as PayoutMarket)) {
+    if (!PAYOUT_MARKETS.includes(country as PayoutMarket)) {
       return { banks: [], networks: [] };
     }
     return institutionsForDestination(country as PayoutMarket);

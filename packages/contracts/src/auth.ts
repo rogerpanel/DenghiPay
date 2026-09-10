@@ -43,8 +43,13 @@ export const registerRequestSchema = z.object({
    * subject to SARB exchange control: every outward payment needs a declared
    * category and counts against their annual allowance, which the send flow
    * collects and the API enforces.
+   *
+   * Every country the domain knows may register. Whether they can then *send*
+   * is a separate question answered by the licence gate, not by this schema —
+   * a residency with no collection authorisation registers fine and is refused
+   * at the corridor.
    */
-  residencyCountry: z.enum(['RU', 'BY', 'NG', 'GH', 'ZA', 'CM', 'BJ']).default('RU'),
+  residencyCountry: countryCodeSchema.default('RU'),
   acceptedTerms: z.literal(true, {
     errorMap: () => ({ message: 'the terms must be accepted' }),
   }),

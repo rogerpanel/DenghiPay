@@ -4,8 +4,8 @@
 //
 //  1. Money is BigInt minor units. There is no Float or Decimal anywhere near
 //     an amount. Guardrail: floating point money is a bug, always.
-//  2. Personal data lives in partition schemas, one per residency
-//     (partition_ru / ng / gh / za / cm / bj); the neutral tier holds only
+//  2. Personal data lives in partition schemas, one per residency — sixteen of
+//     them, listed in the datasource below; the neutral tier holds only
 //     tokenised references
 //     (BUILD_PLAN 12.1, guardrail G8). Locally these are schemas in one
 //     database; in production they are separate instances in separate
@@ -20,7 +20,10 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["public", "partition_ru", "partition_ng", "partition_gh", "partition_za", "partition_cm", "partition_bj"]
+  // One schema per residency. Sixteen: Russia plus fifteen African countries.
+  // The order is the order they were built, not alphabetical, so that a diff
+  // against an older migration reads as an addition rather than a reshuffle.
+  schemas  = ["public", "partition_ru", "partition_ng", "partition_gh", "partition_za", "partition_cm", "partition_bj", "partition_cd", "partition_cg", "partition_ug", "partition_ke", "partition_tz", "partition_zm", "partition_gm", "partition_ne", "partition_ml", "partition_sn"]
 }
 
 // =============================================================================
@@ -56,49 +59,49 @@ enum StaffRole {
 }
 
 model User {
-  id            String     @id @default(uuid())
-  email         String     @unique
-  passwordHash  String     @map("password_hash")
-  status        UserStatus @default(PENDING_VERIFICATION)
-  roles         CustomerRole[]
+  id               String         @id @default(uuid())
+  email            String         @unique
+  passwordHash     String         @map("password_hash")
+  status           UserStatus     @default(PENDING_VERIFICATION)
+  roles            CustomerRole[]
   /// KYC tier 0-3. Tier 0 can hold an account and move nothing.
-  kycTier       Int        @default(0) @map("kyc_tier")
+  kycTier          Int            @default(0) @map("kyc_tier")
   /// Which residency partition this user's personal data belongs to.
-  piiPartition  String     @default("RU") @map("pii_partition")
+  piiPartition     String         @default("RU") @map("pii_partition")
   /// Opaque handle used to address this user's row in the partition store.
   /// The neutral tier never holds the personal data itself.
-  piiToken      String     @unique @map("pii_token")
-  locale        String     @default("ru")
-  emailVerifiedAt DateTime? @map("email_verified_at")
-  lastLoginAt   DateTime?  @map("last_login_at")
-  failedLoginCount Int     @default(0) @map("failed_login_count")
-  lockedUntil   DateTime?  @map("locked_until")
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
+  piiToken         String         @unique @map("pii_token")
+  locale           String         @default("ru")
+  emailVerifiedAt  DateTime?      @map("email_verified_at")
+  lastLoginAt      DateTime?      @map("last_login_at")
+  failedLoginCount Int            @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?      @map("locked_until")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
 
-  sessions          Session[]
+  sessions           Session[]
   verificationTokens EmailVerificationToken[]
-  recipients        Recipient[]
-  quotes            Quote[]
-  transfers         Transfer[]
-  kycCases          KycCase[]
-  notifications     UserNotification[]
-  schedules         TransferSchedule[]
-  rateAlerts        RateAlert[]
-  supportThreads    SupportThread[]
+  recipients         Recipient[]
+  quotes             Quote[]
+  transfers          Transfer[]
+  kycCases           KycCase[]
+  notifications      UserNotification[]
+  schedules          TransferSchedule[]
+  rateAlerts         RateAlert[]
+  supportThreads     SupportThread[]
 
   @@map("app_user")
   @@schema("public")
 }
 
 model EmailVerificationToken {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
   /// Only the hash is stored. A database read never yields a usable token.
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
   consumedAt DateTime? @map("consumed_at")
-  createdAt DateTime  @default(now()) @map("created_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -111,19 +114,19 @@ model EmailVerificationToken {
 /// old one used; presenting a used token revokes the whole family
 /// (BUILD_PLAN 2.2).
 model Session {
-  id           String    @id @default(uuid())
-  userId       String    @map("user_id")
-  familyId     String    @map("family_id")
-  tokenHash    String    @unique @map("token_hash")
-  issuedAt     DateTime  @default(now()) @map("issued_at")
-  expiresAt    DateTime  @map("expires_at")
-  usedAt       DateTime? @map("used_at")
-  revokedAt    DateTime? @map("revoked_at")
-  revokedReason String?  @map("revoked_reason")
-  replacedById String?   @map("replaced_by_id")
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  familyId      String    @map("family_id")
+  tokenHash     String    @unique @map("token_hash")
+  issuedAt      DateTime  @default(now()) @map("issued_at")
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedReason String?   @map("revoked_reason")
+  replacedById  String?   @map("replaced_by_id")
   /// Hashed so a leaked database does not yield a browsing history.
-  userAgentHash String?  @map("user_agent_hash")
-  ipHash        String?  @map("ip_hash")
+  userAgentHash String?   @map("user_agent_hash")
+  ipHash        String?   @map("ip_hash")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -134,14 +137,14 @@ model Session {
 }
 
 model StaffUser {
-  id           String     @id @default(uuid())
-  email        String     @unique
-  passwordHash String     @map("password_hash")
-  displayName  String     @map("display_name")
+  id           String      @id @default(uuid())
+  email        String      @unique
+  passwordHash String      @map("password_hash")
+  displayName  String      @map("display_name")
   roles        StaffRole[]
-  status       UserStatus @default(ACTIVE)
-  createdAt    DateTime   @default(now()) @map("created_at")
-  updatedAt    DateTime   @updatedAt @map("updated_at")
+  status       UserStatus  @default(ACTIVE)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
 
   sessions StaffSession[]
 
@@ -150,15 +153,15 @@ model StaffUser {
 }
 
 model StaffSession {
-  id        String    @id @default(uuid())
-  staffId   String    @map("staff_id")
-  familyId  String    @map("family_id")
-  tokenHash String    @unique @map("token_hash")
-  issuedAt  DateTime  @default(now()) @map("issued_at")
-  expiresAt DateTime  @map("expires_at")
-  usedAt    DateTime? @map("used_at")
-  revokedAt DateTime? @map("revoked_at")
-  revokedReason String? @map("revoked_reason")
+  id            String    @id @default(uuid())
+  staffId       String    @map("staff_id")
+  familyId      String    @map("family_id")
+  tokenHash     String    @unique @map("token_hash")
+  issuedAt      DateTime  @default(now()) @map("issued_at")
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedReason String?   @map("revoked_reason")
 
   staff StaffUser @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
@@ -174,21 +177,21 @@ model StaffSession {
 
 model AuditEvent {
   /// Monotonic position in the chain.
-  sequence   BigInt   @id @default(autoincrement())
-  actorType  String   @map("actor_type")
-  actorId    String?  @map("actor_id")
-  action     String
-  subjectType String  @map("subject_type")
-  subjectId  String?  @map("subject_id")
-  reason     String?
-  beforeState Json?   @map("before_state")
-  afterState Json?    @map("after_state")
-  ipHash     String?  @map("ip_hash")
-  createdAt  DateTime @default(now()) @map("created_at")
+  sequence    BigInt   @id @default(autoincrement())
+  actorType   String   @map("actor_type")
+  actorId     String?  @map("actor_id")
+  action      String
+  subjectType String   @map("subject_type")
+  subjectId   String?  @map("subject_id")
+  reason      String?
+  beforeState Json?    @map("before_state")
+  afterState  Json?    @map("after_state")
+  ipHash      String?  @map("ip_hash")
+  createdAt   DateTime @default(now()) @map("created_at")
   /// Hash of the previous row. Genesis is 64 zeroes.
-  prevHash   String   @map("prev_hash")
+  prevHash    String   @map("prev_hash")
   /// SHA-256 over the canonical serialisation of this row plus prevHash.
-  hash       String   @unique
+  hash        String   @unique
 
   @@index([subjectType, subjectId])
   @@index([actorId])
@@ -211,18 +214,18 @@ enum KycStatus {
 }
 
 model KycCase {
-  id            String    @id @default(uuid())
-  userId        String    @map("user_id")
-  targetTier    Int       @map("target_tier")
-  status        KycStatus @default(PENDING)
-  provider      String
-  providerRef   String?   @map("provider_ref")
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  targetTier      Int       @map("target_tier")
+  status          KycStatus @default(PENDING)
+  provider        String
+  providerRef     String?   @map("provider_ref")
   /// Document types submitted, e.g. PASSPORT, MIGRATION_CARD, WORK_PERMIT.
-  documentTypes String[]  @map("document_types")
-  submittedAt   DateTime  @default(now()) @map("submitted_at")
-  decidedAt     DateTime? @map("decided_at")
-  decidedBy     String?   @map("decided_by")
-  rejectionReason String? @map("rejection_reason")
+  documentTypes   String[]  @map("document_types")
+  submittedAt     DateTime  @default(now()) @map("submitted_at")
+  decidedAt       DateTime? @map("decided_at")
+  decidedBy       String?   @map("decided_by")
+  rejectionReason String?   @map("rejection_reason")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -291,20 +294,20 @@ enum ComplianceCaseStatus {
 }
 
 model ComplianceCase {
-  id          String               @id @default(uuid())
-  type        ComplianceCaseType
-  status      ComplianceCaseStatus @default(OPEN)
-  userId      String?              @map("user_id")
-  transferId  String?              @map("transfer_id")
-  summary     String
-  detail      Json                 @default("{}")
-  assignedTo  String?              @map("assigned_to")
-  createdAt   DateTime             @default(now()) @map("created_at")
-  decidedAt   DateTime?            @map("decided_at")
-  decidedBy   String?              @map("decided_by")
-  decisionReason String?           @map("decision_reason")
+  id             String               @id @default(uuid())
+  type           ComplianceCaseType
+  status         ComplianceCaseStatus @default(OPEN)
+  userId         String?              @map("user_id")
+  transferId     String?              @map("transfer_id")
+  summary        String
+  detail         Json                 @default("{}")
+  assignedTo     String?              @map("assigned_to")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  decidedAt      DateTime?            @map("decided_at")
+  decidedBy      String?              @map("decided_by")
+  decisionReason String?              @map("decision_reason")
 
-  transfer Transfer?             @relation(fields: [transferId], references: [id])
+  transfer Transfer?            @relation(fields: [transferId], references: [id])
   notes    ComplianceCaseNote[]
 
   @@index([status])
@@ -349,9 +352,9 @@ model Corridor {
   enabled             Boolean  @default(true)
   updatedAt           DateTime @updatedAt @map("updated_at")
 
-  quotes    Quote[]
-  transfers Transfer[]
-  schedules TransferSchedule[]
+  quotes     Quote[]
+  transfers  Transfer[]
+  schedules  TransferSchedule[]
   rateAlerts RateAlert[]
 
   @@map("corridor")
@@ -360,14 +363,14 @@ model Corridor {
 
 /// A rate observation from a feed. Rates are exact rationals: numerator / 10^scale.
 model RateObservation {
-  id           String   @id @default(uuid())
-  baseCurrency String   @map("base_currency")
-  quoteCurrency String  @map("quote_currency")
-  numerator    BigInt
-  scale        Int
-  source       String
-  observedAt   DateTime @map("observed_at")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            String   @id @default(uuid())
+  baseCurrency  String   @map("base_currency")
+  quoteCurrency String   @map("quote_currency")
+  numerator     BigInt
+  scale         Int
+  source        String
+  observedAt    DateTime @map("observed_at")
+  createdAt     DateTime @default(now()) @map("created_at")
 
   @@index([baseCurrency, quoteCurrency, observedAt])
   @@map("rate_observation")
@@ -376,26 +379,26 @@ model RateObservation {
 
 /// A signed, short-lived, single-use promise to the sender.
 model Quote {
-  id                   String   @id @default(uuid())
-  userId               String   @map("user_id")
-  corridorId           String   @map("corridor_id")
-  sendMinorUnits       BigInt   @map("send_minor_units")
-  sendCurrency         String   @map("send_currency")
-  fixedFeeMinorUnits   BigInt   @map("fixed_fee_minor_units")
-  fxMarginMinorUnits   BigInt   @map("fx_margin_minor_units")
-  totalToPayMinorUnits BigInt   @map("total_to_pay_minor_units")
-  recipientMinorUnits  BigInt   @map("recipient_minor_units")
-  recipientCurrency    String   @map("recipient_currency")
-  midRateNumerator     BigInt   @map("mid_rate_numerator")
-  midRateScale         Int      @map("mid_rate_scale")
-  effectiveRateNumerator BigInt @map("effective_rate_numerator")
-  effectiveRateScale   Int      @map("effective_rate_scale")
-  fxMarginBps          Int      @map("fx_margin_bps")
+  id                     String    @id @default(uuid())
+  userId                 String    @map("user_id")
+  corridorId             String    @map("corridor_id")
+  sendMinorUnits         BigInt    @map("send_minor_units")
+  sendCurrency           String    @map("send_currency")
+  fixedFeeMinorUnits     BigInt    @map("fixed_fee_minor_units")
+  fxMarginMinorUnits     BigInt    @map("fx_margin_minor_units")
+  totalToPayMinorUnits   BigInt    @map("total_to_pay_minor_units")
+  recipientMinorUnits    BigInt    @map("recipient_minor_units")
+  recipientCurrency      String    @map("recipient_currency")
+  midRateNumerator       BigInt    @map("mid_rate_numerator")
+  midRateScale           Int       @map("mid_rate_scale")
+  effectiveRateNumerator BigInt    @map("effective_rate_numerator")
+  effectiveRateScale     Int       @map("effective_rate_scale")
+  fxMarginBps            Int       @map("fx_margin_bps")
   /// HMAC over the canonical quote payload. Checked on confirmation.
-  signature            String
-  createdAt            DateTime @default(now()) @map("created_at")
-  expiresAt            DateTime @map("expires_at")
-  consumedAt           DateTime? @map("consumed_at")
+  signature              String
+  createdAt              DateTime  @default(now()) @map("created_at")
+  expiresAt              DateTime  @map("expires_at")
+  consumedAt             DateTime? @map("consumed_at")
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   corridor Corridor  @relation(fields: [corridorId], references: [id])
@@ -411,22 +414,22 @@ model Quote {
 // =============================================================================
 
 model Recipient {
-  id           String   @id @default(uuid())
-  userId       String   @map("user_id")
-  method       String
-  country      String
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  method        String
+  country       String
   /// Points at the row in the destination partition holding the real details.
-  piiToken     String   @unique @map("pii_token")
-  piiPartition String   @map("pii_partition")
+  piiToken      String    @unique @map("pii_token")
+  piiPartition  String    @map("pii_partition")
   /// Last four digits only. Safe to render, safe to log.
-  maskedAccount String  @map("masked_account")
+  maskedAccount String    @map("masked_account")
   /// Name the institution returned at name enquiry, as shown to the sender.
-  resolvedName String?  @map("resolved_name")
-  nickname     String?
-  createdAt    DateTime @default(now()) @map("created_at")
-  archivedAt   DateTime? @map("archived_at")
+  resolvedName  String?   @map("resolved_name")
+  nickname      String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  archivedAt    DateTime? @map("archived_at")
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   transfers Transfer[]
   schedules TransferSchedule[]
 
@@ -440,46 +443,46 @@ model Recipient {
 // =============================================================================
 
 model Transfer {
-  id                  String    @id @default(uuid())
-  reference           String    @unique
-  userId              String    @map("user_id")
-  quoteId             String    @unique @map("quote_id")
-  corridorId          String    @map("corridor_id")
-  recipientId         String    @map("recipient_id")
-  state               String
-  purpose             String
-  sendMinorUnits      BigInt    @map("send_minor_units")
-  sendCurrency        String    @map("send_currency")
-  totalToPayMinorUnits BigInt   @map("total_to_pay_minor_units")
-  feeMinorUnits       BigInt    @map("fee_minor_units")
-  recipientMinorUnits BigInt    @map("recipient_minor_units")
-  recipientCurrency   String    @map("recipient_currency")
-  payinMethod         String    @map("payin_method")
-  payinProviderId     String?   @map("payin_provider_id")
-  payinProviderRef    String?   @map("payin_provider_ref")
-  payinInstructions   Json?     @map("payin_instructions")
-  payoutProviderId    String?   @map("payout_provider_id")
-  payoutProviderRef   String?   @map("payout_provider_ref")
-  payoutInstitutionRef String?  @map("payout_institution_ref")
-  failureCode         String?   @map("failure_code")
-  failureReason       String?   @map("failure_reason")
+  id                   String    @id @default(uuid())
+  reference            String    @unique
+  userId               String    @map("user_id")
+  quoteId              String    @unique @map("quote_id")
+  corridorId           String    @map("corridor_id")
+  recipientId          String    @map("recipient_id")
+  state                String
+  purpose              String
+  sendMinorUnits       BigInt    @map("send_minor_units")
+  sendCurrency         String    @map("send_currency")
+  totalToPayMinorUnits BigInt    @map("total_to_pay_minor_units")
+  feeMinorUnits        BigInt    @map("fee_minor_units")
+  recipientMinorUnits  BigInt    @map("recipient_minor_units")
+  recipientCurrency    String    @map("recipient_currency")
+  payinMethod          String    @map("payin_method")
+  payinProviderId      String?   @map("payin_provider_id")
+  payinProviderRef     String?   @map("payin_provider_ref")
+  payinInstructions    Json?     @map("payin_instructions")
+  payoutProviderId     String?   @map("payout_provider_id")
+  payoutProviderRef    String?   @map("payout_provider_ref")
+  payoutInstitutionRef String?   @map("payout_institution_ref")
+  failureCode          String?   @map("failure_code")
+  failureReason        String?   @map("failure_reason")
   /// Number of status polls made. Feeds the stuck-transfer alert.
-  pollAttempts        Int       @default(0) @map("poll_attempts")
-  nextPollAt          DateTime? @map("next_poll_at")
-  createdAt           DateTime  @default(now()) @map("created_at")
-  updatedAt           DateTime  @updatedAt @map("updated_at")
-  completedAt         DateTime? @map("completed_at")
+  pollAttempts         Int       @default(0) @map("poll_attempts")
+  nextPollAt           DateTime? @map("next_poll_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  completedAt          DateTime? @map("completed_at")
 
-  user       User             @relation(fields: [userId], references: [id])
-  quote      Quote            @relation(fields: [quoteId], references: [id])
-  corridor   Corridor         @relation(fields: [corridorId], references: [id])
-  recipient  Recipient        @relation(fields: [recipientId], references: [id])
-  events     TransferEvent[]
+  user            User                        @relation(fields: [userId], references: [id])
+  quote           Quote                       @relation(fields: [quoteId], references: [id])
+  corridor        Corridor                    @relation(fields: [corridorId], references: [id])
+  recipient       Recipient                   @relation(fields: [recipientId], references: [id])
+  events          TransferEvent[]
   /// Present only for transfers from an exchange-control regime.
   exchangeControl ExchangeControlDeclaration?
-  screenings ScreeningRecord[]
-  cases      ComplianceCase[]
-  positions  FxPosition[]
+  screenings      ScreeningRecord[]
+  cases           ComplianceCase[]
+  positions       FxPosition[]
 
   @@index([userId])
   @@index([state])
@@ -599,16 +602,16 @@ model LedgerTransaction {
 }
 
 model LedgerEntry {
-  id            String   @id @default(uuid())
-  transactionId String   @map("transaction_id")
-  accountId     String   @map("account_id")
-  direction     String
+  id               String  @id @default(uuid())
+  transactionId    String  @map("transaction_id")
+  accountId        String  @map("account_id")
+  direction        String
   /// Integer minor units. Always positive; the direction carries the sign.
-  amountMinorUnits BigInt @map("amount_minor_units")
-  currency      String
+  amountMinorUnits BigInt  @map("amount_minor_units")
+  currency         String
   /// Global, monotonic. Snapshots record how far they have folded.
-  sequence      BigInt   @default(autoincrement())
-  memo          String?
+  sequence         BigInt  @default(autoincrement())
+  memo             String?
 
   transaction LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   account     LedgerAccount     @relation(fields: [accountId], references: [id])
@@ -670,10 +673,10 @@ model PrefundingRequest {
 }
 
 model FloatThreshold {
-  currency            String   @id
-  lowWatermarkMinorUnits BigInt @map("low_watermark_minor_units")
-  targetMinorUnits    BigInt   @map("target_minor_units")
-  updatedAt           DateTime @updatedAt @map("updated_at")
+  currency               String   @id
+  lowWatermarkMinorUnits BigInt   @map("low_watermark_minor_units")
+  targetMinorUnits       BigInt   @map("target_minor_units")
+  updatedAt              DateTime @updatedAt @map("updated_at")
 
   @@map("float_threshold")
   @@schema("public")
@@ -748,22 +751,27 @@ model SuspenseItem {
 /// SMTP call never loses a verification link. In local development the outbox
 /// *is* the mailbox.
 model OutboxMessage {
-  id          String    @id @default(uuid())
-  channel     String
-  recipient   String
-  subject     String
-  body        String
-  kind        String
-  metadata    Json      @default("{}")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  sentAt      DateTime? @map("sent_at")
-  failedAt    DateTime? @map("failed_at")
-  failureReason String? @map("failure_reason")
+  id            String    @id @default(uuid())
+  channel       String
+  recipient     String
+  subject       String
+  body          String
+  kind          String
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  sentAt        DateTime? @map("sent_at")
+  failedAt      DateTime? @map("failed_at")
+  failureReason String?   @map("failure_reason")
   /// Delivery attempts. Doubles as the optimistic lock the delivery worker
   /// claims a message with, so two API instances cannot send the same one twice.
-  attempts    Int       @default(0)
+  attempts      Int       @default(0)
 
   @@index([sentAt])
+  /// The delivery worker's query: undelivered, not exhausted, oldest first.
+  /// Created by the outbox_attempts migration; declared here so the schema and
+  /// the migration history agree — until they did, `prisma migrate dev` would
+  /// have generated a DROP for it.
+  @@index([sentAt, attempts, createdAt], map: "outbox_message_pending_idx")
   @@map("outbox_message")
   @@schema("public")
 }
@@ -774,21 +782,21 @@ model OutboxMessage {
 
 /// Russian-resident sender personal data. 152-FZ.
 model SenderProfileRu {
-  piiToken     String    @id @map("pii_token")
-  firstName    String    @map("first_name")
-  lastName     String    @map("last_name")
-  middleName   String?   @map("middle_name")
-  dateOfBirth  DateTime  @map("date_of_birth")
-  nationality  String
-  phone        String?
-  addressLine  String?   @map("address_line")
-  city         String?
-  postcode     String?
+  piiToken    String   @id @map("pii_token")
+  firstName   String   @map("first_name")
+  lastName    String   @map("last_name")
+  middleName  String?  @map("middle_name")
+  dateOfBirth DateTime @map("date_of_birth")
+  nationality String
+  phone       String?
+  addressLine String?  @map("address_line")
+  city        String?
+  postcode    String?
   /// Documents realistic for African students and workers in Russia
   /// (BUILD_PLAN 3.3): passport, migration card, registration, work permit.
-  documents    Json      @default("[]")
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
+  documents   Json     @default("[]")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("sender_profile")
   @@schema("partition_ru")
@@ -871,7 +879,6 @@ model RecipientProfileGh {
   @@schema("partition_gh")
 }
 
-
 /// Cameroonian-resident sender personal data. CEMAC/BEAC, Law 2024/017 on
 /// personal data protection.
 model SenderProfileCm {
@@ -927,26 +934,26 @@ model SenderProfileBj {
 /// the tax compliance reference required before the larger allowance may be
 /// used. Both stay in South Africa.
 model SenderProfileZa {
-  piiToken        String   @id @map("pii_token")
-  firstName       String   @map("first_name")
-  lastName        String   @map("last_name")
-  middleName      String?  @map("middle_name")
-  dateOfBirth     DateTime @map("date_of_birth")
-  nationality     String
-  phone           String?
-  addressLine     String?  @map("address_line")
-  city            String?
-  postcode        String?
+  piiToken              String   @id @map("pii_token")
+  firstName             String   @map("first_name")
+  lastName              String   @map("last_name")
+  middleName            String?  @map("middle_name")
+  dateOfBirth           DateTime @map("date_of_birth")
+  nationality           String
+  phone                 String?
+  addressLine           String?  @map("address_line")
+  city                  String?
+  postcode              String?
   /// South African identity number, or passport for a non-resident.
-  nationalIdNo    String?  @map("national_id_no")
+  nationalIdNo          String?  @map("national_id_no")
   /// SARS tax reference. Required before the investment allowance may be used.
-  taxReference    String?  @map("tax_reference")
+  taxReference          String?  @map("tax_reference")
   /// Exchange-control status: RESIDENT, TEMPORARY_RESIDENT or NON_RESIDENT.
   /// The allowances differ, and only RESIDENT is modelled today.
-  exchangeControlStatus String? @map("exchange_control_status")
-  documents       Json     @default("[]")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  exchangeControlStatus String?  @map("exchange_control_status")
+  documents             Json     @default("[]")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   @@map("sender_profile")
   @@schema("partition_za")
@@ -990,6 +997,400 @@ model RecipientProfileBj {
   @@schema("partition_bj")
 }
 
+// -----------------------------------------------------------------------------
+// The ten standard partitions (BUILD_PLAN 15.3)
+//
+// Congo-Kinshasa, Congo-Brazzaville, Uganda, Kenya, Tanzania, Zambia, Gambia,
+// Niger, Mali and Senegal. Every one of them collects and pays out over mobile
+// money, and every one anchors identity on a single national identity number,
+// so the two models below repeat with only the schema and the doc comment
+// changing. That uniformity is why they share one repository
+// (`partitions/standard`) rather than twenty files.
+//
+// They are still separate schemas. Sharing a table shape is not sharing a
+// jurisdiction: a Kenyan row may not sit in a Tanzanian database however alike
+// the columns look, and in production these are separate instances.
+// -----------------------------------------------------------------------------
+
+/// Congolese (DRC)-resident sender personal data.
+///
+/// Banque Centrale du Congo. Code du numerique (2023) governs the personal data.
+model SenderProfileCd {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Carte d'identite nationale.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_cd")
+}
+
+/// Congolese (DRC) recipient personal data.
+model RecipientProfileCd {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_cd")
+}
+
+/// Congolese (Republic)-resident sender personal data.
+///
+/// CEMAC/BEAC — the same monetary union as Cameroon, a different regulator.
+model SenderProfileCg {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Carte nationale d'identite.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_cg")
+}
+
+/// Congolese (Republic) recipient personal data.
+model RecipientProfileCg {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_cg")
+}
+
+/// Ugandan-resident sender personal data.
+///
+/// Bank of Uganda. Data Protection and Privacy Act 2019.
+model SenderProfileUg {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// National Identification Number (NIN).
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ug")
+}
+
+/// Ugandan recipient personal data.
+model RecipientProfileUg {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ug")
+}
+
+/// Kenyan-resident sender personal data.
+///
+/// Central Bank of Kenya. Data Protection Act 2019, ODPC oversight.
+model SenderProfileKe {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// National identity card number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ke")
+}
+
+/// Kenyan recipient personal data.
+model RecipientProfileKe {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ke")
+}
+
+/// Tanzanian-resident sender personal data.
+///
+/// Bank of Tanzania. Personal Data Protection Act 2022.
+model SenderProfileTz {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// NIDA national identification number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_tz")
+}
+
+/// Tanzanian recipient personal data.
+model RecipientProfileTz {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_tz")
+}
+
+/// Zambian-resident sender personal data.
+///
+/// Bank of Zambia. Data Protection Act 2021.
+model SenderProfileZm {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// National Registration Card (NRC) number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_zm")
+}
+
+/// Zambian recipient personal data.
+model RecipientProfileZm {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_zm")
+}
+
+/// Gambian-resident sender personal data.
+///
+/// Central Bank of The Gambia.
+model SenderProfileGm {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// National identification number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_gm")
+}
+
+/// Gambian recipient personal data.
+model RecipientProfileGm {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_gm")
+}
+
+/// Nigerien-resident sender personal data.
+///
+/// UEMOA/BCEAO — the XOF is shared with Mali, Senegal and Benin; the authorisation is not.
+model SenderProfileNe {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Numero d'identification nationale.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ne")
+}
+
+/// Nigerien recipient personal data.
+model RecipientProfileNe {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ne")
+}
+
+/// Malian-resident sender personal data.
+///
+/// UEMOA/BCEAO.
+model SenderProfileMl {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Numero d'identification nationale (NINA).
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ml")
+}
+
+/// Malian recipient personal data.
+model RecipientProfileMl {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ml")
+}
+
+/// Senegalese-resident sender personal data.
+///
+/// UEMOA/BCEAO, CDP oversight of the personal data.
+model SenderProfileSn {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Carte nationale d'identite CEDEAO.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_sn")
+}
+
+/// Senegalese recipient personal data.
+model RecipientProfileSn {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_sn")
+}
 
 // =============================================================================
 // Exchange control (BUILD_PLAN 4.3c, OPEN_ITEMS B8)
@@ -1008,29 +1409,29 @@ model RecipientProfileBj {
 /// than summed on the way in, because when a discrepancy is investigated the
 /// question is always which of the two was wrong.
 model ExchangeControlDeclaration {
-  id                          String   @id @default(uuid())
-  transferId                  String   @unique @map("transfer_id")
-  userId                      String   @map("user_id")
+  id                          String    @id @default(uuid())
+  transferId                  String    @unique @map("transfer_id")
+  userId                      String    @map("user_id")
   /// ISO country whose regime governs this payment.
-  regimeCountry               String   @map("regime_country")
+  regimeCountry               String    @map("regime_country")
   /// Published reason code, e.g. a SARB balance-of-payments category.
-  categoryCode                String   @map("category_code")
-  categoryLabel               String   @map("category_label")
+  categoryCode                String    @map("category_code")
+  categoryLabel               String    @map("category_label")
   /// DISCRETIONARY or INVESTMENT.
-  allowanceKind               String   @map("allowance_kind")
+  allowanceKind               String    @map("allowance_kind")
   /// Calendar year the allowance is measured over.
-  allowanceYear               Int      @map("allowance_year")
-  amountMinorUnits            BigInt   @map("amount_minor_units")
+  allowanceYear               Int       @map("allowance_year")
+  amountMinorUnits            BigInt    @map("amount_minor_units")
   currency                    String
   /// What we had already observed when this was decided.
-  usedThroughUsMinorUnits     BigInt   @map("used_through_us_minor_units")
+  usedThroughUsMinorUnits     BigInt    @map("used_through_us_minor_units")
   /// What the sender declared they had used at other providers.
-  declaredElsewhereMinorUnits BigInt   @map("declared_elsewhere_minor_units")
+  declaredElsewhereMinorUnits BigInt    @map("declared_elsewhere_minor_units")
   /// Tax compliance reference, where the allowance required one.
-  taxClearanceRef             String?  @map("tax_clearance_ref")
+  taxClearanceRef             String?   @map("tax_clearance_ref")
   /// Set once the data has been handed to the Authorised Dealer.
   reportedAt                  DateTime? @map("reported_at")
-  createdAt                   DateTime @default(now()) @map("created_at")
+  createdAt                   DateTime  @default(now()) @map("created_at")
 
   transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
 
@@ -1052,15 +1453,15 @@ model ExchangeControlDeclaration {
 /// they open the app. Both are written from the same place, because a status
 /// change the sender cannot see in the app is a support ticket.
 model UserNotification {
-  id         String    @id @default(uuid())
-  userId     String    @map("user_id")
-  kind       String
-  title      String
-  body       String
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  kind      String
+  title     String
+  body      String
   /// The thing to open when tapped, as an in-app path. Never an external URL.
-  link       String?
-  readAt     DateTime? @map("read_at")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -1119,18 +1520,18 @@ model TransferSchedule {
 /// threshold is a notification every minute, which teaches people to ignore
 /// notifications.
 model RateAlert {
-  id              String    @id @default(uuid())
-  userId          String    @map("user_id")
-  corridorId      String    @map("corridor_id")
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  corridorId    String    @map("corridor_id")
   /// ABOVE or BELOW, judged against the effective rate we would quote.
-  direction       String
+  direction     String
   /// Threshold as a decimal string. Never a float.
-  thresholdRate   String    @map("threshold_rate")
-  active          Boolean   @default(true)
-  triggeredAt     DateTime? @map("triggered_at")
+  thresholdRate String    @map("threshold_rate")
+  active        Boolean   @default(true)
+  triggeredAt   DateTime? @map("triggered_at")
   /// The rate that tripped it, kept so the notification can be explained later.
-  triggeredRate   String?   @map("triggered_rate")
-  createdAt       DateTime  @default(now()) @map("created_at")
+  triggeredRate String?   @map("triggered_rate")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
   user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   corridor Corridor @relation(fields: [corridorId], references: [id])

@@ -7,31 +7,10 @@ import { CurrencyCode } from '../money/currency';
  * branch in the transfer logic knows the name of a country.
  */
 
-export type CountryCode =
-  // Inbound-remittance origins.
-  | 'RU'
-  | 'BY'
-  // The African mesh. Every one of these both sends and receives.
-  | 'NG'
-  | 'GH'
-  | 'ZA'
-  | 'CM'
-  | 'BJ'
-  // Added with the Paycrest coverage markets. Note CD and CG are two different
-  // countries with two different central banks: the Democratic Republic of the
-  // Congo uses the Congolese franc, the Republic of the Congo uses the Central
-  // African CFA franc and sits in the BEAC zone beside Cameroon. Treating
-  // "Congo" as one country is the mistake this pair exists to prevent.
-  | 'CD'
-  | 'CG'
-  | 'UG'
-  | 'KE'
-  | 'TZ'
-  | 'ZM'
-  | 'GM'
-  | 'NE'
-  | 'ML'
-  | 'SN';
+/** Origins that only send: inbound remittance, no African leg. */
+export const REMITTANCE_ORIGINS = ['RU', 'BY'] as const;
+
+export type RemittanceOrigin = (typeof REMITTANCE_ORIGINS)[number];
 
 /**
  * The African countries that form the mesh, in one place.
@@ -39,7 +18,16 @@ export type CountryCode =
  * Everything that needs "all the African origins" or "all the African
  * destinations" reads this rather than repeating the list, so adding the next
  * country is one line here instead of a search for every array that happened to
- * enumerate them.
+ * enumerate them. The licence gate, the provider registry, the corridor seed
+ * and the exchange-control map all read it; when this list and a copy of it
+ * disagreed, corridors out of the new countries were silently classified as
+ * inbound remittances.
+ *
+ * Note CD and CG are two different countries with two different central banks:
+ * the Democratic Republic of the Congo uses the Congolese franc, the Republic
+ * of the Congo uses the Central African CFA franc and sits in the BEAC zone
+ * beside Cameroon. Treating "Congo" as one country is the mistake this pair
+ * exists to prevent.
  */
 export const AFRICAN_COUNTRIES = [
   'NG',
@@ -57,12 +45,28 @@ export const AFRICAN_COUNTRIES = [
   'NE',
   'ML',
   'SN',
-] as const satisfies readonly CountryCode[];
+] as const;
 
 export type AfricanCountry = (typeof AFRICAN_COUNTRIES)[number];
 
 export function isAfricanCountry(country: string): country is AfricanCountry {
   return (AFRICAN_COUNTRIES as readonly string[]).includes(country);
+}
+
+/**
+ * Every country the platform knows, as a value rather than only a type.
+ *
+ * `CountryCode` is derived from it rather than declared beside it, so the two
+ * cannot disagree — and the zod enum in `@morapay/contracts` is built from this
+ * array for the same reason. A country added here reaches the API schema, the
+ * registration form and the corridor mesh without a second edit.
+ */
+export const COUNTRY_CODES = [...REMITTANCE_ORIGINS, ...AFRICAN_COUNTRIES] as const;
+
+export type CountryCode = (typeof COUNTRY_CODES)[number];
+
+export function isCountryCode(value: unknown): value is CountryCode {
+  return typeof value === 'string' && (COUNTRY_CODES as readonly string[]).includes(value);
 }
 
 export const PAYOUT_METHODS = ['BANK_ACCOUNT', 'MOBILE_MONEY'] as const;

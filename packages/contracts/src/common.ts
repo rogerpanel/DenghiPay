@@ -1,4 +1,10 @@
 import { z } from 'zod';
+import {
+  COUNTRY_CODES,
+  CURRENCY_CODES,
+  type CountryCode as DomainCountryCode,
+  type CurrencyCode as DomainCurrencyCode,
+} from '@morapay/domain';
 
 /**
  * Shared wire vocabulary.
@@ -23,20 +29,27 @@ export const moneySchema = z.object({
 });
 export type MoneyDto = z.infer<typeof moneySchema>;
 
-export const currencyCodeSchema = z.enum([
-  'RUB',
-  'BYN',
-  'NGN',
-  'GHS',
-  'ZAR',
-  'XAF',
-  'XOF',
-  'USD',
-  'USDT',
-]);
+/**
+ * Currencies and countries come from `@morapay/domain` rather than being
+ * listed again here.
+ *
+ * They were listed twice until the mesh grew to fifteen African countries, at
+ * which point the copies disagreed and the API rejected a registration for a
+ * country the corridor engine was happily quoting. The domain is the registry;
+ * this is the wire projection of it, and a country added there reaches the API
+ * schema and both front ends with no second edit.
+ *
+ * The casts are zod's requirement for a non-empty tuple, not a widening: the
+ * arrays come from the domain typed and non-empty.
+ */
+export const currencyCodeSchema = z.enum(
+  CURRENCY_CODES as unknown as [DomainCurrencyCode, ...DomainCurrencyCode[]],
+);
 export type CurrencyCodeDto = z.infer<typeof currencyCodeSchema>;
 
-export const countryCodeSchema = z.enum(['RU', 'BY', 'NG', 'GH', 'ZA', 'CM', 'BJ']);
+export const countryCodeSchema = z.enum(
+  COUNTRY_CODES as unknown as [DomainCountryCode, ...DomainCountryCode[]],
+);
 export type CountryCodeDto = z.infer<typeof countryCodeSchema>;
 
 export const payoutMethodSchema = z.enum(['BANK_ACCOUNT', 'MOBILE_MONEY']);
