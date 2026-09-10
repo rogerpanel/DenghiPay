@@ -1,27 +1,69 @@
 # Corridors
 
-Twenty-four corridors exist; twenty-two are enabled. They are not all the same
-kind of thing, and the transfer code cannot tell them apart — that is the point
-of corridors being data — so the difference is written down here and enforced by
-a check that runs on every corridor read.
+214 corridors exist; 212 are enabled. They are not all the same kind of thing,
+and the transfer code cannot tell them apart — that is the point of corridors
+being data — so the difference is written down here and enforced by a check
+that runs on every corridor read.
 
 ## The map
 
-**Origins (5).** Nigeria, Ghana, South Africa, Cameroon, Benin — plus Russia on
-the inbound corridors. **Destinations (5).** The same five.
+**Fifteen African countries, each sending to the other fourteen: 210
+corridors.** Plus four inbound from Russia and Belarus.
 
-| ↓ from / to → | NG  | GH  | ZA  | CM  | BJ  |
-| ------------- | --- | --- | --- | --- | --- |
-| **NG**        | —   | ✓   | ✓   | ✓   | ✓   |
-| **GH**        | ✓   | —   | ✓   | ✓   | ✓   |
-| **ZA**        | ✓†  | ✓†  | —   | ✓†  | ✓†  |
-| **CM**        | ✓   | ✓   | ✓   | —   | ✓   |
-| **BJ**        | ✓   | ✓   | ✓   | ✓   | —   |
+| Country       | Code | Currency | Minor unit | Collection      | Payout       |
+| ------------- | ---- | -------- | ---------- | --------------- | ------------ |
+| Nigeria       | NG   | NGN      | 2          | Virtual account | Bank (NIP)   |
+| Ghana         | GH   | GHS      | 2          | Mobile money    | Mobile money |
+| South Africa  | ZA†  | ZAR      | 2          | Virtual account | Bank         |
+| Cameroon      | CM   | XAF      | **0**      | Mobile money    | Mobile money |
+| Benin         | BJ   | XOF      | **0**      | Mobile money    | Mobile money |
+| DR Congo      | CD   | CDF      | 2          | Mobile money    | Mobile money |
+| Rep. of Congo | CG   | XAF      | **0**      | Mobile money    | Mobile money |
+| Uganda        | UG   | UGX      | **0**      | Mobile money    | Mobile money |
+| Kenya         | KE   | KES      | 2          | Mobile money    | Mobile money |
+| Tanzania      | TZ   | TZS      | 2          | Mobile money    | Mobile money |
+| Zambia        | ZM   | ZMW      | 2          | Mobile money    | Mobile money |
+| The Gambia    | GM   | GMD      | 2          | Mobile money    | Mobile money |
+| Niger         | NE   | XOF      | **0**      | Mobile money    | Mobile money |
+| Mali          | ML   | XOF      | **0**      | Mobile money    | Mobile money |
+| Senegal       | SN   | XOF      | **0**      | Mobile money    | Mobile money |
 
 † Subject to exchange control — see below.
 
-Twenty intra-African corridors, plus RU→NG and RU→GH. BY→NG and BY→GH exist as
-rows and are disabled, awaiting a Belarusian collection partner.
+Inbound: RU→NG and RU→GH are enabled. BY→NG and BY→GH exist as rows and are
+disabled, awaiting a Belarusian collection partner.
+
+The mesh is generated, not listed, from `AFRICAN_COUNTRIES` in the domain. The
+corridor seed, the provider registry in `app.module.ts` and the licence gate
+all read that one array, so a corridor cannot exist without a rail behind it
+and a new country cannot reach two of the three.
+
+### Four things about this map that are easy to get wrong
+
+**There are two Congos.** CD is the Democratic Republic (Kinshasa, Congolese
+franc, Banque Centrale du Congo). CG is the Republic (Brazzaville, Central
+African CFA franc, BEAC, alongside Cameroon). Different countries, different
+central banks, adjacent codes, and the same word in conversation. They are
+named by their capitals everywhere a person picks one, because picking the
+wrong one files the sender in the wrong jurisdiction and quotes them the wrong
+currency — and every screen after that looks entirely normal.
+
+**Five currencies have no minor unit.** XAF, XOF and UGX are whole units:
+25 000 XOF is twenty-five thousand francs, not two hundred and fifty. UGX is
+the one to watch, because Kenya above it and Tanzania below it both have two
+decimals, so a table of East African shillings is a trap. `currency.spec.ts`
+asserts every exponent rather than trusting them.
+
+**A currency union is not a licensing union.** XOF covers Benin, Niger, Mali
+and Senegal under one central bank, and XAF covers Cameroon and the Republic of
+the Congo. That is one float to fund, and still four separate collection
+authorisations — the licence gate wants each country named.
+
+**Fourteen corridors are same-currency.** The four XOF countries sending to
+each other and the two XAF ones. There is no exchange, so the rate is exactly
+one and the FX margin is zero; the fixed fee is the only charge. See
+`rates.service.ts` — the identity is returned without consulting the feed,
+because no feed will ever quote XOF/XOF.
 
 ## South Africa: exchange control
 
@@ -194,23 +236,48 @@ the API boundary rather than accepted and never delivered.
 
 A sender must be where the collection happens. Someone in Lagos cannot hand over
 rubles, so RU→NG is neither offered to them nor accepted from them —
-`CORRIDOR_RESIDENCY_MISMATCH`. Registration offers RU, BY, NG, GH, ZA, CM and
-BJ — ZA joined in 4.3c along with `partition_za`'s sender store, which holds the
-identity number and exchange-control status the declaration needs.
+`CORRIDOR_RESIDENCY_MISMATCH`. Registration offers every country the domain
+knows, read from `COUNTRY_CODES` rather than from a list kept in the form. It
+used to be a hand-written union, which is how South Africa stayed off the
+registration screen for a while after `partition_za` gained its sender store and
+the whole declaration flow was built behind it.
 
-Personal data follows the same line. Six partitions, deliberately asymmetric:
+Appearing in that list is not permission to send. The licence gate decides that,
+and today it refuses all 210 corridors — thirty distinct authorisations are
+required and none is held.
 
-| Partition      | Senders | Recipients | Identifier held          |
-| -------------- | ------- | ---------- | ------------------------ |
-| `partition_ru` | ✓       | —          | Passport, migration card |
-| `partition_ng` | ✓       | ✓          | BVN                      |
-| `partition_gh` | ✓       | ✓          | Ghana Card               |
-| `partition_za` | —       | ✓          | —                        |
-| `partition_cm` | ✓       | ✓          | CNI number               |
-| `partition_bj` | ✓       | ✓          | NPI number               |
+Personal data follows the same line. **Sixteen partitions**, deliberately
+asymmetric:
+
+| Partition              | Senders | Recipients | Identity anchor held     |
+| ---------------------- | ------- | ---------- | ------------------------ |
+| `partition_ru`         | ✓       | —          | Passport, migration card |
+| `partition_ng`         | ✓       | ✓          | BVN                      |
+| `partition_gh`         | ✓       | ✓          | Ghana Card               |
+| `partition_za`         | ✓       | ✓          | ID number, tax reference |
+| `partition_cm`         | ✓       | ✓          | CNI number               |
+| `partition_bj`         | ✓       | ✓          | NPI number               |
+| `partition_cd` … `_sn` | ✓       | ✓          | National identity number |
+
+The last row is ten schemas — CD, CG, UG, KE, TZ, ZM, GM, NE, ML, SN — and they
+share one repository, `partitions/standard`. What makes them "standard" is
+narrow: identity anchors on exactly one national identity number, and both legs
+run over mobile money. The six above them each carry a field nobody else has,
+which is why they stay hand-written.
+
+**Sharing a repository is not sharing a jurisdiction.** The schemas stay
+separate and in production stay separate instances; only the delegate lookup is
+common. That lookup is the whole risk of the arrangement — a transposed pair
+moves personal data across a border without breaking anything or throwing — so
+it is asserted per country, in both directions, against a hand-written
+expectation rather than a derived one, and the two Congos get an assertion of
+their own.
 
 Belarus is the one place where partition and country differ: BY senders live in
-the RU store under the same regime.
+the RU store under the same regime. Nothing else falls through to a default —
+the demo seed used to, and quietly wrote ten countries' senders into
+`partition_ru`, which surfaced as "no collection wallet on file" at the far end
+rather than as a residency breach where it happened.
 
 Recipients are filed by **country**, not by payout method. Dispatching on method
 was sufficient while Nigeria was the only bank destination; with South Africa
@@ -225,14 +292,25 @@ treats an absent subject as unscreenable.
 
 None of these pairs has a deep direct market; every one crosses the dollar in
 practice. The feed therefore holds a **dollar anchor per currency** and derives
-all twenty ordered pairs from it, rather than listing them by hand — twenty
-hand-written rates would be twenty chances for one to disagree with its own
-reciprocal by more than a spread, discovered at a treasury reconciliation.
+every ordered pair from it, rather than listing them by hand. That mattered at
+twenty pairs and it is decisive at this size: eleven mesh currencies is 110
+ordered pairs, and 110 hand-written rates would be 110 chances for one to
+disagree with its own reciprocal by more than a spread — discovered at a
+treasury reconciliation, months later.
 
 Crossing once, at the feed, keeps each quote to a single rounding step and a
 single staleness window, and avoids the ledger holding a USD leg for a transfer
 that never touches a dollar. XAF:XOF derives to exactly `1.000000`, which is the
 peg showing through.
+
+A currency against **itself** is not in the feed and never will be. The
+fourteen same-currency corridors take the identity rate directly from
+`rateForQuoting`, which returns exactly one without a lookup: it cannot go
+stale, it is attributed to no source, and it is never written to
+`rate_observation` where something downstream could mistake it for a market
+rate. Before those corridors existed, NE→ML halted with "no rate has ever been
+observed for XOF/XOF" — the feed correctly reporting that nobody had ever asked
+it for a rate that does not exist.
 
 Rates are ingested at boot as well as every minute. Without the boot ingest
 there is a gap of up to a minute after each deploy where the newest observation
@@ -253,6 +331,8 @@ the Bank of Ghana's mobile-money tiers, XAF and XOF the BEAC and BCEAO
 electronic-money tiers. The numbers are placeholders the compliance officer
 owns. What is not a placeholder is that the rows exist — `checkLimits` refuses a
 currency it has no row for, so a currency without rows cannot be sent at all.
+CDF, UGX, KES, TZS, ZMW and GMD gained rows with the Paycrest markets — UGX in
+whole shillings, between two neighbours whose shillings have cents.
 ZAR gained rows when South Africa became an origin. A rand sender is bounded
 twice, by their KYC tier and by their exchange-control allowance, and the
 tighter of the two wins; they answer different questions and neither substitutes

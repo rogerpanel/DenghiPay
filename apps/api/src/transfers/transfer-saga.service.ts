@@ -50,6 +50,45 @@ const POLL_QUEUE = 'transfer-poll';
 const POLL_SCHEDULE_SECONDS = [5, 10, 20, 40, 80, 160, 300, 300, 300, 600];
 const STUCK_AFTER_ATTEMPTS = POLL_SCHEDULE_SECONDS.length;
 
+/**
+ * States the sweeper picks up, because the saga is what moves them on.
+ *
+ * `PAYOUT_CONFIRMED` belongs here and was missing. It needs no provider call —
+ * the money has arrived and the ledger knows — but it still needs the final
+ * COMPLETE, and a state absent from this list is never swept, so a transfer
+ * interrupted between PAYOUT_SETTLED and COMPLETE stopped there permanently.
+ * The list read as "states awaiting a provider answer"; what it has to mean is
+ * "states the saga can still move".
+ */
+export const SWEPT_STATES: readonly TransferState[] = [
+  'AWAITING_PAYIN',
+  'PAYIN_CONFIRMED',
+  'SETTLING',
+  'PAYOUT_INITIATED',
+  'PAYOUT_CONFIRMED',
+];
+
+/**
+ * States waiting on somebody outside the saga, deliberately not swept.
+ *
+ * A quote waits on the sender; a compliance hold waits on an officer. Sweeping
+ * these would spin every ten seconds against a decision no amount of polling
+ * produces, and would crowd out transfers the saga can actually move.
+ *
+ * This, `SWEPT_STATES` and the domain's `TERMINAL_STATES` together account for
+ * every state exactly once, which the spec asserts. A new state then has to be
+ * classified rather than falling into the gap PAYOUT_CONFIRMED fell into.
+ */
+export const UNSWEPT_STATES: readonly TransferState[] = [
+  'DRAFT',
+  'QUOTED',
+  'COMPLIANCE_PENDING',
+  'ON_HOLD',
+  // Refunds are driven inline by `refund()` rather than by the sweeper. Adding
+  // them here would need `advance` to resume one, which it cannot yet do.
+  'REFUNDING',
+];
+
 @Injectable()
 export class TransferSagaService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TransferSagaService.name);
@@ -110,13 +149,15 @@ export class TransferSagaService implements OnModuleInit, OnModuleDestroy {
   /**
    * The poll schedule. Runs every ten seconds and picks up whatever is due.
    *
-   * This is what makes dropped webhooks a non-event.
+   * This is what makes dropped webhooks a non-event — and it is the only thing
+   * that will ever come back for a transfer nobody is watching, so a state
+   * missing from `SWEPT_STATES` is a transfer that stops forever.
    */
   @Cron(CronExpression.EVERY_10_SECONDS)
   async pollDueTransfers(): Promise<void> {
     const due = await this.prisma.transfer.findMany({
       where: {
-        state: { in: ['AWAITING_PAYIN', 'PAYIN_CONFIRMED', 'SETTLING', 'PAYOUT_INITIATED'] },
+        state: { in: [...SWEPT_STATES] },
         OR: [{ nextPollAt: null }, { nextPollAt: { lte: new Date() } }],
       },
       select: { id: true },
@@ -153,9 +194,37 @@ export class TransferSagaService implements OnModuleInit, OnModuleDestroy {
         return this.initiatePayout(transfer);
       case 'PAYOUT_INITIATED':
         return this.pollPayout(transfer);
+      case 'PAYOUT_CONFIRMED':
+        // The recipient has the money and the ledger knows it; only the final
+        // COMPLETE is missing. Reachable when something interrupted `pollPayout`
+        // between applying PAYOUT_SETTLED and applying COMPLETE — two API
+        // replicas advancing the same transfer and deadlocking will do it, and
+        // that is an ordinary deployment rather than an exotic failure.
+        //
+        // Without this case the transfer sits at PAYOUT_CONFIRMED forever: the
+        // switch falls through to `default`, which returns the state unchanged.
+        // A delivered transfer that never reaches a terminal state is exactly
+        // the failure the poll schedule exists to prevent.
+        return this.completeDelivered(transfer);
       default:
         return transfer.state as TransferState;
     }
+  }
+
+  /**
+   * Apply the final COMPLETE to a transfer whose payout has already settled.
+   *
+   * Posts nothing. The ledger entries were written when the payout settled, and
+   * writing them again is not what is missing — this is only the state
+   * transition and the clearing of the poll schedule.
+   */
+  private async completeDelivered(transfer: TransferRow): Promise<TransferState> {
+    await this.transfers.applyEvent(transfer.id, 'COMPLETE', { type: 'SYSTEM', id: null });
+    await this.prisma.transfer.update({
+      where: { id: transfer.id },
+      data: { nextPollAt: null },
+    });
+    return 'COMPLETED';
   }
 
   // ------------------------------------------------------------------ pay-in
@@ -435,9 +504,15 @@ export class TransferSagaService implements OnModuleInit, OnModuleDestroy {
       }
       this.metrics.ledgerPosted('PAYOUT_CONFIRMED');
 
+      // The poll schedule is deliberately NOT cleared here. It is the only
+      // thing that will come back for this transfer if the two events below do
+      // not both land, and it used to be cleared first — so an interruption
+      // between them left a delivered transfer at PAYOUT_CONFIRMED with nothing
+      // scheduled to finish it. `advance` handles that state now, but only a
+      // transfer the poller still looks at ever reaches `advance` again.
       await this.prisma.transfer.update({
         where: { id: transfer.id },
-        data: { payoutInstitutionRef: outcome.institutionRef, nextPollAt: null },
+        data: { payoutInstitutionRef: outcome.institutionRef },
       });
       await this.closeFxPosition(transfer.id);
 
@@ -445,8 +520,7 @@ export class TransferSagaService implements OnModuleInit, OnModuleDestroy {
         type: 'PROVIDER',
         id: transfer.payoutProviderId,
       });
-      await this.transfers.applyEvent(transfer.id, 'COMPLETE', { type: 'SYSTEM', id: null });
-      return 'COMPLETED';
+      return this.completeDelivered(transfer);
     }
 
     // Failed. Nothing is posted for the failure itself — the liability is
