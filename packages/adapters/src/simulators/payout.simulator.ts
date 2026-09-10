@@ -13,6 +13,8 @@ import {
   RecipientResolution,
   asProviderId,
   asProviderRef,
+  msisdnHint,
+  msisdnPattern,
 } from '@morapay/domain';
 import {
   DateRange,
@@ -173,9 +175,6 @@ interface PayoutMarketProfile {
   readonly networks: Readonly<Record<string, string>>;
   /** The switch whose reference appears on the beneficiary's statement. */
   readonly switchName: string;
-  /** Required shape of a wallet number, where the market pays wallets. */
-  readonly msisdnPattern: RegExp | null;
-  readonly msisdnHint: string;
 }
 
 export type PayoutMarket =
@@ -200,106 +199,76 @@ const MARKETS: Readonly<Record<PayoutMarket, PayoutMarketProfile>> = {
     banks: NG_BANKS,
     networks: {},
     switchName: 'NIP',
-    msisdnPattern: null,
-    msisdnHint: '',
   },
   ZA: {
     banks: ZA_BANKS,
     networks: {},
     switchName: 'BANKSERV',
-    msisdnPattern: null,
-    msisdnHint: '',
   },
   GH: {
     banks: {},
     networks: GH_NETWORKS,
     switchName: 'GHIPSS',
-    msisdnPattern: /^233\d{9}$/,
-    msisdnHint: 'a Ghanaian mobile number (233 then nine digits)',
   },
   CM: {
     banks: {},
     networks: CM_NETWORKS,
     switchName: 'GIMAC',
-    msisdnPattern: /^237\d{9}$/,
-    msisdnHint: 'a Cameroonian mobile number (237 then nine digits)',
   },
   BJ: {
     banks: {},
     networks: BJ_NETWORKS,
     switchName: 'GIM-UEMOA',
-    msisdnPattern: /^229\d{8,10}$/,
-    msisdnHint: 'a Beninese mobile number (229 then eight to ten digits)',
   },
   KE: {
     banks: {},
     networks: KE_NETWORKS,
     switchName: 'PESALINK',
-    msisdnPattern: /^254\d{9}$/,
-    msisdnHint: 'a Kenyan mobile number (254 then nine digits)',
   },
   UG: {
     banks: {},
     networks: UG_NETWORKS,
     switchName: 'ATLAS',
-    msisdnPattern: /^256\d{9}$/,
-    msisdnHint: 'a Ugandan mobile number (256 then nine digits)',
   },
   TZ: {
     banks: {},
     networks: TZ_NETWORKS,
     switchName: 'TIPS',
-    msisdnPattern: /^255\d{9}$/,
-    msisdnHint: 'a Tanzanian mobile number (255 then nine digits)',
   },
   ZM: {
     banks: {},
     networks: ZM_NETWORKS,
     switchName: 'NFS',
-    msisdnPattern: /^260\d{9}$/,
-    msisdnHint: 'a Zambian mobile number (260 then nine digits)',
   },
   CD: {
     banks: {},
     networks: CD_NETWORKS,
     switchName: 'BCC-RTGS',
-    msisdnPattern: /^243\d{9}$/,
-    msisdnHint: 'a Congolese mobile number (243 then nine digits)',
   },
   CG: {
     banks: {},
     networks: CG_NETWORKS,
     switchName: 'GIMAC',
-    msisdnPattern: /^242\d{9}$/,
-    msisdnHint: 'a Congolese mobile number (242 then nine digits)',
   },
   SN: {
     banks: {},
     networks: SN_NETWORKS,
     switchName: 'GIM-UEMOA',
-    msisdnPattern: /^221\d{9}$/,
-    msisdnHint: 'a Senegalese mobile number (221 then nine digits)',
   },
   ML: {
     banks: {},
     networks: ML_NETWORKS,
     switchName: 'GIM-UEMOA',
-    msisdnPattern: /^223\d{8}$/,
-    msisdnHint: 'a Malian mobile number (223 then eight digits)',
   },
   NE: {
     banks: {},
     networks: NE_NETWORKS,
     switchName: 'GIM-UEMOA',
-    msisdnPattern: /^227\d{8}$/,
-    msisdnHint: 'a Nigerien mobile number (227 then eight digits)',
   },
   GM: {
     banks: {},
     networks: GM_NETWORKS,
     switchName: 'GAMSWITCH',
-    msisdnPattern: /^220\d{7}$/,
-    msisdnHint: 'a Gambian mobile number (220 then seven digits)',
   },
 };
 
@@ -342,7 +311,7 @@ export class PayoutSimulator implements PayoutProvider {
       return { _tag: 'UNSUPPORTED', reason: 'This institution is not reachable on this rail' };
     }
 
-    const { banks, networks, msisdnPattern, msisdnHint } = this.profile;
+    const { banks, networks } = this.profile;
 
     if (req.recipient.method === 'BANK_ACCOUNT') {
       const institution = banks[req.recipient.bankCode];
@@ -366,8 +335,12 @@ export class PayoutSimulator implements PayoutProvider {
         reason: `${req.recipient.network} does not operate in ${this.market}`,
       };
     }
-    if (msisdnPattern !== null && !msisdnPattern.test(req.recipient.msisdn)) {
-      return { _tag: 'NOT_FOUND', reason: `That is not ${msisdnHint}` };
+    // The number's shape comes from the domain, which is also what the API
+    // schema and the send form validate against. Three copies of "how long is a
+    // Gambian number" is three chances for one of them to be wrong.
+    const pattern = msisdnPattern(this.market);
+    if (pattern !== null && !pattern.test(req.recipient.msisdn)) {
+      return { _tag: 'NOT_FOUND', reason: `That is not ${msisdnHint(this.market)}` };
     }
     return { _tag: 'RESOLVED', resolvedName: pseudoName(identifier), institution };
   }

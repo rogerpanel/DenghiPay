@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { COUNTRY_CODES } from '@morapay/domain';
+import { COUNTRY_CODES, MSISDN_FORMAT, WALLET_COUNTRIES, networksFor } from '@morapay/domain';
 import {
   createQuoteRequestSchema,
   createTransferRequestSchema,
@@ -119,6 +119,88 @@ describe('recipient details', () => {
         msisdn: '+233241234567',
         network: 'MTN',
         declaredName: 'AMA MENSAH',
+      }),
+    ).toThrow();
+  });
+
+  /**
+   * The wallet schemas are generated from the domain now, so what needs
+   * asserting is that generation produced the right thing for every country —
+   * not that one hand-written example is still correct.
+   */
+  it('validates a wallet number for every country that has wallets', () => {
+    for (const country of WALLET_COUNTRIES) {
+      const format = MSISDN_FORMAT[country]!;
+      const network = networksFor(country)[0]!;
+      const good = format.prefix + '1'.repeat(format.minDigits);
+      expect(
+        recipientDetailsSchema.parse({
+          method: 'MOBILE_MONEY',
+          country,
+          msisdn: good,
+          network,
+          declaredName: 'AMA MENSAH',
+        }),
+      ).toMatchObject({ country, msisdn: good });
+
+      // One digit short of the shortest form this country accepts.
+      const short = format.prefix + '1'.repeat(format.minDigits - 1);
+      expect(() =>
+        recipientDetailsSchema.parse({
+          method: 'MOBILE_MONEY',
+          country,
+          msisdn: short,
+          network,
+          declaredName: 'AMA MENSAH',
+        }),
+      ).toThrow();
+    }
+    expect(WALLET_COUNTRIES).toHaveLength(13);
+  });
+
+  /**
+   * Gambian numbers are seven national digits, the shortest in the mesh, and
+   * every other country is eight or nine. A validator written once for "nine
+   * digits" and copied outward rejects every Gambian number there is, and the
+   * failure looks like a typing mistake by the sender rather than a bug.
+   */
+  it('accepts the shortest number format in the mesh', () => {
+    expect(
+      recipientDetailsSchema.parse({
+        method: 'MOBILE_MONEY',
+        country: 'GM',
+        msisdn: '2207012345',
+        network: networksFor('GM')[0]!,
+        declaredName: 'FATOU JALLOW',
+      }),
+    ).toMatchObject({ country: 'GM' });
+  });
+
+  it("refuses a number carrying another country's dialling prefix", () => {
+    // A Kenyan number offered as a Ugandan one. Both are nine national digits,
+    // so only the prefix distinguishes them — and the payout would be accepted
+    // and then never arrive.
+    expect(() =>
+      recipientDetailsSchema.parse({
+        method: 'MOBILE_MONEY',
+        country: 'UG',
+        msisdn: '254712345678',
+        network: 'MPESA',
+        declaredName: 'AMINA WANJIRU',
+      }),
+    ).toThrow();
+  });
+
+  it('refuses a network licensed in another country', () => {
+    // CELTIIS is Beninese. Offering it for a Senegalese wallet is refused at
+    // the API boundary rather than by the rail an hour later.
+    expect(() =>
+      recipientDetailsSchema.parse({
+        method: 'MOBILE_MONEY',
+        country: 'SN',
+        msisdn: '221771234567',
+        network: 'CELTIIS',
+        declaredName: 'AMADOU DIOP',
       }),
     ).toThrow();
   });

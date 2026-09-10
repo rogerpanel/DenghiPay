@@ -1,4 +1,12 @@
 import { z } from 'zod';
+import {
+  MobileMoneyNetwork,
+  WALLET_COUNTRIES,
+  WalletCountry,
+  msisdnHint,
+  msisdnPattern,
+  networksFor,
+} from '@morapay/domain';
 import { countryCodeSchema } from './common';
 
 /**
@@ -36,50 +44,67 @@ export const zaRecipientSchema = z.object({
   declaredName,
 });
 
-export const ghRecipientSchema = z.object({
-  method: z.literal('MOBILE_MONEY'),
-  country: z.literal('GH'),
-  /** E.164 without the plus: 233 followed by nine digits. */
-  msisdn: z.string().regex(/^233\d{9}$/, 'a Ghanaian mobile number is 233 followed by 9 digits'),
-  network: z.enum(['MTN', 'TELECEL', 'AIRTELTIGO']),
-  declaredName,
-});
-
-export const cmRecipientSchema = z.object({
-  method: z.literal('MOBILE_MONEY'),
-  country: z.literal('CM'),
-  msisdn: z.string().regex(/^237\d{9}$/, 'a Cameroonian mobile number is 237 followed by 9 digits'),
-  /** MTN and Orange are the two licensed wallet operators in Cameroon. */
-  network: z.enum(['MTN', 'ORANGE']),
-  declaredName,
-});
-
-export const bjRecipientSchema = z.object({
-  method: z.literal('MOBILE_MONEY'),
-  country: z.literal('BJ'),
-  msisdn: z
-    .string()
-    .regex(/^229\d{8,10}$/, 'a Beninese mobile number is 229 followed by 8 to 10 digits'),
-  network: z.enum(['MTN', 'MOOV', 'CELTIIS']),
-  declaredName,
-});
+/**
+ * The wallet shapes, one per country, generated from the domain.
+ *
+ * Thirteen countries pay out to wallets and every one differs in two details:
+ * the dialling prefix with its national digit count, and which operators are
+ * licensed there. Both are already stated in the domain — `MSISDN_FORMAT` and
+ * `MOBILE_MONEY_NETWORKS` — and the payout simulator reads the same tables, so
+ * generating these keeps one answer to "what is a valid Gambian number" rather
+ * than three that can disagree.
+ *
+ * Written out by hand this would be thirteen near-identical objects differing
+ * in two literals each, which is exactly the shape of code where a wrong prefix
+ * reads as correct.
+ */
+const walletRecipientSchemas = WALLET_COUNTRIES.map((country) =>
+  z.object({
+    method: z.literal('MOBILE_MONEY'),
+    country: z.literal(country),
+    // E.164 without the plus.
+    msisdn: z.string().regex(msisdnPattern(country)!, msisdnHint(country)!),
+    // A network licensed somewhere else is refused here rather than at the
+    // rail. Offering MOOV for a Kenyan wallet gets a usable error at the API
+    // boundary instead of a payout failure an hour later.
+    network: z.enum(networksFor(country) as unknown as [string, ...string[]]),
+    declaredName,
+  }),
+);
 
 /**
  * Discriminated on method **and** country.
  *
  * Zod's `discriminatedUnion` takes a single key, so with two bank shapes and
- * three wallet shapes this is a plain union of per-country objects. The cost is
- * a less precise error when nothing matches; the benefit is that a Ghanaian
+ * thirteen wallet shapes this is a plain union of per-country objects. The cost
+ * is a less precise error when nothing matches; the benefit is that a Ghanaian
  * network offered for a Beninese wallet is rejected at the API boundary.
  */
 export const recipientDetailsSchema = z.union([
   ngRecipientSchema,
   zaRecipientSchema,
-  ghRecipientSchema,
-  cmRecipientSchema,
-  bjRecipientSchema,
-]);
-export type RecipientDetailsDto = z.infer<typeof recipientDetailsSchema>;
+  ...walletRecipientSchemas,
+] as unknown as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
+
+/**
+ * Stated rather than inferred.
+ *
+ * `z.infer` over a generated array collapses the thirteen country literals into
+ * one, so the inferred type would claim any wallet country accepts any licensed
+ * network. Writing the type out says what is actually true at compile time — a
+ * wallet in one of the wallet countries — and leaves the country-to-network
+ * pairing to the runtime check above, which is where it was always enforced.
+ */
+export type RecipientDetailsDto =
+  | z.infer<typeof ngRecipientSchema>
+  | z.infer<typeof zaRecipientSchema>
+  | {
+      method: 'MOBILE_MONEY';
+      country: WalletCountry;
+      msisdn: string;
+      network: MobileMoneyNetwork;
+      declaredName: string;
+    };
 
 export const createRecipientRequestSchema = z.object({
   details: recipientDetailsSchema,

@@ -69,6 +69,46 @@ export function isCountryCode(value: unknown): value is CountryCode {
   return typeof value === 'string' && (COUNTRY_CODES as readonly string[]).includes(value);
 }
 
+/**
+ * How a country is named to a person choosing one.
+ *
+ * Here rather than in a component because three surfaces need the same names —
+ * registration, the recipient form and the back office — and a country named
+ * differently in two of them is a support call.
+ *
+ * Local name first where it differs, then English, matching how the two
+ * Russian-language options have always been written.
+ *
+ * **The two Congos are named by their capitals**, which is the only reliable
+ * way to tell them apart in a dropdown. "Congo" and "Congo" adjacent in a list
+ * is not a cosmetic problem: picking the wrong one files the sender in the
+ * wrong jurisdiction's database and quotes them the wrong currency, and both
+ * screens after it look entirely normal.
+ */
+export const COUNTRY_NAMES: Readonly<Record<CountryCode, string>> = {
+  RU: 'Россия / Russia',
+  BY: 'Беларусь / Belarus',
+  NG: 'Nigeria',
+  GH: 'Ghana',
+  ZA: 'South Africa',
+  CM: 'Cameroun / Cameroon',
+  BJ: 'Bénin / Benin',
+  CD: 'RD Congo / DR Congo (Kinshasa)',
+  CG: 'Congo / Republic of the Congo (Brazzaville)',
+  UG: 'Uganda',
+  KE: 'Kenya',
+  TZ: 'Tanzania',
+  ZM: 'Zambia',
+  GM: 'The Gambia',
+  NE: 'Niger',
+  ML: 'Mali',
+  SN: 'Sénégal / Senegal',
+};
+
+export function countryName(country: CountryCode): string {
+  return COUNTRY_NAMES[country];
+}
+
 export const PAYOUT_METHODS = ['BANK_ACCOUNT', 'MOBILE_MONEY'] as const;
 export type PayoutMethod = (typeof PAYOUT_METHODS)[number];
 
@@ -136,25 +176,78 @@ export function networkServesCountry(country: CountryCode, network: string): boo
 }
 
 /**
- * The international dialling prefix a mobile-money number must carry, per
- * country. A Ghanaian wallet number handed to the Beninese rail is a mistake
- * worth catching before it becomes a failed payout.
+ * The shape of a mobile-money number, per country: the international dialling
+ * prefix it must carry and how many national digits follow.
+ *
+ * A Ghanaian wallet number handed to the Beninese rail is a mistake worth
+ * catching before it becomes a failed payout, so this is checked in three
+ * places — the API schema, the send form and the rail itself. All three read
+ * this table. They used to hold three copies of it, which is three chances for
+ * one country's number length to be right in two of them.
+ *
+ * Numbers are stored and validated in E.164 **without** the leading plus.
  */
-export const MSISDN_PREFIX: Readonly<Partial<Record<CountryCode, string>>> = {
-  GH: '233',
-  CM: '237',
-  BJ: '229',
-  KE: '254',
-  UG: '256',
-  TZ: '255',
-  ZM: '260',
-  CD: '243',
-  CG: '242',
-  SN: '221',
-  ML: '223',
-  NE: '227',
-  GM: '220',
+export const MSISDN_FORMAT: Readonly<
+  Partial<Record<CountryCode, { prefix: string; minDigits: number; maxDigits: number }>>
+> = {
+  GH: { prefix: '233', minDigits: 9, maxDigits: 9 },
+  CM: { prefix: '237', minDigits: 9, maxDigits: 9 },
+  // Benin lengthened its national numbers from eight digits to ten, so both are
+  // in circulation and both must be accepted.
+  BJ: { prefix: '229', minDigits: 8, maxDigits: 10 },
+  KE: { prefix: '254', minDigits: 9, maxDigits: 9 },
+  UG: { prefix: '256', minDigits: 9, maxDigits: 9 },
+  TZ: { prefix: '255', minDigits: 9, maxDigits: 9 },
+  ZM: { prefix: '260', minDigits: 9, maxDigits: 9 },
+  CD: { prefix: '243', minDigits: 9, maxDigits: 9 },
+  CG: { prefix: '242', minDigits: 9, maxDigits: 9 },
+  SN: { prefix: '221', minDigits: 9, maxDigits: 9 },
+  ML: { prefix: '223', minDigits: 8, maxDigits: 8 },
+  NE: { prefix: '227', minDigits: 8, maxDigits: 8 },
+  // The shortest in the mesh at seven. A validator that assumed nine would
+  // reject every Gambian number there is.
+  GM: { prefix: '220', minDigits: 7, maxDigits: 7 },
 };
+
+/**
+ * The countries whose recipients are credited to a wallet rather than a bank
+ * account — every African country in the mesh except Nigeria and South Africa,
+ * which settle to bank accounts.
+ *
+ * Derived from `MSISDN_FORMAT` rather than listed: a country has wallets
+ * exactly when it has a wallet number format, and inventing a second list would
+ * let the two disagree about a country that has just been added.
+ */
+export const WALLET_COUNTRIES = Object.keys(MSISDN_FORMAT) as readonly WalletCountry[];
+
+export type WalletCountry = Exclude<AfricanCountry, 'NG' | 'ZA'>;
+
+/** The dialling prefix alone, for callers that only need to compose a number. */
+export const MSISDN_PREFIX: Readonly<Partial<Record<CountryCode, string>>> = Object.fromEntries(
+  Object.entries(MSISDN_FORMAT).map(([country, format]) => [country, format.prefix]),
+);
+
+/** The pattern a wallet number for this country must match, or null if it has no wallets. */
+export function msisdnPattern(country: CountryCode): RegExp | null {
+  const format = MSISDN_FORMAT[country];
+  if (format === undefined) return null;
+  const digits =
+    format.minDigits === format.maxDigits
+      ? `{${format.minDigits}}`
+      : `{${format.minDigits},${format.maxDigits}}`;
+  return new RegExp(`^${format.prefix}\\d${digits}$`);
+}
+
+/** What to tell somebody who typed the number wrong. */
+export function msisdnHint(country: CountryCode): string | null {
+  const format = MSISDN_FORMAT[country];
+  if (format === undefined) return null;
+  const digits =
+    format.minDigits === format.maxDigits
+      ? `${format.minDigits} digits`
+      : `${format.minDigits} to ${format.maxDigits} digits`;
+  return `a ${COUNTRY_NAMES[country]} mobile number is ${format.prefix} followed by ${digits}`;
+}
 
 /**
  * How we collect from the sender.

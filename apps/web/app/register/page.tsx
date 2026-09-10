@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { FormEvent, useState } from 'react';
+import { COUNTRY_CODES, COUNTRY_NAMES, CountryCode } from '@morapay/domain';
 import { useApp } from '@/app/providers';
 import { ApiError, api, setSession } from '@/lib/api';
 import { AppShell, ErrorNotice, Field } from '@/components/shell';
@@ -12,11 +13,16 @@ import { AppShell, ErrorNotice, Field } from '@/components/shell';
  * and which corridors they can send on, and it is asked once — moving it later
  * means moving rows between jurisdictions.
  *
- * South Africa is absent on purpose. It is a destination and not an origin
- * until SARB exchange-control reporting exists, so there is no store for a
- * South African sender's data and the API refuses the residency outright.
+ * The list is `COUNTRY_CODES` from the domain, not a copy. It used to be a
+ * hand-written union that omitted South Africa, correctly at the time and
+ * wrongly from the moment exchange control was built: the partition, the
+ * declaration flow and the allowance check all existed and a South African
+ * sender still could not reach them, because this file had not been told.
+ *
+ * Appearing here is not permission to send. The licence gate decides that, and
+ * today it refuses every corridor.
  */
-type Residency = 'RU' | 'BY' | 'NG' | 'GH' | 'CM' | 'BJ';
+type Residency = CountryCode;
 
 interface SessionResponse {
   accessToken: string;
@@ -98,12 +104,11 @@ export default function RegisterPage() {
               value={residency}
               onChange={(e) => setResidency(e.target.value as Residency)}
             >
-              <option value="RU">Россия / Russia</option>
-              <option value="BY">Беларусь / Belarus</option>
-              <option value="NG">Nigeria</option>
-              <option value="GH">Ghana</option>
-              <option value="CM">Cameroun / Cameroon</option>
-              <option value="BJ">Bénin / Benin</option>
+              {COUNTRY_CODES.map((code) => (
+                <option key={code} value={code}>
+                  {COUNTRY_NAMES[code]}
+                </option>
+              ))}
             </select>
           </Field>
 

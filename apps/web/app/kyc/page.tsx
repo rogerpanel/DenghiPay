@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { MSISDN_FORMAT, isCountryCode, networksFor } from '@morapay/domain';
 import { useApp } from '@/app/providers';
 import { ApiError, api } from '@/lib/api';
 import { AppShell, ErrorNotice, Field, LoadingCard, RequireAuth } from '@/components/shell';
@@ -18,6 +19,45 @@ interface Requirements {
     monthly: string;
     currency: string;
     decimals: number;
+  };
+}
+
+/**
+ * Which identity anchors a residency needs, and what its wallet looks like.
+ *
+ * Derived from the domain rather than listed per country. Sixteen residencies
+ * with three special cases between them is not sixteen branches — it is two
+ * questions ("does it have a national identity number?", "is collection a pull
+ * from a wallet?") and three named exceptions.
+ *
+ * Russia and Belarus fall through with nothing: their identity evidence is
+ * documents, collected above, and their collection is a push the sender
+ * originates, so there is no wallet to debit.
+ */
+function anchorsFor(residency: string) {
+  const country = isCountryCode(residency) ? residency : null;
+  const wallet = country === null ? undefined : MSISDN_FORMAT[country];
+  const collectsFromWallet = wallet !== undefined;
+
+  // Nigeria anchors on a BVN and Ghana on a Ghana Card, so neither is asked for
+  // a national identity number as well. Everyone else with a partition is.
+  const usesNationalId =
+    country !== null &&
+    country !== 'NG' &&
+    country !== 'GH' &&
+    country !== 'RU' &&
+    country !== 'BY';
+
+  return {
+    usesNationalId,
+    collectsFromWallet,
+    networks: country === null ? [] : [...networksFor(country)],
+    msisdnMaxLength: wallet === undefined ? 15 : wallet.prefix.length + wallet.maxDigits,
+    msisdnPlaceholder:
+      wallet === undefined ? '' : `${wallet.prefix}${'X'.repeat(wallet.maxDigits)}`,
+    // Nigeria's BVN is an anchor too, so the section shows for it even though
+    // it answers neither question above.
+    shown: usesNationalId || collectsFromWallet || country === 'NG' || country === 'GH',
   };
 }
 
@@ -61,11 +101,23 @@ function KycInner() {
   const [taxReference, setTaxReference] = useState('');
   const [exchangeControlStatus, setExchangeControlStatus] = useState('RESIDENT');
 
+  const anchors = anchorsFor(requirements?.residencyCountry ?? '');
+
   useEffect(() => {
     void api<Requirements>(`/kyc/requirements/${targetTier}`)
       .then(setRequirements)
       .catch(() => setError(t('error.generic')));
   }, [targetTier, t]);
+
+  /* Default the wallet operator to one this residency actually licenses.
+     The initial value is MTN, which is right in Ghana, Cameroon and Benin and
+     wrong in Kenya, Tanzania and everywhere else M-PESA or Airtel operate — and
+     a network the country does not license is refused by the API with a message
+     about a network the sender never chose. */
+  const firstNetwork = anchors.networks[0];
+  useEffect(() => {
+    if (firstNetwork !== undefined) setWalletNetwork(firstNetwork);
+  }, [firstNetwork]);
 
   async function submit() {
     if (requirements === null) return;
@@ -73,6 +125,7 @@ function KycInner() {
     setError(null);
     try {
       const residency = requirements.residencyCountry;
+      const { usesNationalId, collectsFromWallet } = anchors;
       await api('/kyc/submit', {
         method: 'POST',
         body: {
@@ -87,12 +140,20 @@ function KycInner() {
             // contract rather than reading as "not provided".
             ...(residency === 'NG' && bvn !== '' ? { bvn } : {}),
             ...(residency === 'GH' && ghanaCardNo !== '' ? { ghanaCardNo } : {}),
-            ...(residency === 'GH' && walletMsisdn !== ''
-              ? { collectionWallet: { msisdn: walletMsisdn, network: walletNetwork } }
-              : {}),
-            ...(residency === 'ZA' && nationalIdNo !== '' ? { nationalIdNo } : {}),
             ...(residency === 'ZA' && taxReference !== '' ? { taxReference } : {}),
             ...(residency === 'ZA' ? { exchangeControlStatus } : {}),
+            // The national identity number is the anchor for every residency
+            // except Nigeria, which uses a BVN, and Ghana, which uses a Ghana
+            // Card. South Africa keeps it alongside a tax reference.
+            ...(usesNationalId && nationalIdNo !== '' ? { nationalIdNo } : {}),
+            // A wallet to debit, wherever collection is a pull from one. This
+            // was asked of Ghana alone while Ghana was the only such origin;
+            // Cameroon and Benin collect the same way and were never asked, so
+            // their sender_profile wallet columns sat empty and the collection
+            // had nothing to debit.
+            ...(collectsFromWallet && walletMsisdn !== ''
+              ? { collectionWallet: { msisdn: walletMsisdn, network: walletNetwork } }
+              : {}),
           },
           documents: requirements.requiredDocuments
             .filter((type) => attached[type] === true)
@@ -167,8 +228,15 @@ function KycInner() {
 
       {/* Only the residency's own anchors. A Ghanaian sender is never asked for
           a BVN, and a South African is never asked for a wallet we would have
-          no rail to debit. */}
-      {['NG', 'GH', 'ZA'].includes(requirements.residencyCountry) ? (
+          no rail to debit.
+
+          Which anchors a residency has is decided by `anchorsFor` rather than a
+          list of countries written here. The list said ['NG','GH','ZA'] while
+          those were the only three with anchors, and stayed that way after
+          Cameroon and Benin arrived — so a Cameroonian sender was never asked
+          for the identity number or the wallet their partition has columns
+          for, and their collection had nothing to debit. */}
+      {anchors.shown ? (
         <section className="mp-card mp-stack">
           <h2 className="mp-card__title">
             {t('kyc.identity', { country: requirements.residencyCountry })}
@@ -187,21 +255,38 @@ function KycInner() {
           ) : null}
 
           {requirements.residencyCountry === 'GH' ? (
+            <Field label={t('kyc.ghanaCard')} hint={t('kyc.ghanaCardHint')}>
+              <input
+                className="mp-input mp-numeric"
+                value={ghanaCardNo}
+                onChange={(e) => setGhanaCardNo(e.target.value.toUpperCase())}
+              />
+            </Field>
+          ) : null}
+
+          {anchors.usesNationalId ? (
+            <Field label={t('kyc.nationalId')}>
+              <input
+                className="mp-input"
+                maxLength={20}
+                value={nationalIdNo}
+                onChange={(e) => setNationalIdNo(e.target.value.toUpperCase())}
+              />
+            </Field>
+          ) : null}
+
+          {/* The wallet a collection debits. Its network list and number format
+              come from the domain, so a Kenyan sender is offered M-PESA rather
+              than the Ghanaian operators this form once hardcoded. */}
+          {anchors.collectsFromWallet ? (
             <>
-              <Field label={t('kyc.ghanaCard')} hint={t('kyc.ghanaCardHint')}>
-                <input
-                  className="mp-input mp-numeric"
-                  value={ghanaCardNo}
-                  onChange={(e) => setGhanaCardNo(e.target.value.toUpperCase())}
-                />
-              </Field>
               <Field label={t('kyc.walletNetwork')}>
                 <select
                   className="mp-select"
                   value={walletNetwork}
                   onChange={(e) => setWalletNetwork(e.target.value)}
                 >
-                  {['MTN', 'TELECEL', 'AIRTELTIGO'].map((network) => (
+                  {anchors.networks.map((network) => (
                     <option key={network} value={network}>
                       {network}
                     </option>
@@ -212,8 +297,8 @@ function KycInner() {
                 <input
                   className="mp-input mp-numeric"
                   inputMode="numeric"
-                  maxLength={12}
-                  placeholder="233XXXXXXXXX"
+                  maxLength={anchors.msisdnMaxLength}
+                  placeholder={anchors.msisdnPlaceholder}
                   value={walletMsisdn}
                   onChange={(e) => setWalletMsisdn(e.target.value.replace(/\D/g, ''))}
                 />
@@ -223,15 +308,6 @@ function KycInner() {
 
           {requirements.residencyCountry === 'ZA' ? (
             <>
-              <Field label={t('kyc.nationalId')}>
-                <input
-                  className="mp-input mp-numeric"
-                  inputMode="numeric"
-                  maxLength={13}
-                  value={nationalIdNo}
-                  onChange={(e) => setNationalIdNo(e.target.value.replace(/\D/g, ''))}
-                />
-              </Field>
               <Field label={t('kyc.taxReference')} hint={t('kyc.taxReferenceHint')}>
                 <input
                   className="mp-input mp-numeric"
