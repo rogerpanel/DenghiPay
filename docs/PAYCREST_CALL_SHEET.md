@@ -57,8 +57,31 @@ against whatever depth exists that minute?
 4. **What is your regulatory status in each market you'd settle for us** —
    and where does your obligation end and ours begin?
 5. **Which corridors are live today**, with a real customer, versus
-   integrated-and-activating? Specifically: Nigeria collection, Cameroon
-   payout, Ghana, South Africa, Benin.
+   integrated-and-activating? We have now built all fifteen: Nigeria, Ghana,
+   South Africa, Cameroon, Benin, DR Congo, Republic of the Congo, Uganda,
+   Kenya, Tanzania, Zambia, The Gambia, Niger, Mali and Senegal — 210
+   corridors, both directions, every one refused by our licence gate until
+   somebody holds the authorisation.
+
+   Ask for the coverage matrix as **country × collection × payout × live or
+   planned, with dates**. Collection and payout are separate questions in every
+   one of those markets and a single "we cover Kenya" answers neither.
+
+   Two things to check they have right, because they are the two most people
+   get wrong:
+
+   - **CD and CG are two countries.** Kinshasa spends Congolese francs under
+     the BCC; Brazzaville spends CFA francs under the BEAC, alongside Cameroon.
+     If their matrix has one row called "Congo", find out which.
+   - **XOF is four countries, not one.** Benin, Niger, Mali and Senegal share
+     the currency and the central bank and still need four approvals. Ask which
+     of the four they are actually authorised in.
+
+   **The most valuable single answer on this call:** of the thirty
+   authorisations our mesh needs — a collection and a payout in each of fifteen
+   markets — how many do you already hold? That is what a partnership would
+   actually be buying, and it is worth more than the API.
+
 6. **What does the $3,000 actually buy** — a licence, source code, or your
    engineer's time? Is the code already public? Does it convey any liquidity,
    licence or provider relationship? _(Expect no to the last three.)_
@@ -101,17 +124,28 @@ your deck assigns to a bank?
 
 17. **Your complete status enum** — not the happy path. Which values are
     terminal, and **can any of them reverse after being terminal?**
-18. **XAF and XOF decimals, in writing.** These have no minor unit. Is
-    twenty-five thousand francs `25000` or `2500000` in your payload? _A
-    partner sending one and a partner sending the other are a hundredfold
+18. **Decimals, in writing, per currency.** XAF, XOF **and UGX** have no minor
+    unit. Is twenty-five thousand francs `25000` or `2500000` in your payload?
+    _A partner sending one and a partner sending the other are a hundredfold
     apart and both look plausible in a test._
-19. **Statements** — T+1 file or endpoint? Format, timezone, cut-off. "We
+
+    Ugandan shillings are the one to pin down hardest: UGX has no minor unit
+    while the Kenyan and Tanzanian shillings either side of it have two, so a
+    partner who handles East Africa with one code path has probably got one of
+    the three wrong and does not know it. Ask for a worked example in all
+    three.
+
+19. **Same-currency transfers.** Do you support XOF Senegal → XOF Mali, and
+    what rate do you apply? There is no exchange, so the only correct answer is
+    one — if they quote a spread on it, that is a fee wearing a rate's
+    clothing and we would be passing it to a customer as an exchange rate.
+20. **Statements** — T+1 file or endpoint? Format, timezone, cut-off. "We
     email a CSV" is a real answer; it changes our runbook rather than
     blocking us.
-20. **Sandbox scenarios** — can we force a settle, a pending-then-settle, an
+21. **Sandbox scenarios** — can we force a settle, a pending-then-settle, an
     acknowledged-then-failed, a name enquiry that finds nothing, and a
     reversal after settlement?
-21. **Fill times** — p50 and p99, not "usually 30 seconds". And the largest
+22. **Fill times** — p50 and p99, not "usually 30 seconds". And the largest
     single NG order filled in the last 30 days.
 
 ---
