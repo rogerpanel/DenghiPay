@@ -4,6 +4,11 @@ A working sheet for the conversation with the Paycrest partnership manager.
 Three sections in the order the meeting will actually run: what we show, what
 we need to find out, and what we ask them to do next.
 
+> **In a live call, talk from [`PAYCREST_CALL_SHEET.md`](PAYCREST_CALL_SHEET.md)
+> instead.** It is one page, ordered by what kills the deal soonest, split
+> between the manager and the engineer, and it carries the stablecoin-route
+> questions this document predates. This one is the background.
+
 > The single most important thing to hold in mind: **the Paycrest deck is
 > addressed to a bank, not to an application.** Every role in it is labelled
 > "Your Role (Russian Bank Partner)" — provide virtual accounts, provide
