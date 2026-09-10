@@ -391,6 +391,22 @@ Two decisions recorded here because they will be asked again. **Held multi-curre
 
 _DoD:_ Each feature demonstrated end to end against a running system; a schedule occurrence produces a transfer in `AWAITING_PAYIN` with a fresh quote and a notification, and none in a state that implies we took money; a schedule on a ZA-origin corridor is refused; a receipt is refused for a transfer in flight; an alert with an unreachable threshold does not fire while a reachable one does.
 
+### Phase 15 — The Paycrest coverage markets (added 2026-09-10, out of plan order)
+
+Ten African countries added in one tranche — Congo-Kinshasa, Congo-Brazzaville, Uganda, Kenya, Tanzania, Zambia, Gambia, Niger, Mali and Senegal — because they are where Paycrest operates or is completing operating agreements, and a partner conversation goes differently when the corridors already exist. Fifteen African countries, **210 corridors**, full mesh in both directions.
+
+Zimbabwe was asked for and deliberately deferred, pending Paycrest confirming which currency actually settles there. It has no partition, and registration refuses a Zimbabwean resident rather than filing them somewhere plausible — which is the behaviour to want.
+
+- **15.1 Domain.** Six currencies (CDF, UGX, KES, TZS, ZMW, GMD), ten countries, tier limits and licensing for ten new origins. `AFRICAN_COUNTRIES` and `COUNTRY_CODES` became the single source the corridor seed, the provider registry, the licence gate and the API schema all read — they had been four copies, and the copies had already diverged.
+- **15.2 Adapters.** Ten payout and pay-in markets with real switch names and per-country MSISDN formats. The five bespoke simulator factories became one generic factory each; at fifteen markets a named factory per market is a list to forget to update rather than documentation.
+- **15.3 Partitions.** Ten residency schemas behind **one shared repository**. All ten anchor identity on a single national identity number and run both legs over mobile money, so twenty near-identical files would have been twenty files nobody reads. The residency mapping is now a table, and that table is the safety property — a transposed pair moves personal data across a border without breaking anything or throwing — so it is asserted per country, in both directions, against a hand-written expectation.
+- **15.4 Seed and wiring.** 210 corridors, thirteen ledger currencies, float thresholds. The CFA margin rule became a currency test rather than a country list; as a country list it would have priced 28 of the 30 CFA-to-CFA pairs for currency risk against a fixed peg.
+- **15.5 Web.** Registration reads the domain's country list instead of a hand-written union — which also let South Africa onto the screen, two phases after its partition and its whole declaration flow were built. The thirteen wallet recipient schemas are generated from the domain, and the payout simulator reads the same tables, so "how long is a Gambian number" has one answer instead of three. Gambia is seven national digits against eight or nine everywhere else.
+
+**Three bugs this phase found, none of them new.** Fourteen corridors are same-currency and none had ever existed before: the quote halted because no feed will ever quote XOF/XOF, and then a same-currency transfer raced against itself on `ledger_account.code` because its source and destination user-payable accounts are the same account. And a delivered transfer could stop at `PAYOUT_CONFIRMED` forever — the sweeper's state list meant "awaiting a provider answer" when it needed to mean "the saga can still move this". All three are fixed, with tests; the last one now requires every transfer state to be classified as swept, terminal, or waiting on somebody.
+
+_DoD:_ Migration replays from empty and diffs clean against the schema; the seed produces 214 corridors with every country's corridors denominated in its own currency and no self-pairs; a cycle through all fifteen countries completes end to end, each country appearing once as an origin and once as a destination, with the ledger netting to zero in every currency; all 210 corridors are refused by the licence gate with live funds on and nothing held.
+
 ---
 
 ## Part 4 — Brand tokens (golden orange / white)

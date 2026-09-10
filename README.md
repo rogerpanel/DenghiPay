@@ -1,6 +1,8 @@
 # MoraPay
 
-Cross-border remittance platform. Russia/CIS → Nigeria & Ghana.
+Cross-border remittance platform. Russia/CIS into Africa, and across Africa:
+**fifteen African countries sending to each other in both directions, 210
+corridors**, plus four inbound from Russia and Belarus.
 
 > **Status: pre-pilot engineering build.** No live third-party funds move.
 > `LIVE_FUNDS_ENABLED` defaults to `false` and every provider integration runs

@@ -281,7 +281,14 @@ debiting cedi wallets in Ghana, XAF wallets in Cameroon and XOF wallets in Benin
 are four licensed activities in their own right, and none is implied by the
 inbound-remittance arrangements the ruble corridors need. NG→GH does not
 authorise GH→NG. A BCEAO approval in Benin says nothing about BEAC in Cameroon,
-even though the two currencies are at par. South Africa adds a second kind of
+even though the two currencies are at par.
+
+The mesh is now fifteen African countries and 210 corridors, so say the number
+that matters rather than that one: **thirty distinct authorisations** are
+required across it, and today we hold none. The licence gate refuses all 210
+with live funds switched on. Building the corridor is the cheap half; the
+sentence to leave in the room is that the software is no longer what is
+between us and a first live transfer. South Africa adds a second kind of
 surface again: not just a licence but a reporting obligation, which is why it
 took a phase of its own rather than a row in a table.
 
