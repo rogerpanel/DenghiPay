@@ -244,6 +244,14 @@ const COUNTRY_RAILS: Readonly<
  * currency-risk margin against a peg.
  */
 function marginFor(from: AfricanCountry, to: AfricanCountry): number {
+  // Same currency both ends: no exchange happens, so there is no spread to
+  // charge. Fourteen corridors are like this — the four XOF countries sending
+  // to each other and the two XAF ones — and a margin here would be a 0.9% fee
+  // on a conversion that does not occur, deducted where the sender is looking
+  // for an exchange rate. The fixed fee is the honest place to charge for the
+  // rail, and it still applies.
+  if (COUNTRY_RAILS[from].currency === COUNTRY_RAILS[to].currency) return 0;
+
   const cfa = (c: AfricanCountry) =>
     COUNTRY_RAILS[c].currency === 'XAF' || COUNTRY_RAILS[c].currency === 'XOF';
   if (cfa(from) && cfa(to)) return 90;

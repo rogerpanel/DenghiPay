@@ -53,21 +53,47 @@ export class PrismaLedgerStore implements LedgerStore {
     return rows.map(toAccount);
   }
 
+  /**
+   * Get the account with this code, creating it if it does not exist.
+   *
+   * Prisma's `upsert` is not atomic against a concurrent insert of the same
+   * code: two callers can both find nothing and both try to create, and one
+   * gets a unique-constraint violation. Postgres is right to refuse — the
+   * constraint is what guarantees one account per code — so the fix is to treat
+   * that refusal as the other caller having won, and read their row.
+   *
+   * This is not theoretical and it is not only about two requests. A
+   * same-currency transfer resolves its source and destination user-payable
+   * accounts to the *same code*, and `accountsFor` resolves them in one
+   * `Promise.all` — so a single XOF→XOF transfer raced against itself and
+   * failed at collection with an internal error. Fourteen corridors in the mesh
+   * are same-currency, and none existed before the Paycrest markets.
+   */
   async ensureAccount(spec: AccountSpec): Promise<Account> {
     assertAccountCurrency(spec.type, spec.currency);
     const code = accountCode(spec.type, spec.currency, spec.scope);
-    const row = await this.prisma.ledgerAccount.upsert({
-      where: { code },
-      update: {},
-      create: {
-        code,
-        type: spec.type,
-        currency: spec.currency,
-        partition: spec.partition,
-        ownerRef: spec.ownerRef ?? null,
-      },
-    });
-    return toAccount(row);
+    try {
+      const row = await this.prisma.ledgerAccount.upsert({
+        where: { code },
+        update: {},
+        create: {
+          code,
+          type: spec.type,
+          currency: spec.currency,
+          partition: spec.partition,
+          ownerRef: spec.ownerRef ?? null,
+        },
+      });
+      return toAccount(row);
+    } catch (error) {
+      if (!isUniqueViolation(error, 'code')) throw error;
+      // Somebody else created it between our read and our write. Their row is
+      // the same account by definition — the code determines type, currency and
+      // scope — so returning it is correct rather than merely tolerable.
+      const existing = await this.prisma.ledgerAccount.findUnique({ where: { code } });
+      if (existing === null) throw error;
+      return toAccount(existing);
+    }
   }
 
   async append(input: AppendInput): Promise<AppendResult> {
@@ -105,7 +131,7 @@ export class PrismaLedgerStore implements LedgerStore {
       }
       return { transaction, replayed: false };
     } catch (error) {
-      if (isUniqueViolation(error, 'idempotency_key')) {
+      if (isUniqueViolation(error, 'idempotency_key', 'idempotencyKey')) {
         return this.resolveReplay(input);
       }
       throw error;
@@ -258,10 +284,20 @@ function toTransaction(row: {
   };
 }
 
-function isUniqueViolation(error: unknown, field: string): boolean {
+/**
+ * Was this a unique-constraint violation on one of the named columns?
+ *
+ * Takes every acceptable spelling because Prisma reports the target as either
+ * the database column or the model field depending on the driver and the
+ * constraint — `idempotency_key` in one and `idempotencyKey` in the other. The
+ * alternatives used to be an unconditional `|| t.includes('idempotencyKey')`,
+ * which meant a caller asking about any other column also matched an
+ * idempotency-key violation and could swallow it.
+ */
+function isUniqueViolation(error: unknown, ...fields: readonly string[]): boolean {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
   if (error.code !== 'P2002') return false;
   const target = error.meta?.target;
   const targets = Array.isArray(target) ? target.map(String) : [String(target ?? '')];
-  return targets.some((t) => t.includes(field) || t.includes('idempotencyKey'));
+  return targets.some((t) => fields.some((field) => t.includes(field)));
 }

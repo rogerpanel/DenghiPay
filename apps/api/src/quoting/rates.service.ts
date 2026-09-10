@@ -105,6 +105,28 @@ export class RatesService implements OnModuleInit {
     to: To,
     now = new Date(),
   ): Promise<{ rate: ExchangeRate<From, To>; observedAt: Date; ageMs: number }> {
+    /*
+     * A currency against itself is exactly one, and no feed is involved.
+     *
+     * Fourteen corridors are same-currency: the four XOF countries send to each
+     * other and the two XAF countries do, and none of those is an exchange.
+     * Before them every corridor crossed a currency, so this case had never
+     * arisen — NE→ML halted with "no rate has ever been observed for XOF/XOF",
+     * which was the feed correctly reporting that it had never been asked for a
+     * rate that does not exist.
+     *
+     * Identity, not a synthesised observation: it can never be stale, it is not
+     * attributed to a source, and it is not written to rate_observation, so
+     * nothing downstream can mistake it for something a market said.
+     */
+    if ((from as CurrencyCode) === (to as CurrencyCode)) {
+      return {
+        rate: ExchangeRate.of(from, to, 1n, 0),
+        observedAt: now,
+        ageMs: 0,
+      };
+    }
+
     const latest = await this.latest(from, to, now);
     if (latest === null) {
       throw new RateUnavailableError(

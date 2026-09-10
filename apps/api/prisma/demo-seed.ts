@@ -14,10 +14,18 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { AfricanCountry, CountryCode } from '@morapay/domain';
+import { PrismaService } from '../src/common/prisma.service';
+import {
+  StandardPartitionRepository,
+  isStandardPartition,
+} from '../src/partitions/standard/standard-partition.repository';
 import { hash as argonHash } from '@node-rs/argon2';
 import { createHmac } from 'node:crypto';
 
 const prisma = new PrismaClient();
+// The same repository the API uses, so the demo fixtures cannot disagree with
+// the application about which schema a residency belongs to.
+const standard = new StandardPartitionRepository(prisma as unknown as PrismaService);
 const ARGON_OPTIONS = { memoryCost: 19_456, timeCost: 2, parallelism: 1, algorithm: 2 } as const;
 
 const DEMO_PASSWORD = 'morapay-demo-2026';
@@ -192,6 +200,209 @@ const SENDERS: DemoSender[] = [
     },
     note: 'Cotonou resident, tier 2 — sends XOF, francophone journey',
   },
+
+  // The ten Paycrest coverage markets. One sender each, all tier 2, all
+  // collecting by wallet debit — which is why every one carries a
+  // walletMsisdn: without it the collection has nothing to pull from.
+  //
+  // Amani and Brice are in different countries. Kinshasa is the Democratic
+  // Republic of the Congo and spends Congolese francs; Brazzaville is the
+  // Republic of the Congo and spends CFA francs under the BEAC. They are here
+  // next to each other deliberately, so that anyone reading the fixtures meets
+  // the distinction before they meet a bug caused by missing it.
+  //
+  // Sarah in Kampala sends UGX, which has no minor unit while the Kenyan and
+  // Tanzanian shillings either side of her have two.
+  {
+    email: 'amani@demo.morapay.local',
+    residency: 'CD',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Amani',
+      lastName: 'Kabila',
+      dateOfBirth: '1990-06-11',
+      nationality: 'CD',
+      phone: '243812345678',
+      addressLine: '18 avenue Kasa-Vubu, Gombe',
+      city: 'Kinshasa',
+      nationalIdNo: 'CD-9006-11553',
+      walletMsisdn: '243812345678',
+      walletNetwork: 'MPESA',
+    },
+    note: 'Kinshasa resident, tier 2 — sends CDF',
+  },
+  {
+    email: 'brice@demo.morapay.local',
+    residency: 'CG',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Brice',
+      lastName: 'Makaya',
+      dateOfBirth: '1987-02-24',
+      nationality: 'CG',
+      phone: '242061234567',
+      addressLine: '7 avenue Foch, Centre-ville',
+      city: 'Brazzaville',
+      nationalIdNo: 'CG-8702-24118',
+      walletMsisdn: '242061234567',
+      walletNetwork: 'MTN',
+    },
+    note: 'Brazzaville resident, tier 2 — sends XAF',
+  },
+  {
+    email: 'sarah@demo.morapay.local',
+    residency: 'UG',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Sarah',
+      lastName: 'Nakato',
+      dateOfBirth: '1993-09-05',
+      nationality: 'UG',
+      phone: '256772345678',
+      addressLine: '22 Buganda Road, Nakasero',
+      city: 'Kampala',
+      nationalIdNo: 'UG-CM93-005612',
+      walletMsisdn: '256772345678',
+      walletNetwork: 'MTN',
+    },
+    note: 'Kampala resident, tier 2 — sends UGX',
+  },
+  {
+    email: 'amina@demo.morapay.local',
+    residency: 'KE',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Amina',
+      lastName: 'Wanjiru',
+      dateOfBirth: '1992-11-30',
+      nationality: 'KE',
+      phone: '254712345678',
+      addressLine: '9 Kenyatta Avenue, Upper Hill',
+      city: 'Nairobi',
+      nationalIdNo: 'KE-3392-1180',
+      walletMsisdn: '254712345678',
+      walletNetwork: 'MPESA',
+    },
+    note: 'Nairobi resident, tier 2 — sends KES',
+  },
+  {
+    email: 'neema@demo.morapay.local',
+    residency: 'TZ',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Neema',
+      lastName: 'Mwakalinga',
+      dateOfBirth: '1989-07-16',
+      nationality: 'TZ',
+      phone: '255754123456',
+      addressLine: '4 Samora Avenue, Kivukoni',
+      city: 'Dar es Salaam',
+      nationalIdNo: 'TZ-8907-16220',
+      walletMsisdn: '255754123456',
+      walletNetwork: 'MPESA',
+    },
+    note: 'Dar es Salaam resident, tier 2 — sends TZS',
+  },
+  {
+    email: 'chanda@demo.morapay.local',
+    residency: 'ZM',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Chanda',
+      lastName: 'Mulenga',
+      dateOfBirth: '1994-03-08',
+      nationality: 'ZM',
+      phone: '260971234567',
+      addressLine: '31 Cairo Road, Ridgeway',
+      city: 'Lusaka',
+      nationalIdNo: 'ZM-9403-08447',
+      walletMsisdn: '260971234567',
+      walletNetwork: 'MTN',
+    },
+    note: 'Lusaka resident, tier 2 — sends ZMW',
+  },
+  {
+    email: 'fatou@demo.morapay.local',
+    residency: 'GM',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Fatou',
+      lastName: 'Jallow',
+      dateOfBirth: '1991-05-22',
+      nationality: 'GM',
+      phone: '2207012345',
+      addressLine: '6 Kairaba Avenue, Serrekunda',
+      city: 'Banjul',
+      nationalIdNo: 'GM-9105-22091',
+      walletMsisdn: '2207012345',
+      walletNetwork: 'AFRICELL',
+    },
+    note: 'Banjul resident, tier 2 — sends GMD',
+  },
+  {
+    email: 'hadiza@demo.morapay.local',
+    residency: 'NE',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Hadiza',
+      lastName: 'Souley',
+      dateOfBirth: '1990-10-02',
+      nationality: 'NE',
+      phone: '22790123456',
+      addressLine: '14 rue du Sahel, Plateau',
+      city: 'Niamey',
+      nationalIdNo: 'NE-9010-02336',
+      walletMsisdn: '22790123456',
+      walletNetwork: 'AIRTEL',
+    },
+    note: 'Niamey resident, tier 2 — sends XOF',
+  },
+  {
+    email: 'moussa@demo.morapay.local',
+    residency: 'ML',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Moussa',
+      lastName: 'Traoré',
+      dateOfBirth: '1986-08-14',
+      nationality: 'ML',
+      phone: '22376123456',
+      addressLine: "27 avenue de l'Indépendance, Hamdallaye",
+      city: 'Bamako',
+      nationalIdNo: 'ML-8608-14705',
+      walletMsisdn: '22376123456',
+      walletNetwork: 'ORANGE',
+    },
+    note: 'Bamako resident, tier 2 — sends XOF',
+  },
+  {
+    email: 'amadou@demo.morapay.local',
+    residency: 'SN',
+    kycTier: 2,
+    verified: true,
+    person: {
+      firstName: 'Amadou',
+      lastName: 'Diop',
+      dateOfBirth: '1995-01-27',
+      nationality: 'SN',
+      phone: '221771234567',
+      addressLine: '3 avenue Léopold Sédar Senghor, Plateau',
+      city: 'Dakar',
+      nationalIdNo: 'SN-9501-27862',
+      walletMsisdn: '221771234567',
+      walletNetwork: 'ORANGE',
+    },
+    note: 'Dakar resident, tier 2 — sends XOF',
+  },
   {
     // The only sender subject to exchange control. Every outward payment she
     // makes needs a declared category and counts against an annual allowance.
@@ -327,6 +538,101 @@ const RECIPIENTS: DemoRecipient[] = [
     name: 'THABO MOLEFE',
     note: 'NG-ZA: naira collected in Lagos, rand delivered to an Absa account',
   },
+
+  // One recipient per new market, each pointing at the next country in the
+  // list so that all ten appear as both an origin and a destination. Ten
+  // corridors that can be driven end to end without inventing a recipient
+  // first.
+  {
+    ownerEmail: 'amani@demo.morapay.local',
+    country: 'CG',
+    nickname: 'Brice — Brazzaville',
+    msisdn: '242061234567',
+    network: 'MTN',
+    name: 'BRICE MAKAYA',
+    note: 'CD-CG — CG: the other Congo — XAF to an MTN wallet in Brazzaville',
+  },
+  {
+    ownerEmail: 'brice@demo.morapay.local',
+    country: 'UG',
+    nickname: 'Sarah — Kampala',
+    msisdn: '256772345678',
+    network: 'MTN',
+    name: 'SARAH NAKATO',
+    note: 'CG-UG — UG: shillings with no minor unit, to an MTN wallet in Kampala',
+  },
+  {
+    ownerEmail: 'sarah@demo.morapay.local',
+    country: 'KE',
+    nickname: 'Amina — Nairobi',
+    msisdn: '254712345678',
+    network: 'MPESA',
+    name: 'AMINA WANJIRU',
+    note: 'UG-KE — KE: M-PESA, the rail the rest of the region copied',
+  },
+  {
+    ownerEmail: 'amina@demo.morapay.local',
+    country: 'TZ',
+    nickname: 'Neema — Dar es Salaam',
+    msisdn: '255754123456',
+    network: 'MPESA',
+    name: 'NEEMA MWAKALINGA',
+    note: "KE-TZ — TZ: shillings with two decimals, unlike Uganda's",
+  },
+  {
+    ownerEmail: 'neema@demo.morapay.local',
+    country: 'ZM',
+    nickname: 'Chanda — Lusaka',
+    msisdn: '260971234567',
+    network: 'MTN',
+    name: 'CHANDA MULENGA',
+    note: 'TZ-ZM — ZM: kwacha to an MTN wallet in Lusaka',
+  },
+  {
+    ownerEmail: 'chanda@demo.morapay.local',
+    country: 'GM',
+    nickname: 'Fatou — Banjul',
+    msisdn: '2207012345',
+    network: 'AFRICELL',
+    name: 'FATOU JALLOW',
+    note: 'ZM-GM — GM: the shortest number in the mesh, seven national digits',
+  },
+  {
+    ownerEmail: 'fatou@demo.morapay.local',
+    country: 'NE',
+    nickname: 'Hadiza — Niamey',
+    msisdn: '22790123456',
+    network: 'AIRTEL',
+    name: 'HADIZA SOULEY',
+    note: "GM-NE — NE: XOF under BCEAO, a different licence from Benin's",
+  },
+  {
+    ownerEmail: 'hadiza@demo.morapay.local',
+    country: 'ML',
+    nickname: 'Moussa — Bamako',
+    msisdn: '22376123456',
+    network: 'ORANGE',
+    name: 'MOUSSA TRAORÉ',
+    note: 'NE-ML — ML: XOF to an Orange Money wallet in Bamako',
+  },
+  {
+    ownerEmail: 'moussa@demo.morapay.local',
+    country: 'SN',
+    nickname: 'Amadou — Dakar',
+    msisdn: '221771234567',
+    network: 'ORANGE',
+    name: 'AMADOU DIOP',
+    note: 'ML-SN — SN: XOF to an Orange Money wallet in Dakar',
+  },
+  {
+    ownerEmail: 'amadou@demo.morapay.local',
+    country: 'CD',
+    nickname: 'Amani — Kinshasa',
+    msisdn: '243812345678',
+    network: 'MPESA',
+    name: 'AMANI KABILA',
+    note: 'SN-CD — CD: Congolese francs to an M-PESA wallet in Kinshasa',
+  },
 ];
 
 /** Mirrors PayoutSimulator.pseudoName, so the demo data matches name enquiry. */
@@ -460,6 +766,25 @@ async function main(): Promise<void> {
       } else {
         await prisma.senderProfileBj.upsert({ where: { piiToken }, update: {}, create: data });
       }
+    } else if (isStandardPartition(sender.residency)) {
+      // The ten standard partitions, through the same repository the
+      // application uses — which is the point. Writing them here with a
+      // hand-rolled delegate lookup would be a second residency table to keep
+      // in step with the first.
+      await standard.senderStore(sender.residency).upsert({
+        piiToken,
+        firstName: sender.person.firstName,
+        lastName: sender.person.lastName,
+        dateOfBirth: sender.person.dateOfBirth,
+        nationality: sender.person.nationality,
+        phone: sender.person.phone,
+        addressLine: sender.person.addressLine,
+        city: sender.person.city,
+        nationalIdNo: sender.person.nationalIdNo,
+        walletMsisdn: sender.person.walletMsisdn,
+        walletNetwork: sender.person.walletNetwork,
+        documents: localDocuments,
+      });
     } else if (sender.residency === 'GH') {
       await prisma.senderProfileGh.upsert({
         where: { piiToken },
@@ -473,7 +798,7 @@ async function main(): Promise<void> {
           documents: localDocuments,
         },
       });
-    } else {
+    } else if (sender.residency === 'RU' || sender.residency === 'BY') {
       await prisma.senderProfileRu.upsert({
         where: { piiToken },
         update: {},
@@ -491,6 +816,17 @@ async function main(): Promise<void> {
           ],
         },
       });
+    } else {
+      // Named residencies only. This branch used to be the Russian one, reached
+      // by falling through — so the ten Paycrest-market senders were written
+      // into partition_ru, which has no wallet columns, and their transfers
+      // failed at collection with "no collection wallet on file". A default
+      // that quietly files a Congolese resident in Russia is a data-residency
+      // breach that fails somewhere else entirely, so there is no default now.
+      throw new Error(
+        `Demo sender ${sender.email} has residency ${sender.residency}, which no branch here stores. ` +
+          'Add it rather than letting it fall through to another jurisdiction.',
+      );
     }
 
     if (sender.kycTier > 0) {
