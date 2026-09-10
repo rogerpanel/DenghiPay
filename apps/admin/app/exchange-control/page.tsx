@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { getCurrency, isCurrencyCode } from '@morapay/domain';
 import { useAdmin } from '@/app/providers';
 import { ApiError, api } from '@/lib/api';
 import { AdminShell, Empty, Panel, RequireStaff } from '@/components/shell';
@@ -28,8 +29,17 @@ interface Extract {
   missingIdentity: number;
 }
 
-/** Decimals per currency. Only the ones a regime can quote an allowance in. */
-const DECIMALS: Record<string, number> = { ZAR: 2, NGN: 2, GHS: 2, XAF: 0, XOF: 0 };
+/**
+ * Decimals per currency, from the registry rather than from a list here.
+ *
+ * A hardcoded map covering five currencies was fine while five existed. With
+ * thirteen it is a hundredfold display error waiting for the first CDF or UGX
+ * allowance — and an amount wrong by a hundred still reads as a plausible
+ * amount, on a screen whose whole purpose is handing figures to a regulator.
+ */
+function decimalsOf(currency: string): number {
+  return isCurrencyCode(currency) ? getCurrency(currency).exponent : 2;
+}
 
 /**
  * Exchange-control console (BUILD_PLAN 4.3c, OPEN_ITEMS B8).
@@ -387,7 +397,7 @@ function ExchangeControlConsole() {
 
 /** Minor units to a plain decimal string, at the currency's own precision. */
 function decimalString(minorUnits: string, currency: string): string {
-  const decimals = DECIMALS[currency] ?? 2;
+  const decimals = decimalsOf(currency);
   const digits = minorUnits.padStart(decimals + 1, '0');
   const whole = digits.slice(0, digits.length - decimals);
   return decimals === 0 ? whole : `${whole}.${digits.slice(digits.length - decimals)}`;

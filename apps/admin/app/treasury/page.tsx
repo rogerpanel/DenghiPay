@@ -63,7 +63,13 @@ function TreasuryConsole() {
   const [runs, setRuns] = useState<ReconRun[]>([]);
   const [suspense, setSuspense] = useState<SuspenseItem[]>([]);
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState<'RUB' | 'NGN' | 'GHS'>('NGN');
+  // The float to move. Options come from the positions the server reports, not
+  // from a list kept here — this was RUB, NGN and GHS, so treasury could not
+  // top up the other ten floats, and a float that cannot be topped up is a
+  // corridor that stops paying out the first time it runs dry. Offering
+  // exactly the floats that exist also means the dropdown cannot drift from
+  // the ledger the way a written list did.
+  const [currency, setCurrency] = useState<string>('NGN');
   const [reason, setReason] = useState('');
   const [decisionReason, setDecisionReason] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
@@ -213,11 +219,13 @@ function TreasuryConsole() {
                 className="mp-select"
                 style={{ maxWidth: 140 }}
                 value={currency}
-                onChange={(e) => setCurrency(e.target.value as 'RUB' | 'NGN' | 'GHS')}
+                onChange={(e) => setCurrency(e.target.value)}
               >
-                <option value="RUB">RUB</option>
-                <option value="NGN">NGN</option>
-                <option value="GHS">GHS</option>
+                {(positions?.floats ?? []).map((position) => (
+                  <option key={position.currency} value={position.currency}>
+                    {position.currency}
+                  </option>
+                ))}
               </select>
               <input
                 className="mp-input"

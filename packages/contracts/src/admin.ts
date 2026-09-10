@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { moneySchema, transferStateSchema } from './common';
+import { currencyCodeSchema, moneySchema, transferStateSchema } from './common';
 import { staffRoleSchema } from './auth';
 
 /**
@@ -143,8 +143,22 @@ export const fxExposureSchema = z.object({
 });
 export type FxExposureDto = z.infer<typeof fxExposureSchema>;
 
+/**
+ * A float movement.
+ *
+ * This was `['RUB', 'NGN', 'GHS']`, written when those were the only three
+ * currencies. The ledger holds thirteen positions now and treasury could not
+ * pre-fund ten of them — a float that cannot be topped up is a corridor that
+ * stops paying out the first time it runs dry, surfacing as a validation error
+ * on a back-office form rather than as the operational problem it is.
+ *
+ * Any registered currency is accepted on the wire; whether the ledger actually
+ * holds a position in it is the treasury service's question, because
+ * `LEDGER_CURRENCIES` lives in the ledger package and the wire format does not
+ * depend on the ledger.
+ */
 export const createPrefundingRequestSchema = z.object({
-  currency: z.enum(['RUB', 'NGN', 'GHS']),
+  currency: currencyCodeSchema,
   amountMinorUnits: z.string().regex(/^\d+$/),
   reason: reasonSchema,
 });

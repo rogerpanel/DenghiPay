@@ -38,10 +38,19 @@ echo "→ partitions: $(echo "$partitions" | tr '\n' ' ')"
 guarded=$(printf '%s\nstandard\n' "$partitions" | paste -sd'|' -)
 
 echo "→ neutral-tier code must not import partition modules directly"
+# The seed scripts are the one exemption, and a narrow one: they populate the
+# partitions on purpose, the same way the migrations create them, and they run
+# only against a development database — the seed refuses to run at all when
+# NODE_ENV is production. They were already writing to partition tables through
+# raw Prisma delegates, which this check never saw; going through the shared
+# repository instead means the fixtures and the application cannot disagree
+# about which schema a residency belongs to. They did disagree, and ten
+# countries' senders were written into partition_ru.
 offenders=$(grep -rn --include='*.ts' -E "from ['\"].*partitions/(${guarded})/" apps packages 2>/dev/null \
   | grep -v "^${PARTITION_ROOT}/" \
   | grep -v "partition-gateway" \
-  | grep -v "partitions.module" || true)
+  | grep -v "partitions.module" \
+  | grep -vE "^apps/api/prisma/[a-z-]*seed\.ts:" || true)
 if [ -n "$offenders" ]; then
   echo "$offenders"
   echo "FAIL: partition internals are reachable outside the partition gateway."

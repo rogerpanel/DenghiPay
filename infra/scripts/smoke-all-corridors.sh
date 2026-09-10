@@ -8,12 +8,27 @@
 #
 #   infra/scripts/smoke-all-corridors.sh
 #
-# Start from a clean database. Sending limits aggregate over real history and
-# these runs are large relative to the tier-2 caps, so a second pass over the
-# same database will start refusing transfers with LIMIT_EXCEEDED — the limits
-# engine working, not a regression:
+# **The full 210-corridor pass cannot complete against one database, by
+# design.** Each origin has one demo sender, and the full mesh asks that sender
+# for fourteen transfers to fourteen distinct recipients. The velocity rules
+# trip first — "13 distinct recipients in 7 days" — and every subsequent
+# transfer from that sender lands ON_HOLD with a VELOCITY compliance case.
+# Sending limits aggregate the same way and refuse with LIMIT_EXCEEDED.
 #
-#   pnpm demo:reset && infra/scripts/smoke-all-corridors.sh
+# Both are the fraud and limits engines working. Do not raise a threshold to
+# make this script pass; a test that needs the fraud rules relaxed is telling
+# you the rules work.
+#
+# So CYCLE=1 is the routine run and the one to trust: fifteen transfers, each
+# sender used exactly once, every country covered as both an origin and a
+# destination.
+#
+#   CYCLE=1 infra/scripts/smoke-all-corridors.sh
+#
+# To exercise the full mesh, run it in slices with a reset between them, or
+# seed a sender per corridor:
+#
+#   pnpm demo:reset && COUNTRIES="NG GH ZA CM" infra/scripts/smoke-all-corridors.sh
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

@@ -6,7 +6,13 @@ import {
 } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { CurrencyCode, Money, requireCurrencyCode } from '@morapay/domain';
-import { LedgerService, accountCode, floatCode, floatPrefunding } from '@morapay/ledger';
+import {
+  LEDGER_CURRENCIES,
+  LedgerService,
+  accountCode,
+  floatCode,
+  floatPrefunding,
+} from '@morapay/ledger';
 import { PrismaService } from '../common/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { MetricsService } from '../common/metrics.service';
@@ -170,7 +176,7 @@ export class TreasuryService {
 
   async requestPrefunding(input: {
     readonly staffId: string;
-    readonly currency: 'RUB' | 'NGN' | 'GHS';
+    readonly currency: CurrencyCode;
     readonly amountMinorUnits: bigint;
     readonly reason: string;
   }): Promise<{ id: string }> {
@@ -178,6 +184,22 @@ export class TreasuryService {
       throw new BadRequestException({
         code: 'INVALID_AMOUNT',
         message: 'A prefunding amount must be positive',
+      });
+    }
+
+    /*
+     * The currency must be one the ledger holds a position in.
+     *
+     * The wire schema accepts any registered currency — the wire format does
+     * not depend on the ledger package — so this is where the narrower rule is
+     * enforced. Refusing here rather than letting `floatCode` name an account
+     * that does not exist means the request never becomes a row that four eyes
+     * approve and then cannot be settled.
+     */
+    if (!LEDGER_CURRENCIES.includes(input.currency)) {
+      throw new BadRequestException({
+        code: 'UNSUPPORTED_CURRENCY',
+        message: `The ledger holds no float position in ${input.currency}`,
       });
     }
 
