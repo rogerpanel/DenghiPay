@@ -100,6 +100,15 @@ export const LEDGER_CURRENCIES: readonly CurrencyCode[] = [
   'ZAR',
   'XAF',
   'XOF',
+  // The Paycrest coverage markets. XAF already covers Congo-Brazzaville and
+  // XOF already covers Niger, Mali and Senegal — a currency union is one
+  // position here even though it is four licences elsewhere.
+  'CDF',
+  'UGX',
+  'KES',
+  'TZS',
+  'ZMW',
+  'GMD',
 ];
 
 /**

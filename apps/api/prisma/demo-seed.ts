@@ -13,6 +13,7 @@
  * Never runs in production, and never with live funds enabled.
  */
 import { PrismaClient } from '@prisma/client';
+import { AfricanCountry, CountryCode } from '@morapay/domain';
 import { hash as argonHash } from '@node-rs/argon2';
 import { createHmac } from 'node:crypto';
 
@@ -28,8 +29,13 @@ function tokenise(kind: string, value: string): string {
 
 interface DemoSender {
   email: string;
-  /** Which partition holds this person. Also decides which corridors they see. */
-  residency: 'RU' | 'NG' | 'GH' | 'ZA' | 'CM' | 'BJ';
+  /**
+   * Which partition holds this person. Also decides which corridors they see.
+   *
+   * Any residency the domain knows, so a demo sender can be added in one of the
+   * newer markets without editing a union here first.
+   */
+  residency: CountryCode;
   kycTier: number;
   verified: boolean;
   person: {
@@ -211,7 +217,7 @@ const SENDERS: DemoSender[] = [
 
 interface DemoRecipient {
   ownerEmail: string;
-  country: 'NG' | 'GH' | 'ZA' | 'CM' | 'BJ';
+  country: AfricanCountry;
   nickname: string;
   accountNumber?: string;
   bankCode?: string;
