@@ -37,6 +37,23 @@ const USD_ANCHOR: Readonly<Partial<Record<CurrencyCode, number>>> = {
   ZAR: 18.5,
   XAF: 607.37,
   XOF: 607.37,
+  /*
+   * The Paycrest coverage markets. Indicative levels, and placeholders in
+   * exactly the way the rest of this table is: they exist so a demonstration
+   * shows numbers of the right magnitude, not so anybody trades on them.
+   *
+   * The Congolese franc and the Ugandan shilling are the two worth a second
+   * look. CDF is a few thousand to the dollar, UGX a few thousand as well —
+   * but UGX has **no minor unit**, so a UGX amount is already in whole
+   * shillings while a CDF amount is in centimes. Same order of magnitude on the
+   * anchor, a hundredfold apart in `minorUnits`.
+   */
+  CDF: 2850.0,
+  UGX: 3720.0,
+  KES: 129.0,
+  TZS: 2650.0,
+  ZMW: 26.4,
+  GMD: 72.0,
 };
 
 /** Pairs quoted directly, outside the dollar cross. */
@@ -57,8 +74,32 @@ const DIRECT_RATES: Readonly<Record<string, string>> = {
  *
  * Origins first — a pair is only generated where somebody can send.
  */
-const ORIGIN_CURRENCIES: readonly CurrencyCode[] = ['NGN', 'GHS', 'ZAR', 'XAF', 'XOF'];
-const DESTINATION_CURRENCIES: readonly CurrencyCode[] = ['NGN', 'GHS', 'ZAR', 'XAF', 'XOF'];
+/**
+ * The currencies that trade against each other on a corridor.
+ *
+ * One list, used for both sides, because the mesh is symmetric: every African
+ * country both sends and receives. Eleven currencies is a hundred and ten
+ * ordered pairs, all derived from the anchors above rather than written out —
+ * which is the whole point of anchoring, since a hundred and ten hand-written
+ * rates is a hundred and ten chances for one to disagree with its own
+ * reciprocal.
+ */
+const MESH_CURRENCIES: readonly CurrencyCode[] = [
+  'NGN',
+  'GHS',
+  'ZAR',
+  'XAF',
+  'XOF',
+  'CDF',
+  'UGX',
+  'KES',
+  'TZS',
+  'ZMW',
+  'GMD',
+];
+
+const ORIGIN_CURRENCIES: readonly CurrencyCode[] = MESH_CURRENCIES;
+const DESTINATION_CURRENCIES: readonly CurrencyCode[] = MESH_CURRENCIES;
 
 /**
  * Format a computed cross to a roughly constant number of significant figures,

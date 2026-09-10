@@ -18,7 +18,23 @@ import { PayinProvider, PayinRequest } from '../ports/payin-provider';
 import { DateRange, RawCallback, StatementLine } from '../ports/payout-provider';
 
 /** Where the money is collected from, which decides the rails and the wording. */
-export type PayinMarket = 'RU' | 'NG' | 'GH' | 'ZA' | 'CM' | 'BJ';
+export type PayinMarket =
+  | 'RU'
+  | 'NG'
+  | 'GH'
+  | 'ZA'
+  | 'CM'
+  | 'BJ'
+  | 'CD'
+  | 'CG'
+  | 'UG'
+  | 'KE'
+  | 'TZ'
+  | 'ZM'
+  | 'GM'
+  | 'NE'
+  | 'ML'
+  | 'SN';
 
 interface SimulatedPayin {
   readonly providerRef: ProviderRef;
@@ -63,6 +79,21 @@ const METHODS_BY_MARKET: Readonly<Record<PayinMarket, readonly PayinMethod[]>> =
   // their handset.
   CM: ['MOBILE_MONEY'],
   BJ: ['MOBILE_MONEY'],
+  // Every Paycrest coverage market is wallet-first. That is the whole reason
+  // mobile money reached these countries ahead of retail banking, and it means
+  // the pull shape — we request, the holder approves on their handset — is the
+  // rule across the mesh rather than the exception it looked like when Ghana
+  // was the only one.
+  CD: ['MOBILE_MONEY'],
+  CG: ['MOBILE_MONEY'],
+  UG: ['MOBILE_MONEY'],
+  KE: ['MOBILE_MONEY'],
+  TZ: ['MOBILE_MONEY'],
+  ZM: ['MOBILE_MONEY'],
+  GM: ['MOBILE_MONEY'],
+  NE: ['MOBILE_MONEY'],
+  ML: ['MOBILE_MONEY'],
+  SN: ['MOBILE_MONEY'],
 };
 
 /** What the receiving switch calls its own reference, per market. */
@@ -73,6 +104,16 @@ const SWITCH_PREFIX: Readonly<Record<PayinMarket, string>> = {
   ZA: 'BANKSERV',
   CM: 'GIMAC',
   BJ: 'GIM-UEMOA',
+  CD: 'BCC-RTGS',
+  CG: 'GIMAC',
+  UG: 'ATLAS',
+  KE: 'PESALINK',
+  TZ: 'TIPS',
+  ZM: 'NFS',
+  GM: 'GAMSWITCH',
+  NE: 'GIM-UEMOA',
+  ML: 'GIM-UEMOA',
+  SN: 'GIM-UEMOA',
 };
 
 /**
@@ -88,6 +129,16 @@ const USSD_FALLBACK: Readonly<Record<string, Readonly<Record<string, string>>>> 
   GH: { MTN: '*170#', TELECEL: '*110#', AIRTELTIGO: '*110#' },
   CM: { MTN: '*126#', ORANGE: '#150#' },
   BJ: { MTN: '*880#', MOOV: '*855#', CELTIIS: '*800#' },
+  KE: { MPESA: '*334#', AIRTEL: '*334#' },
+  UG: { MTN: '*165#', AIRTEL: '*185#' },
+  TZ: { MPESA: '*150*00#', AIRTEL: '*150*60#', TIGO: '*150*01#', HALOPESA: '*150*88#' },
+  ZM: { MTN: '*303#', AIRTEL: '*115#', ZAMTEL: '*344#' },
+  CD: { MPESA: '*1122#', ORANGE: '*144#', AIRTEL: '*501#', AFRICELL: '*144#' },
+  CG: { MTN: '*105#', AIRTEL: '*128#' },
+  SN: { ORANGE: '#144#', WAVE: '*999#', FREE: '*555#' },
+  ML: { ORANGE: '#144#', MOOV: '*436#', WAVE: '*999#' },
+  NE: { AIRTEL: '*436#', MOOV: '*555#', ORANGE: '#144#' },
+  GM: { AFRICELL: '*737#', QMONEY: '*111#', WAVE: '*999#' },
 };
 
 function ussdFallbackFor(market: PayinMarket, network: string): string {
@@ -353,44 +404,20 @@ export class PayinSimulator implements PayinProvider {
   }
 }
 
-export function createRussiaPayinSimulator(
+/**
+ * A pay-in simulator for one collection market.
+ *
+ * One factory rather than one per country, for the same reason the payout side
+ * has one: with sixteen markets the only thing that varied between the
+ * hand-written factories was a two-letter code.
+ */
+export function createPayinSimulator(
+  market: PayinMarket,
   corridors: readonly CorridorId[],
   options: PayinSimulatorOptions = DEFAULT_OPTIONS,
 ): PayinSimulator {
-  return new PayinSimulator('payin-ru-sim', corridors, 'RU', options);
+  return new PayinSimulator(`payin-${market.toLowerCase()}-sim`, corridors, market, options);
 }
 
-export function createNigeriaPayinSimulator(
-  corridors: readonly CorridorId[],
-  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
-): PayinSimulator {
-  return new PayinSimulator('payin-ng-sim', corridors, 'NG', options);
-}
-
-export function createGhanaPayinSimulator(
-  corridors: readonly CorridorId[],
-  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
-): PayinSimulator {
-  return new PayinSimulator('payin-gh-sim', corridors, 'GH', options);
-}
-
-export function createSouthAfricaPayinSimulator(
-  corridors: readonly CorridorId[],
-  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
-): PayinSimulator {
-  return new PayinSimulator('payin-za-sim', corridors, 'ZA', options);
-}
-
-export function createCameroonPayinSimulator(
-  corridors: readonly CorridorId[],
-  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
-): PayinSimulator {
-  return new PayinSimulator('payin-cm-sim', corridors, 'CM', options);
-}
-
-export function createBeninPayinSimulator(
-  corridors: readonly CorridorId[],
-  options: PayinSimulatorOptions = DEFAULT_OPTIONS,
-): PayinSimulator {
-  return new PayinSimulator('payin-bj-sim', corridors, 'BJ', options);
-}
+/** Every market this simulator can collect from. */
+export const PAYIN_MARKETS = Object.keys(METHODS_BY_MARKET) as readonly PayinMarket[];

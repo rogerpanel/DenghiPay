@@ -8,21 +8,10 @@ import {
 } from '@morapay/domain';
 import {
   PayoutSimulator,
-  createBeninPayoutSimulator,
-  createCameroonPayoutSimulator,
-  createGhanaPayoutSimulator,
-  createNigeriaPayoutSimulator,
-  createSouthAfricaPayoutSimulator,
+  createPayoutSimulator,
   institutionsForDestination,
 } from './payout.simulator';
-import {
-  PayinSimulator,
-  createBeninPayinSimulator,
-  createCameroonPayinSimulator,
-  createGhanaPayinSimulator,
-  createNigeriaPayinSimulator,
-  createRussiaPayinSimulator,
-} from './payin.simulator';
+import { PayinSimulator, createPayinSimulator } from './payin.simulator';
 import { MockScreeningProvider, similarity } from './screening.mock';
 import { MockKycProvider } from './kyc.mock';
 import { SimulatedRateSource } from './rate-source.simulated';
@@ -66,7 +55,7 @@ async function submit(sim: PayoutSimulator, recipient: RecipientDetails, key = '
 }
 
 describe('payout simulator — name enquiry (BUILD_PLAN 7.2)', () => {
-  const sim = createNigeriaPayoutSimulator([RU_NG]);
+  const sim = createPayoutSimulator('NG', [RU_NG]);
 
   it('resolves a name the sender can confirm before committing', async () => {
     const result = await sim.resolveRecipient({
@@ -109,7 +98,7 @@ describe('payout simulator — name enquiry (BUILD_PLAN 7.2)', () => {
   });
 
   it('validates Ghanaian MSISDNs and networks', async () => {
-    const gh = createGhanaPayoutSimulator([RU_GH]);
+    const gh = createPayoutSimulator('GH', [RU_GH]);
     const good = await gh.resolveRecipient({
       corridorId: RU_GH,
       recipient: ghRecipient('233241234567'),
@@ -132,7 +121,7 @@ describe('payout simulator — name enquiry (BUILD_PLAN 7.2)', () => {
 
 describe('payout simulator — the FreshPay failure catalogue', () => {
   it('acknowledges without settling anything', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const ack = await submit(sim, ngRecipient('0123456789'));
     expect(ack._tag).toBe('ACKNOWLEDGED');
     // The type system already prevents this being mistaken for an outcome;
@@ -141,7 +130,7 @@ describe('payout simulator — the FreshPay failure catalogue', () => {
   });
 
   it('acknowledges, then fails — the Status/Trans_Status pair', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const ack = await submit(sim, ngRecipient('0123451111'));
     expect(ack._tag).toBe('ACKNOWLEDGED');
 
@@ -154,7 +143,7 @@ describe('payout simulator — the FreshPay failure catalogue', () => {
   });
 
   it('stays pending across several polls before settling', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const ack = await submit(sim, ngRecipient('0123452222'));
     expect((await sim.getStatus(ack.providerRef))._tag).toBe('PENDING');
     expect((await sim.getStatus(ack.providerRef))._tag).toBe('PENDING');
@@ -162,7 +151,7 @@ describe('payout simulator — the FreshPay failure catalogue', () => {
   });
 
   it('refuses a float amount at the boundary instead of propagating it', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const ack = await submit(sim, ngRecipient('0123455555'));
     const outcome = await sim.getStatus(ack.providerRef);
     expect(outcome._tag).toBe('FAILED');
@@ -170,7 +159,7 @@ describe('payout simulator — the FreshPay failure catalogue', () => {
   });
 
   it('fails terminally on a closed account', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const ack = await submit(sim, ngRecipient('0123456666'));
     const outcome = await sim.getStatus(ack.providerRef);
     expect(outcome._tag).toBe('FAILED');
@@ -178,13 +167,13 @@ describe('payout simulator — the FreshPay failure catalogue', () => {
   });
 
   it('plans duplicate, out-of-order deliveries for the duplicate scenario', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const ack = await submit(sim, ngRecipient('0123453333'));
     expect(sim.callbackPlanFor(ack.providerRef)).toEqual({ deliveries: 3, outOfOrder: true });
   });
 
   it('sends no callback at all for the dropped-webhook scenario', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const ack = await submit(sim, ngRecipient('0123454444'));
     expect(sim.callbackPlanFor(ack.providerRef).deliveries).toBe(0);
     // ...and the transfer still reaches a terminal state through polling alone.
@@ -192,20 +181,20 @@ describe('payout simulator — the FreshPay failure catalogue', () => {
   });
 
   it('is idempotent: the same key never creates a second payout', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const first = await submit(sim, ngRecipient('0123456789'), 'same-key');
     const second = await submit(sim, ngRecipient('0123456789'), 'same-key');
     expect(second.providerRef).toBe(first.providerRef);
   });
 
   it('returns FAILED for an unknown reference rather than throwing', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const outcome = await sim.getStatus(asProviderRef('NOPE'));
     expect(outcome._tag).toBe('FAILED');
   });
 
   it('parses a callback into a trigger and ignores both status fields', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const ack = await submit(sim, ngRecipient('0123451111'));
     await sim.getStatus(ack.providerRef); // make it fail
     const { body, eventId } = sim.buildCallbackBody(ack.providerRef);
@@ -226,7 +215,7 @@ describe('payout simulator — the FreshPay failure catalogue', () => {
   });
 
   it('refuses a callback with no event id — it could not be replay-protected', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     await expect(
       sim.parseCallback({
         rawBody: Buffer.from(JSON.stringify({ provider_ref: 'X' })),
@@ -237,7 +226,7 @@ describe('payout simulator — the FreshPay failure catalogue', () => {
   });
 
   it('reports settled payouts on the statement', async () => {
-    const sim = createNigeriaPayoutSimulator([RU_NG]);
+    const sim = createPayoutSimulator('NG', [RU_NG]);
     const ack = await submit(sim, ngRecipient('0123456789'));
     await sim.getStatus(ack.providerRef);
     const lines = await sim.fetchStatement({
@@ -278,7 +267,7 @@ describe('pay-in simulator', () => {
   }
 
   it('returns instructions the sender can act on, and no receipt of funds', async () => {
-    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('RU', corridors, { autoConfirmAfterSeconds: null });
     const ack = await initiate(sim);
     expect(ack._tag).toBe('ACKNOWLEDGED');
     expect(ack.instructions.kind).toBe('SBP');
@@ -289,14 +278,14 @@ describe('pay-in simulator', () => {
   });
 
   it('models every pay-in method', async () => {
-    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('RU', corridors, { autoConfirmAfterSeconds: null });
     expect((await initiate(sim, 'QR')).instructions.kind).toBe('QR');
     expect((await initiate(sim, 'CARD')).instructions.kind).toBe('CARD');
     expect((await initiate(sim, 'VIRTUAL_ACCOUNT')).instructions.kind).toBe('VIRTUAL_ACCOUNT');
   });
 
   it('settles once the sender pays, reporting the amount received', async () => {
-    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('RU', corridors, { autoConfirmAfterSeconds: null });
     const ack = await initiate(sim);
     expect(sim.markPaid(ack.providerRef)).toBe(true);
 
@@ -309,14 +298,14 @@ describe('pay-in simulator', () => {
   });
 
   it('does not settle twice', async () => {
-    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('RU', corridors, { autoConfirmAfterSeconds: null });
     const ack = await initiate(sim);
     expect(sim.markPaid(ack.providerRef)).toBe(true);
     expect(sim.markPaid(ack.providerRef)).toBe(false);
   });
 
   it('models a declined pay-in', async () => {
-    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('RU', corridors, { autoConfirmAfterSeconds: null });
     const ack = await initiate(sim);
     expect(sim.markFailed(ack.providerRef)).toBe(true);
     const outcome = await sim.getStatus(ack.providerRef);
@@ -325,7 +314,7 @@ describe('pay-in simulator', () => {
   });
 
   it('is idempotent under a repeated key', async () => {
-    const sim = createRussiaPayinSimulator(corridors, { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('RU', corridors, { autoConfirmAfterSeconds: null });
     const a = await initiate(sim);
     const b = await initiate(sim);
     expect(b.providerRef).toBe(a.providerRef);
@@ -342,7 +331,7 @@ describe('pay-in simulator, intra-African markets', () => {
   const GH_NG = asCorridorId('GH-NG');
 
   it('gives a Nigerian sender a ten-digit NUBAN to push to', async () => {
-    const sim = createNigeriaPayinSimulator([NG_GH], { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('NG', [NG_GH], { autoConfirmAfterSeconds: null });
     const ack = await sim.initiatePayin(
       {
         corridorId: NG_GH,
@@ -365,7 +354,7 @@ describe('pay-in simulator, intra-African markets', () => {
   });
 
   it('sends a Ghanaian sender an approval prompt, with a USSD fallback', async () => {
-    const sim = createGhanaPayinSimulator([GH_NG], { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('GH', [GH_NG], { autoConfirmAfterSeconds: null });
     const ack = await sim.initiatePayin(
       {
         corridorId: GH_NG,
@@ -390,7 +379,7 @@ describe('pay-in simulator, intra-African markets', () => {
   });
 
   it('refuses a mobile-money pay-in with no wallet to debit', async () => {
-    const sim = createGhanaPayinSimulator([GH_NG], { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('GH', [GH_NG], { autoConfirmAfterSeconds: null });
     await expect(
       sim.initiatePayin(
         {
@@ -411,7 +400,7 @@ describe('pay-in simulator, intra-African markets', () => {
    * than discovering it as a provider error in production.
    */
   it('refuses a method its market does not run', async () => {
-    const sim = createNigeriaPayinSimulator([NG_GH], { autoConfirmAfterSeconds: null });
+    const sim = createPayinSimulator('NG', [NG_GH], { autoConfirmAfterSeconds: null });
     expect(sim.supportedMethods).toEqual(['VIRTUAL_ACCOUNT']);
     await expect(
       sim.initiatePayin(
@@ -699,7 +688,7 @@ describe('rate source', () => {
 
 describe('provider registry', () => {
   it('selects by corridor, then priority, and fails over when unhealthy', () => {
-    const primary = createNigeriaPayoutSimulator([RU_NG]);
+    const primary = createPayoutSimulator('NG', [RU_NG]);
     const secondary = new PayoutSimulator('payout-ng-alt', [RU_NG], 'NG');
     const registry = new ProviderRegistry()
       .registerPayout({ provider: primary, priority: 10, enabled: true })
@@ -713,7 +702,7 @@ describe('provider registry', () => {
   });
 
   it('keeps a disabled rail out of routing (guardrail G1)', () => {
-    const contracted = createNigeriaPayoutSimulator([RU_NG]);
+    const contracted = createPayoutSimulator('NG', [RU_NG]);
     const registry = new ProviderRegistry().registerPayout({
       provider: contracted,
       priority: 1,
@@ -723,7 +712,7 @@ describe('provider registry', () => {
   });
 
   it('resolves a provider by id, not by what routing would pick today', () => {
-    const primary = createNigeriaPayoutSimulator([RU_NG]);
+    const primary = createPayoutSimulator('NG', [RU_NG]);
     const secondary = new PayoutSimulator('payout-ng-alt', [RU_NG], 'NG');
     const registry = new ProviderRegistry()
       .registerPayout({ provider: primary, priority: 10, enabled: true })
@@ -733,7 +722,7 @@ describe('provider registry', () => {
   });
 
   it('selects and describes pay-in providers too', () => {
-    const payin = createRussiaPayinSimulator([RU_NG]);
+    const payin = createPayinSimulator('RU', [RU_NG]);
     const registry = new ProviderRegistry().registerPayin({
       provider: payin,
       priority: 1,
@@ -758,7 +747,7 @@ describe('payout simulator — South Africa, Cameroon and Benin', () => {
   const NG_BJ = asCorridorId('NG-BJ');
 
   it('credits a South African bank by universal branch code', async () => {
-    const za = createSouthAfricaPayoutSimulator([NG_ZA]);
+    const za = createPayoutSimulator('ZA', [NG_ZA]);
     const result = await za.resolveRecipient({
       corridorId: NG_ZA,
       recipient: {
@@ -774,7 +763,7 @@ describe('payout simulator — South Africa, Cameroon and Benin', () => {
   });
 
   it('rejects a Nigerian bank code presented to the South African rail', async () => {
-    const za = createSouthAfricaPayoutSimulator([NG_ZA]);
+    const za = createPayoutSimulator('ZA', [NG_ZA]);
     const result = await za.resolveRecipient({
       corridorId: NG_ZA,
       recipient: {
@@ -789,7 +778,7 @@ describe('payout simulator — South Africa, Cameroon and Benin', () => {
   });
 
   it('resolves Cameroonian and Beninese wallets on their own operators', async () => {
-    const cm = createCameroonPayoutSimulator([NG_CM]);
+    const cm = createPayoutSimulator('CM', [NG_CM]);
     const orange = await cm.resolveRecipient({
       corridorId: NG_CM,
       recipient: {
@@ -802,7 +791,7 @@ describe('payout simulator — South Africa, Cameroon and Benin', () => {
     });
     expect(orange._tag).toBe('RESOLVED');
 
-    const bj = createBeninPayoutSimulator([NG_BJ]);
+    const bj = createPayoutSimulator('BJ', [NG_BJ]);
     const moov = await bj.resolveRecipient({
       corridorId: NG_BJ,
       recipient: {
@@ -822,7 +811,7 @@ describe('payout simulator — South Africa, Cameroon and Benin', () => {
    * is acknowledged and never arrives.
    */
   it('refuses a network that does not operate in the destination', async () => {
-    const bj = createBeninPayoutSimulator([NG_BJ]);
+    const bj = createPayoutSimulator('BJ', [NG_BJ]);
     const result = await bj.resolveRecipient({
       corridorId: NG_BJ,
       recipient: {
@@ -838,7 +827,7 @@ describe('payout simulator — South Africa, Cameroon and Benin', () => {
   });
 
   it('refuses a Ghanaian number presented to the Cameroonian rail', async () => {
-    const cm = createCameroonPayoutSimulator([NG_CM]);
+    const cm = createPayoutSimulator('CM', [NG_CM]);
     const result = await cm.resolveRecipient({
       corridorId: NG_CM,
       recipient: {
@@ -864,7 +853,7 @@ describe('payout simulator — South Africa, Cameroon and Benin', () => {
   });
 
   it('stamps each market with its own switch reference on settlement', async () => {
-    const cm = createCameroonPayoutSimulator([NG_CM]);
+    const cm = createPayoutSimulator('CM', [NG_CM]);
     const ack = await cm.initiatePayout(
       {
         corridorId: NG_CM,
@@ -892,7 +881,7 @@ describe('pay-in simulator — the francophone markets', () => {
   const BJ_GH = asCorridorId('BJ-GH');
 
   it('collects whole CFA francs against a wallet prompt', async () => {
-    const cm = createCameroonPayinSimulator([CM_NG], { autoConfirmAfterSeconds: null });
+    const cm = createPayinSimulator('CM', [CM_NG], { autoConfirmAfterSeconds: null });
     const ack = await cm.initiatePayin(
       {
         corridorId: CM_NG,
@@ -920,7 +909,7 @@ describe('pay-in simulator — the francophone markets', () => {
   });
 
   it('gives each Beninese operator its own recovery code', async () => {
-    const bj = createBeninPayinSimulator([BJ_GH], { autoConfirmAfterSeconds: null });
+    const bj = createPayinSimulator('BJ', [BJ_GH], { autoConfirmAfterSeconds: null });
     const ack = await bj.initiatePayin(
       {
         corridorId: BJ_GH,
@@ -947,12 +936,12 @@ describe('provider registry — routing by destination', () => {
   it('finds the provider that serves a destination, whatever the origin', () => {
     const registry = new ProviderRegistry()
       .registerPayout({
-        provider: createCameroonPayoutSimulator([asCorridorId('NG-CM'), asCorridorId('BJ-CM')]),
+        provider: createPayoutSimulator('CM', [asCorridorId('NG-CM'), asCorridorId('BJ-CM')]),
         priority: 100,
         enabled: true,
       })
       .registerPayout({
-        provider: createSouthAfricaPayoutSimulator([asCorridorId('NG-ZA')]),
+        provider: createPayoutSimulator('ZA', [asCorridorId('NG-ZA')]),
         priority: 100,
         enabled: true,
       });
@@ -964,7 +953,7 @@ describe('provider registry — routing by destination', () => {
 
   it('will not route to a rail that is registered but disabled', () => {
     const registry = new ProviderRegistry().registerPayout({
-      provider: createBeninPayoutSimulator([asCorridorId('NG-BJ')]),
+      provider: createPayoutSimulator('BJ', [asCorridorId('NG-BJ')]),
       priority: 100,
       enabled: false,
     });

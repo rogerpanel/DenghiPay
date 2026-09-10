@@ -91,6 +91,74 @@ const BJ_NETWORKS: Readonly<Record<string, string>> = {
   CELTIIS: 'Celtiis Cash',
 };
 
+/*
+ * The Paycrest coverage markets.
+ *
+ * Note how often the same brand appears under a different operator: M-Pesa is
+ * Safaricom in Kenya, Vodacom in Tanzania and Vodacom again in the DRC — three
+ * licensees on three switches. The display names carry the country for exactly
+ * that reason, because a support agent reading "M-Pesa" alone cannot tell which
+ * regulator's rail a payment went down.
+ */
+const KE_NETWORKS: Readonly<Record<string, string>> = {
+  MPESA: 'M-PESA (Safaricom)',
+  AIRTEL: 'Airtel Money Kenya',
+};
+
+const UG_NETWORKS: Readonly<Record<string, string>> = {
+  MTN: 'MTN MoMo Uganda',
+  AIRTEL: 'Airtel Money Uganda',
+};
+
+const TZ_NETWORKS: Readonly<Record<string, string>> = {
+  MPESA: 'M-PESA (Vodacom Tanzania)',
+  AIRTEL: 'Airtel Money Tanzania',
+  TIGO: 'Mixx by Yas',
+  HALOPESA: 'HaloPesa',
+};
+
+const ZM_NETWORKS: Readonly<Record<string, string>> = {
+  MTN: 'MTN MoMo Zambia',
+  AIRTEL: 'Airtel Money Zambia',
+  ZAMTEL: 'Zamtel Kwacha',
+};
+
+const CD_NETWORKS: Readonly<Record<string, string>> = {
+  MPESA: 'M-PESA (Vodacom Congo)',
+  ORANGE: 'Orange Money RDC',
+  AIRTEL: 'Airtel Money RDC',
+  AFRICELL: 'Afrimoney RDC',
+};
+
+const CG_NETWORKS: Readonly<Record<string, string>> = {
+  MTN: 'MTN MoMo Congo',
+  AIRTEL: 'Airtel Money Congo',
+};
+
+const SN_NETWORKS: Readonly<Record<string, string>> = {
+  ORANGE: 'Orange Money S\u00e9n\u00e9gal',
+  WAVE: 'Wave S\u00e9n\u00e9gal',
+  FREE: 'Free Money',
+};
+
+const ML_NETWORKS: Readonly<Record<string, string>> = {
+  ORANGE: 'Orange Money Mali',
+  MOOV: 'Moov Money Mali',
+  WAVE: 'Wave Mali',
+};
+
+const NE_NETWORKS: Readonly<Record<string, string>> = {
+  AIRTEL: 'Airtel Money Niger',
+  MOOV: 'Moov Money Niger',
+  ORANGE: 'Orange Money Niger',
+};
+
+const GM_NETWORKS: Readonly<Record<string, string>> = {
+  AFRICELL: 'Afrimoney Gambia',
+  QMONEY: 'QMoney',
+  WAVE: 'Wave Gambia',
+};
+
 /**
  * What each destination market can be paid into.
  *
@@ -110,7 +178,22 @@ interface PayoutMarketProfile {
   readonly msisdnHint: string;
 }
 
-export type PayoutMarket = 'NG' | 'GH' | 'ZA' | 'CM' | 'BJ';
+export type PayoutMarket =
+  | 'NG'
+  | 'GH'
+  | 'ZA'
+  | 'CM'
+  | 'BJ'
+  | 'CD'
+  | 'CG'
+  | 'UG'
+  | 'KE'
+  | 'TZ'
+  | 'ZM'
+  | 'GM'
+  | 'NE'
+  | 'ML'
+  | 'SN';
 
 const MARKETS: Readonly<Record<PayoutMarket, PayoutMarketProfile>> = {
   NG: {
@@ -147,6 +230,76 @@ const MARKETS: Readonly<Record<PayoutMarket, PayoutMarketProfile>> = {
     switchName: 'GIM-UEMOA',
     msisdnPattern: /^229\d{8,10}$/,
     msisdnHint: 'a Beninese mobile number (229 then eight to ten digits)',
+  },
+  KE: {
+    banks: {},
+    networks: KE_NETWORKS,
+    switchName: 'PESALINK',
+    msisdnPattern: /^254\d{9}$/,
+    msisdnHint: 'a Kenyan mobile number (254 then nine digits)',
+  },
+  UG: {
+    banks: {},
+    networks: UG_NETWORKS,
+    switchName: 'ATLAS',
+    msisdnPattern: /^256\d{9}$/,
+    msisdnHint: 'a Ugandan mobile number (256 then nine digits)',
+  },
+  TZ: {
+    banks: {},
+    networks: TZ_NETWORKS,
+    switchName: 'TIPS',
+    msisdnPattern: /^255\d{9}$/,
+    msisdnHint: 'a Tanzanian mobile number (255 then nine digits)',
+  },
+  ZM: {
+    banks: {},
+    networks: ZM_NETWORKS,
+    switchName: 'NFS',
+    msisdnPattern: /^260\d{9}$/,
+    msisdnHint: 'a Zambian mobile number (260 then nine digits)',
+  },
+  CD: {
+    banks: {},
+    networks: CD_NETWORKS,
+    switchName: 'BCC-RTGS',
+    msisdnPattern: /^243\d{9}$/,
+    msisdnHint: 'a Congolese mobile number (243 then nine digits)',
+  },
+  CG: {
+    banks: {},
+    networks: CG_NETWORKS,
+    switchName: 'GIMAC',
+    msisdnPattern: /^242\d{9}$/,
+    msisdnHint: 'a Congolese mobile number (242 then nine digits)',
+  },
+  SN: {
+    banks: {},
+    networks: SN_NETWORKS,
+    switchName: 'GIM-UEMOA',
+    msisdnPattern: /^221\d{9}$/,
+    msisdnHint: 'a Senegalese mobile number (221 then nine digits)',
+  },
+  ML: {
+    banks: {},
+    networks: ML_NETWORKS,
+    switchName: 'GIM-UEMOA',
+    msisdnPattern: /^223\d{8}$/,
+    msisdnHint: 'a Malian mobile number (223 then eight digits)',
+  },
+  NE: {
+    banks: {},
+    networks: NE_NETWORKS,
+    switchName: 'GIM-UEMOA',
+    msisdnPattern: /^227\d{8}$/,
+    msisdnHint: 'a Nigerien mobile number (227 then eight digits)',
+  },
+  GM: {
+    banks: {},
+    networks: GM_NETWORKS,
+    switchName: 'GAMSWITCH',
+    msisdnPattern: /^220\d{7}$/,
+    msisdnHint: 'a Gambian mobile number (220 then seven digits)',
   },
 };
 
@@ -444,27 +597,23 @@ function pseudoName(identifier: string): string {
   return NAME_POOL[hash % NAME_POOL.length] ?? 'UNKNOWN BENEFICIARY';
 }
 
-export function createNigeriaPayoutSimulator(corridors: readonly CorridorId[]): PayoutSimulator {
-  return new PayoutSimulator('payout-ng-sim', corridors, 'NG');
-}
-
-export function createGhanaPayoutSimulator(corridors: readonly CorridorId[]): PayoutSimulator {
-  return new PayoutSimulator('payout-gh-sim', corridors, 'GH');
-}
-
-export function createSouthAfricaPayoutSimulator(
+/**
+ * A payout simulator for one destination market.
+ *
+ * One factory rather than one per country. There were five hand-written
+ * factories before the mesh reached fifteen destinations; at that point the
+ * only thing they varied was a two-letter code, and fifteen identical functions
+ * is a list pretending to be code.
+ */
+export function createPayoutSimulator(
+  market: PayoutMarket,
   corridors: readonly CorridorId[],
 ): PayoutSimulator {
-  return new PayoutSimulator('payout-za-sim', corridors, 'ZA');
+  return new PayoutSimulator(`payout-${market.toLowerCase()}-sim`, corridors, market);
 }
 
-export function createCameroonPayoutSimulator(corridors: readonly CorridorId[]): PayoutSimulator {
-  return new PayoutSimulator('payout-cm-sim', corridors, 'CM');
-}
-
-export function createBeninPayoutSimulator(corridors: readonly CorridorId[]): PayoutSimulator {
-  return new PayoutSimulator('payout-bj-sim', corridors, 'BJ');
-}
+/** Every market this simulator can pay into. */
+export const PAYOUT_MARKETS = Object.keys(MARKETS) as readonly PayoutMarket[];
 
 /**
  * The institutions each destination can pay into, for the recipient form.
