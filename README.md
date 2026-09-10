@@ -18,6 +18,7 @@ Cross-border remittance platform. Russia/CIS → Nigeria & Ghana.
 | FX rates            | [`docs/FX_RATES.md`](./docs/FX_RATES.md)                                   |
 | Open items          | [`docs/OPEN_ITEMS.md`](./docs/OPEN_ITEMS.md)                               |
 | Partners            | [`docs/PARTNER_PAYCREST.md`](./docs/PARTNER_PAYCREST.md)                   |
+| Call sheet          | [`docs/PAYCREST_CALL_SHEET.md`](./docs/PAYCREST_CALL_SHEET.md)             |
 | Integration         | [`docs/PARTNER_INTEGRATION_SPEC.md`](./docs/PARTNER_INTEGRATION_SPEC.md)   |
 | Decisions in flight | [`docs/DECISION_STABLECOIN_ROUTE.md`](./docs/DECISION_STABLECOIN_ROUTE.md) |
 | Feature gap         | [`docs/FEATURE_GAP_LEMFI.md`](./docs/FEATURE_GAP_LEMFI.md)                 |
