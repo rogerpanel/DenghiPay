@@ -169,3 +169,37 @@ export async function restoreSession(): Promise<boolean> {
 export function corridorsPath(residency: string | null): string {
   return residency === null ? '/corridors' : `/corridors?from=${encodeURIComponent(residency)}`;
 }
+
+/**
+ * The corridor this sender last sent on, remembered on their own device.
+ *
+ * Keyed by user id, because a shared phone is normal in the markets we serve
+ * and the previous person's destination is not this person's business.
+ *
+ * Every access is wrapped: `localStorage` throws outright in a private window
+ * on some browsers and when site data is blocked, and a remembered convenience
+ * must never be the reason a send screen fails to render. A miss simply means
+ * the first corridor in the list, which is where this started.
+ *
+ * Only a corridor id — two country codes — is stored. Nothing about amounts,
+ * recipients or people.
+ */
+const LAST_CORRIDOR_PREFIX = 'morapay.lastCorridor.';
+
+export function lastCorridor(userId: string | null): string | null {
+  if (userId === null) return null;
+  try {
+    return window.localStorage.getItem(LAST_CORRIDOR_PREFIX + userId);
+  } catch {
+    return null;
+  }
+}
+
+export function rememberCorridor(userId: string | null, corridorId: string): void {
+  if (userId === null) return;
+  try {
+    window.localStorage.setItem(LAST_CORRIDOR_PREFIX + userId, corridorId);
+  } catch {
+    // Storage unavailable. The sender picks their corridor next time; nothing else breaks.
+  }
+}

@@ -78,6 +78,8 @@ const en = {
   'send.amount.corridor': 'Destination',
   'send.amount.quoteExpires': 'This rate holds for {seconds}s',
   'send.amount.refreshQuote': 'Refresh the rate',
+  'send.amount.getRate': 'Get the rate',
+  'send.amount.quoting': 'Getting your rate…',
   'send.amount.expired': 'The rate expired. Refresh to see the current one.',
 
   'send.breakdown.title': 'What this costs',
@@ -413,6 +415,8 @@ const ru: Record<TranslationKey, string> = {
   'send.amount.corridor': 'Куда',
   'send.amount.quoteExpires': 'Курс действует {seconds} с',
   'send.amount.refreshQuote': 'Обновить курс',
+  'send.amount.getRate': 'Узнать курс',
+  'send.amount.quoting': 'Получаем курс…',
   'send.amount.expired': 'Курс истёк. Обновите, чтобы увидеть текущий.',
 
   'send.breakdown.title': 'Из чего складывается цена',
@@ -738,6 +742,8 @@ const fr: Record<TranslationKey, string> = {
   'send.amount.corridor': 'Destination',
   'send.amount.quoteExpires': 'Ce taux tient {seconds} s',
   'send.amount.refreshQuote': 'Actualiser le taux',
+  'send.amount.getRate': 'Obtenir le taux',
+  'send.amount.quoting': 'Obtention du taux…',
   'send.amount.expired': 'Le taux a expiré. Actualisez pour voir le taux actuel.',
 
   'send.breakdown.title': 'Ce que cela coûte',

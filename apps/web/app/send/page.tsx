@@ -2,9 +2,16 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '@/app/providers';
-import { ApiError, api, corridorsPath, newIdempotencyKey } from '@/lib/api';
+import {
+  ApiError,
+  api,
+  corridorsPath,
+  lastCorridor,
+  newIdempotencyKey,
+  rememberCorridor,
+} from '@/lib/api';
 import { AppShell, ErrorNotice, Field, MoneyDto, RequireAuth } from '@/components/shell';
 import type { TranslationKey } from '@/lib/i18n';
 
@@ -171,12 +178,21 @@ function SendFlow() {
       // not promise to have excluded it.
       const usable = corridorList.corridors.filter((c) => c.enabled);
       setCorridors(usable);
-      // Functional form on purpose: reading `corridorId` here would make it a
-      // dependency, and this effect would then re-run — and re-fetch — every
-      // time the sender picked a different corridor.
-      setCorridorId((current) =>
-        usable.length > 0 && !usable.some((c) => c.id === current) ? usable[0]!.id : current,
-      );
+      /* Functional form on purpose: reading `corridorId` here would make it a
+         dependency, and this effect would then re-run — and re-fetch — every
+         time the sender picked a different corridor.
+
+         The fallback order matters. A repeat ("send again") wins, because the
+         sender has just said what they want. Otherwise the corridor they last
+         sent on, because remittance is overwhelmingly the same route month after
+         month, and re-picking it out of fourteen is a tax on the common case.
+         Only then the first in the list. */
+      setCorridorId((current) => {
+        if (usable.some((c) => c.id === current)) return current;
+        const remembered = lastCorridor(account?.id ?? null);
+        if (remembered !== null && usable.some((c) => c.id === remembered)) return remembered;
+        return usable.length > 0 ? usable[0]!.id : current;
+      });
       setRecipients(recipientList.recipients);
 
       // A repeat names its recipient, so the sender should not have to pick the
@@ -279,6 +295,55 @@ function SendFlow() {
     }
   }, [amountText, corridorId, sendDecimals, t]);
 
+  /*
+   * Quote as soon as the sender stops typing, rather than making them ask.
+   *
+   * The amount step used to need two taps: one to fetch a quote and one to move
+   * on. The first tap carried no decision — the sender had already said what
+   * they wanted by typing it — so it was a round trip they waited for after
+   * being made to ask for it.
+   *
+   * Four conditions, and each is here to avoid a pointless request rather than
+   * out of caution:
+   *
+   *  - 400ms after the last keystroke, so typing "25000" is one quote and not
+   *    five.
+   *  - Only inside the corridor's own minimum and maximum. Below the minimum the
+   *    server would refuse, and a validation error that appears while somebody
+   *    is still typing the first digit reads as the app being broken.
+   *  - Not while a quote for this exact amount already stands, so re-rendering
+   *    does not re-quote.
+   *  - Not while a request is in flight.
+   *
+   * Nothing is skipped by this. A quote is a price with a ninety-second lock,
+   * not a commitment: screening, the limit check and the sender's explicit
+   * confirmation all still happen afterwards, unchanged.
+   */
+  /* Held in a ref, not named as a dependency. `requestQuote` is rebuilt on every
+     amount change, so depending on it would re-arm the timer on each render; the
+     ref keeps the effect depending only on the values that should actually
+     re-trigger a quote, while still calling the current function. */
+  const requestQuoteRef = useRef(requestQuote);
+  requestQuoteRef.current = requestQuote;
+
+  const quotedAmount = quote?.sendAmount.minorUnits ?? null;
+  useEffect(() => {
+    if (corridor === null || busy) return;
+    let minorUnits: bigint;
+    try {
+      minorUnits = BigInt(toMinorUnits(amountText, sendDecimals));
+    } catch {
+      return; // Not yet a number — the sender is mid-keystroke.
+    }
+    if (minorUnits <= 0n) return;
+    if (minorUnits < BigInt(corridor.minSend.minorUnits)) return;
+    if (minorUnits > BigInt(corridor.maxSend.minorUnits)) return;
+    if (quotedAmount !== null && BigInt(quotedAmount) === minorUnits) return;
+
+    const timer = setTimeout(() => void requestQuoteRef.current(), 400);
+    return () => clearTimeout(timer);
+  }, [amountText, corridor, sendDecimals, quotedAmount, busy]);
+
   /* The recipient the sender is describing, in the shape the API expects.
      Built in one place because the enquiry and the save must describe the same
      person — the confirmation step compares the name returned by the first
@@ -365,6 +430,9 @@ function SendFlow() {
             : {}),
         },
       });
+      // Remembered only once a transfer actually exists. Storing it earlier
+      // would learn from a corridor somebody looked at and abandoned.
+      rememberCorridor(account?.id ?? null, corridorId);
       router.push(`/transfers/${transfer.id}`);
     } catch (caught) {
       setError(messageFor(caught, t));
@@ -533,12 +601,20 @@ function AmountStep(props: {
           />
         </Field>
 
+        {/* The rate arrives on its own once typing stops, so this is a retry
+            rather than a step. It stays because a failed request needs a way
+            back, and because a sender watching a locked rate tick down wants to
+            refresh it deliberately. */}
         <button
           className="mp-button mp-button--secondary mp-button--block"
           onClick={props.onQuote}
           disabled={props.busy}
         >
-          {props.quote === null ? t('action.continue') : t('send.amount.refreshQuote')}
+          {props.busy
+            ? t('send.amount.quoting')
+            : props.quote === null
+              ? t('send.amount.getRate')
+              : t('send.amount.refreshQuote')}
         </button>
       </div>
 
