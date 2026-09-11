@@ -61,6 +61,19 @@ export class MailDeliveryService implements OnModuleInit, OnModuleDestroy {
         user: this.config.SMTP_USER ?? '',
         pass: this.config.SMTP_PASSWORD ?? '',
       },
+      /*
+       * Timeouts, stated rather than inherited.
+       *
+       * `drain` holds a reentrancy flag for its whole run, so a single socket
+       * that opens and then goes quiet stops *all* mail until it resolves.
+       * Nodemailer's default socket timeout is ten minutes, which would be ten
+       * minutes of no verification emails with nothing in the log to say why.
+       * Fifteen seconds is far longer than any healthy provider needs and short
+       * enough that the next tick recovers.
+       */
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 15_000,
     });
 
     this.logger.log(

@@ -143,6 +143,29 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     );
   }
 
+  /*
+   * Live funds require deliverable mail.
+   *
+   * `outbox` is the right default — it is honest about not delivering, and it is
+   * what lets a demonstration run with no mail provider. But once real money is
+   * moving, an address we cannot reach is a customer we cannot tell that their
+   * transfer failed, and a registration that can never be confirmed. The
+   * verification-link shortcut is already refused when live funds are on
+   * (`AuthController.verificationLink`), so `outbox` there leaves a customer
+   * with no route to a confirmed account at all.
+   *
+   * Tied to the funds gate rather than NODE_ENV on purpose: a production
+   * demonstration is a legitimate thing to run without a mail provider, and
+   * refusing on NODE_ENV would make that impossible for no safety gain.
+   */
+  if (config.LIVE_FUNDS_ENABLED && config.MAIL_TRANSPORT !== 'smtp') {
+    throw new Error(
+      'LIVE_FUNDS_ENABLED=true with MAIL_TRANSPORT=outbox. Nothing would be ' +
+        'delivered: customers could not confirm an address and could not be told ' +
+        'their transfer failed. Configure SMTP — see docs/MAIL_SETUP.md.',
+    );
+  }
+
   // A transport set to `smtp` with nowhere to send is the quietest failure in
   // this file: registration would succeed, the outbox row would be written,
   // and nobody would ever receive a verification link. Refuse at boot instead.
