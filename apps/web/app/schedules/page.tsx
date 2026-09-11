@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '@/app/providers';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, corridorsPath } from '@/lib/api';
 import {
   AppShell,
   ErrorNotice,
@@ -71,13 +71,11 @@ function SchedulesInner() {
     try {
       const [scheduleList, corridorList, recipientList] = await Promise.all([
         api<{ schedules: Schedule[] }>('/schedules'),
-        api<{ corridors: Corridor[] }>('/corridors'),
+        api<{ corridors: Corridor[] }>(corridorsPath(residency)),
         api<{ recipients: Recipient[] }>('/recipients'),
       ]);
       setSchedules(scheduleList.schedules);
-      const usable = corridorList.corridors.filter(
-        (c) => c.enabled && (residency === null || c.sourceCountry === residency),
-      );
+      const usable = corridorList.corridors.filter((c) => c.enabled);
       setCorridors(usable);
       setRecipients(recipientList.recipients);
       setCorridorId((current) => (current === '' ? (usable[0]?.id ?? '') : current));

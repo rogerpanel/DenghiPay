@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useApp } from '@/app/providers';
-import { api } from '@/lib/api';
+import { api, corridorsPath } from '@/lib/api';
 import { AppShell, LoadingCard, MoneyDto, RequireAuth, StatusBadge } from '@/components/shell';
 
 interface TransferSummary {
@@ -39,6 +39,7 @@ const FLAGS: Record<string, string> = {
 
 function HomeInner() {
   const { t, account } = useApp();
+  const residency = account?.residencyCountry ?? null;
   const [transfers, setTransfers] = useState<TransferSummary[] | null>(null);
   const [corridors, setCorridors] = useState<Corridor[]>([]);
 
@@ -47,7 +48,7 @@ function HomeInner() {
       try {
         const [list, corridorList] = await Promise.all([
           api<{ transfers: TransferSummary[] }>('/transfers?limit=5'),
-          api<{ corridors: Corridor[] }>('/corridors'),
+          api<{ corridors: Corridor[] }>(corridorsPath(residency)),
         ]);
         setTransfers(list.transfers);
         setCorridors(corridorList.corridors.filter((c) => c.enabled));
@@ -55,7 +56,7 @@ function HomeInner() {
         setTransfers([]);
       }
     })();
-  }, []);
+  }, [residency]);
 
   return (
     <div className="mp-stack">

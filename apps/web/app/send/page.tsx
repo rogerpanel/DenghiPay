@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApp } from '@/app/providers';
-import { ApiError, api, newIdempotencyKey } from '@/lib/api';
+import { ApiError, api, corridorsPath, newIdempotencyKey } from '@/lib/api';
 import { AppShell, ErrorNotice, Field, MoneyDto, RequireAuth } from '@/components/shell';
 import type { TranslationKey } from '@/lib/i18n';
 
@@ -161,15 +161,15 @@ function SendFlow() {
   useEffect(() => {
     void (async () => {
       const [corridorList, recipientList] = await Promise.all([
-        api<{ corridors: Corridor[] }>('/corridors'),
+        api<{ corridors: Corridor[] }>(corridorsPath(residency)),
         api<{ recipients: Recipient[] }>('/recipients'),
       ]);
-      // Only corridors that start where this sender lives. Someone in Lagos
-      // has no way to hand over rubles, and offering RU→NG to them produces a
-      // quote they can never pay.
-      const usable = corridorList.corridors.filter(
-        (c) => c.enabled && (residency === null || c.sourceCountry === residency),
-      );
+      // Only corridors that start where this sender lives. Someone in Lagos has
+      // no way to hand over rubles, and offering RU→NG to them produces a quote
+      // they can never pay. The server has already applied the residency filter;
+      // `enabled` is still checked here because the catalogue is public and does
+      // not promise to have excluded it.
+      const usable = corridorList.corridors.filter((c) => c.enabled);
       setCorridors(usable);
       // Functional form on purpose: reading `corridorId` here would make it a
       // dependency, and this effect would then re-run — and re-fetch — every

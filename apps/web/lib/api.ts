@@ -157,3 +157,15 @@ export async function restoreSession(): Promise<boolean> {
   if (accessToken !== null) return true;
   return refreshSession();
 }
+
+/**
+ * The corridors this sender can actually use.
+ *
+ * Filtered at the server by residency, not here. The catalogue is 212 corridors
+ * and about 104 KB across fifteen countries; a sender can use fourteen of them.
+ * Asking for the whole thing and filtering afterwards is ~97 KB of a mobile data
+ * plan and several seconds of blank screen per visit.
+ */
+export function corridorsPath(residency: string | null): string {
+  return residency === null ? '/corridors' : `/corridors?from=${encodeURIComponent(residency)}`;
+}

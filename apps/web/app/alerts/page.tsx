@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useApp } from '@/app/providers';
-import { ApiError, api } from '@/lib/api';
+import { ApiError, api, corridorsPath } from '@/lib/api';
 import {
   AppShell,
   ErrorNotice,
@@ -50,12 +50,10 @@ function AlertsInner() {
     try {
       const [alertList, corridorList] = await Promise.all([
         api<{ alerts: RateAlert[] }>('/rate-alerts'),
-        api<{ corridors: Corridor[] }>('/corridors'),
+        api<{ corridors: Corridor[] }>(corridorsPath(residency)),
       ]);
       setAlerts(alertList.alerts);
-      const usable = corridorList.corridors.filter(
-        (c) => c.enabled && (residency === null || c.sourceCountry === residency),
-      );
+      const usable = corridorList.corridors.filter((c) => c.enabled);
       setCorridors(usable);
       setCorridorId((current) => (current === '' ? (usable[0]?.id ?? '') : current));
     } catch {
