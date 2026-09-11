@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Guardrail G1: CI never runs against live funds.
+  LIVE_FUNDS_ENABLED: 'false'
+
+jobs:
+  gitleaks:
+    name: gitleaks (G7)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  guardrails:
+    name: guardrail checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - name: LIVE_FUNDS_ENABLED must default to false (G1)
+        run: bash infra/scripts/check-live-funds-default.sh
+      - name: No cross-partition imports (G8)
+        run: bash infra/scripts/check-partition-boundaries.sh
+
+  verify:
+    name: lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: morapay
+          POSTGRES_PASSWORD: morapay
+          POSTGRES_DB: morapay_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      DATABASE_URL: postgresql://morapay:morapay@localhost:5432/morapay_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-a-real-key
+      ADMIN_JWT_ACCESS_SECRET: ci-only-admin-secret-not-a-real-key
+      QUOTE_SIGNING_SECRET: ci-only-quote-secret-not-a-real-key
+      FIELD_ENCRYPTION_KEY: ci-only-field-key-not-a-real-key
+      TOKENISATION_SALT: ci-only-salt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm build
+      - run: pnpm typecheck
+      - name: Apply migrations
+        run: pnpm db:migrate
+      - name: Unit and integration tests with coverage floors
+        run: pnpm test:cov
+      - name: Generated OpenAPI spec is up to date
+        run: |
+          pnpm openapi
+          git diff --exit-code docs/api/openapi.json || {
+            echo "docs/api/openapi.json is stale — run 'pnpm openapi' and commit the result."
+            exit 1
+          }
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/api.Dockerfile
+          push: false
+          tags: morapay/api:ci
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/web.Dockerfile
+          push: false
+          tags: morapay/web:ci
+
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version-file: .nvmrc, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level high

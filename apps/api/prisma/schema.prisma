@@ -1,0 +1,1590 @@
+// MoraPay data model.
+//
+// Three things about this schema are deliberate and load-bearing:
+//
+//  1. Money is BigInt minor units. There is no Float or Decimal anywhere near
+//     an amount. Guardrail: floating point money is a bug, always.
+//  2. Personal data lives in partition schemas, one per residency — sixteen of
+//     them, listed in the datasource below; the neutral tier holds only
+//     tokenised references
+//     (BUILD_PLAN 12.1, guardrail G8). Locally these are schemas in one
+//     database; in production they are separate instances in separate
+//     jurisdictions and only the connection string changes.
+//  3. There is no mutable balance column. Balances are derived from entries;
+//     ledger_balance_snapshot is a cache the drift detector verifies.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // One schema per residency. Sixteen: Russia plus fifteen African countries.
+  // The order is the order they were built, not alphabetical, so that a diff
+  // against an older migration reads as an addition rather than a reshuffle.
+  schemas  = ["public", "partition_ru", "partition_ng", "partition_gh", "partition_za", "partition_cm", "partition_bj", "partition_cd", "partition_cg", "partition_ug", "partition_ke", "partition_tz", "partition_zm", "partition_gm", "partition_ne", "partition_ml", "partition_sn"]
+}
+
+// =============================================================================
+// Identity and access (Phase 2)
+// =============================================================================
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  CLOSED
+
+  @@schema("public")
+}
+
+enum CustomerRole {
+  SENDER
+  RECIPIENT
+
+  @@schema("public")
+}
+
+/// Back-office roles. Held on a separate table with a separate session store:
+/// the admin application never shares a session with the customer app
+/// (BUILD_PLAN Phase 9).
+enum StaffRole {
+  SUPPORT
+  COMPLIANCE_OFFICER
+  TREASURY_OPERATOR
+  ADMIN
+
+  @@schema("public")
+}
+
+model User {
+  id               String         @id @default(uuid())
+  email            String         @unique
+  passwordHash     String         @map("password_hash")
+  status           UserStatus     @default(PENDING_VERIFICATION)
+  roles            CustomerRole[]
+  /// KYC tier 0-3. Tier 0 can hold an account and move nothing.
+  kycTier          Int            @default(0) @map("kyc_tier")
+  /// Which residency partition this user's personal data belongs to.
+  piiPartition     String         @default("RU") @map("pii_partition")
+  /// Opaque handle used to address this user's row in the partition store.
+  /// The neutral tier never holds the personal data itself.
+  piiToken         String         @unique @map("pii_token")
+  locale           String         @default("ru")
+  emailVerifiedAt  DateTime?      @map("email_verified_at")
+  lastLoginAt      DateTime?      @map("last_login_at")
+  failedLoginCount Int            @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?      @map("locked_until")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+
+  sessions           Session[]
+  verificationTokens EmailVerificationToken[]
+  recipients         Recipient[]
+  quotes             Quote[]
+  transfers          Transfer[]
+  kycCases           KycCase[]
+  notifications      UserNotification[]
+  schedules          TransferSchedule[]
+  rateAlerts         RateAlert[]
+  supportThreads     SupportThread[]
+
+  @@map("app_user")
+  @@schema("public")
+}
+
+model EmailVerificationToken {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  /// Only the hash is stored. A database read never yields a usable token.
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_token")
+  @@schema("public")
+}
+
+/// One row per issued refresh token. Rotation writes a new row and marks the
+/// old one used; presenting a used token revokes the whole family
+/// (BUILD_PLAN 2.2).
+model Session {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  familyId      String    @map("family_id")
+  tokenHash     String    @unique @map("token_hash")
+  issuedAt      DateTime  @default(now()) @map("issued_at")
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedReason String?   @map("revoked_reason")
+  replacedById  String?   @map("replaced_by_id")
+  /// Hashed so a leaked database does not yield a browsing history.
+  userAgentHash String?   @map("user_agent_hash")
+  ipHash        String?   @map("ip_hash")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("session")
+  @@schema("public")
+}
+
+model StaffUser {
+  id           String      @id @default(uuid())
+  email        String      @unique
+  passwordHash String      @map("password_hash")
+  displayName  String      @map("display_name")
+  roles        StaffRole[]
+  status       UserStatus  @default(ACTIVE)
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+
+  sessions StaffSession[]
+
+  @@map("staff_user")
+  @@schema("public")
+}
+
+model StaffSession {
+  id            String    @id @default(uuid())
+  staffId       String    @map("staff_id")
+  familyId      String    @map("family_id")
+  tokenHash     String    @unique @map("token_hash")
+  issuedAt      DateTime  @default(now()) @map("issued_at")
+  expiresAt     DateTime  @map("expires_at")
+  usedAt        DateTime? @map("used_at")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedReason String?   @map("revoked_reason")
+
+  staff StaffUser @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId])
+  @@index([familyId])
+  @@map("staff_session")
+  @@schema("public")
+}
+
+// =============================================================================
+// Audit log (Phase 2.5) — append-only, hash-chained
+// =============================================================================
+
+model AuditEvent {
+  /// Monotonic position in the chain.
+  sequence    BigInt   @id @default(autoincrement())
+  actorType   String   @map("actor_type")
+  actorId     String?  @map("actor_id")
+  action      String
+  subjectType String   @map("subject_type")
+  subjectId   String?  @map("subject_id")
+  reason      String?
+  beforeState Json?    @map("before_state")
+  afterState  Json?    @map("after_state")
+  ipHash      String?  @map("ip_hash")
+  createdAt   DateTime @default(now()) @map("created_at")
+  /// Hash of the previous row. Genesis is 64 zeroes.
+  prevHash    String   @map("prev_hash")
+  /// SHA-256 over the canonical serialisation of this row plus prevHash.
+  hash        String   @unique
+
+  @@index([subjectType, subjectId])
+  @@index([actorId])
+  @@map("audit_event")
+  @@schema("public")
+}
+
+// =============================================================================
+// KYC and screening (Phase 3)
+// =============================================================================
+
+enum KycStatus {
+  NOT_STARTED
+  PENDING
+  IN_REVIEW
+  APPROVED
+  REJECTED
+
+  @@schema("public")
+}
+
+model KycCase {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  targetTier      Int       @map("target_tier")
+  status          KycStatus @default(PENDING)
+  provider        String
+  providerRef     String?   @map("provider_ref")
+  /// Document types submitted, e.g. PASSPORT, MIGRATION_CARD, WORK_PERMIT.
+  documentTypes   String[]  @map("document_types")
+  submittedAt     DateTime  @default(now()) @map("submitted_at")
+  decidedAt       DateTime? @map("decided_at")
+  decidedBy       String?   @map("decided_by")
+  rejectionReason String?   @map("rejection_reason")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("kyc_case")
+  @@schema("public")
+}
+
+enum ScreeningStatus {
+  CLEAR
+  HIT
+  ERROR
+
+  @@schema("public")
+}
+
+enum ScreeningSubject {
+  SENDER
+  RECIPIENT
+  COUNTERPARTY
+
+  @@schema("public")
+}
+
+/// Guardrail G3. No transfer reaches SETTLING without a CLEAR record here.
+model ScreeningRecord {
+  id          String           @id @default(uuid())
+  subjectType ScreeningSubject @map("subject_type")
+  /// Tokenised subject reference — never a name.
+  subjectRef  String           @map("subject_ref")
+  transferId  String?          @map("transfer_id")
+  provider    String
+  status      ScreeningStatus
+  /// 0-100. At or above the configured threshold the transfer is blocked.
+  score       Int              @default(0)
+  matches     Json             @default("[]")
+  listVersion String           @map("list_version")
+  screenedAt  DateTime         @default(now()) @map("screened_at")
+
+  transfer Transfer? @relation(fields: [transferId], references: [id])
+
+  @@index([transferId])
+  @@index([subjectRef])
+  @@map("screening_record")
+  @@schema("public")
+}
+
+enum ComplianceCaseType {
+  SCREENING_HIT
+  VELOCITY
+  STRUCTURING
+  ENHANCED_DUE_DILIGENCE
+  MANUAL_REVIEW
+
+  @@schema("public")
+}
+
+enum ComplianceCaseStatus {
+  OPEN
+  IN_REVIEW
+  CLEARED
+  REJECTED
+
+  @@schema("public")
+}
+
+model ComplianceCase {
+  id             String               @id @default(uuid())
+  type           ComplianceCaseType
+  status         ComplianceCaseStatus @default(OPEN)
+  userId         String?              @map("user_id")
+  transferId     String?              @map("transfer_id")
+  summary        String
+  detail         Json                 @default("{}")
+  assignedTo     String?              @map("assigned_to")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  decidedAt      DateTime?            @map("decided_at")
+  decidedBy      String?              @map("decided_by")
+  decisionReason String?              @map("decision_reason")
+
+  transfer Transfer?            @relation(fields: [transferId], references: [id])
+  notes    ComplianceCaseNote[]
+
+  @@index([status])
+  @@index([transferId])
+  @@map("compliance_case")
+  @@schema("public")
+}
+
+model ComplianceCaseNote {
+  id        String   @id @default(uuid())
+  caseId    String   @map("case_id")
+  authorId  String   @map("author_id")
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  case ComplianceCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+
+  @@index([caseId])
+  @@map("compliance_case_note")
+  @@schema("public")
+}
+
+// =============================================================================
+// Corridors, rates and quotes (Phase 4)
+// =============================================================================
+
+model Corridor {
+  id                  String   @id
+  sourceCountry       String   @map("source_country")
+  sourceCurrency      String   @map("source_currency")
+  destinationCountry  String   @map("destination_country")
+  destinationCurrency String   @map("destination_currency")
+  payinMethods        String[] @map("payin_methods")
+  payoutMethods       String[] @map("payout_methods")
+  minSendMinorUnits   BigInt   @map("min_send_minor_units")
+  maxSendMinorUnits   BigInt   @map("max_send_minor_units")
+  fixedFeeMinorUnits  BigInt   @map("fixed_fee_minor_units")
+  fxMarginBps         Int      @map("fx_margin_bps")
+  openUtcHour         Int      @default(0) @map("open_utc_hour")
+  closeUtcHour        Int      @default(24) @map("close_utc_hour")
+  weekdays            Int[]    @default([1, 2, 3, 4, 5, 6, 7])
+  enabled             Boolean  @default(true)
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  quotes     Quote[]
+  transfers  Transfer[]
+  schedules  TransferSchedule[]
+  rateAlerts RateAlert[]
+
+  @@map("corridor")
+  @@schema("public")
+}
+
+/// A rate observation from a feed. Rates are exact rationals: numerator / 10^scale.
+model RateObservation {
+  id            String   @id @default(uuid())
+  baseCurrency  String   @map("base_currency")
+  quoteCurrency String   @map("quote_currency")
+  numerator     BigInt
+  scale         Int
+  source        String
+  observedAt    DateTime @map("observed_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([baseCurrency, quoteCurrency, observedAt])
+  @@map("rate_observation")
+  @@schema("public")
+}
+
+/// A signed, short-lived, single-use promise to the sender.
+model Quote {
+  id                     String    @id @default(uuid())
+  userId                 String    @map("user_id")
+  corridorId             String    @map("corridor_id")
+  sendMinorUnits         BigInt    @map("send_minor_units")
+  sendCurrency           String    @map("send_currency")
+  fixedFeeMinorUnits     BigInt    @map("fixed_fee_minor_units")
+  fxMarginMinorUnits     BigInt    @map("fx_margin_minor_units")
+  totalToPayMinorUnits   BigInt    @map("total_to_pay_minor_units")
+  recipientMinorUnits    BigInt    @map("recipient_minor_units")
+  recipientCurrency      String    @map("recipient_currency")
+  midRateNumerator       BigInt    @map("mid_rate_numerator")
+  midRateScale           Int       @map("mid_rate_scale")
+  effectiveRateNumerator BigInt    @map("effective_rate_numerator")
+  effectiveRateScale     Int       @map("effective_rate_scale")
+  fxMarginBps            Int       @map("fx_margin_bps")
+  /// HMAC over the canonical quote payload. Checked on confirmation.
+  signature              String
+  createdAt              DateTime  @default(now()) @map("created_at")
+  expiresAt              DateTime  @map("expires_at")
+  consumedAt             DateTime? @map("consumed_at")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  corridor Corridor  @relation(fields: [corridorId], references: [id])
+  transfer Transfer?
+
+  @@index([userId])
+  @@map("quote")
+  @@schema("public")
+}
+
+// =============================================================================
+// Recipients — neutral tier holds tokens and masks only
+// =============================================================================
+
+model Recipient {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  method        String
+  country       String
+  /// Points at the row in the destination partition holding the real details.
+  piiToken      String    @unique @map("pii_token")
+  piiPartition  String    @map("pii_partition")
+  /// Last four digits only. Safe to render, safe to log.
+  maskedAccount String    @map("masked_account")
+  /// Name the institution returned at name enquiry, as shown to the sender.
+  resolvedName  String?   @map("resolved_name")
+  nickname      String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  archivedAt    DateTime? @map("archived_at")
+
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transfers Transfer[]
+  schedules TransferSchedule[]
+
+  @@index([userId])
+  @@map("recipient")
+  @@schema("public")
+}
+
+// =============================================================================
+// Transfers (Phase 5)
+// =============================================================================
+
+model Transfer {
+  id                   String    @id @default(uuid())
+  reference            String    @unique
+  userId               String    @map("user_id")
+  quoteId              String    @unique @map("quote_id")
+  corridorId           String    @map("corridor_id")
+  recipientId          String    @map("recipient_id")
+  state                String
+  purpose              String
+  sendMinorUnits       BigInt    @map("send_minor_units")
+  sendCurrency         String    @map("send_currency")
+  totalToPayMinorUnits BigInt    @map("total_to_pay_minor_units")
+  feeMinorUnits        BigInt    @map("fee_minor_units")
+  recipientMinorUnits  BigInt    @map("recipient_minor_units")
+  recipientCurrency    String    @map("recipient_currency")
+  payinMethod          String    @map("payin_method")
+  payinProviderId      String?   @map("payin_provider_id")
+  payinProviderRef     String?   @map("payin_provider_ref")
+  payinInstructions    Json?     @map("payin_instructions")
+  payoutProviderId     String?   @map("payout_provider_id")
+  payoutProviderRef    String?   @map("payout_provider_ref")
+  payoutInstitutionRef String?   @map("payout_institution_ref")
+  failureCode          String?   @map("failure_code")
+  failureReason        String?   @map("failure_reason")
+  /// Number of status polls made. Feeds the stuck-transfer alert.
+  pollAttempts         Int       @default(0) @map("poll_attempts")
+  nextPollAt           DateTime? @map("next_poll_at")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+  completedAt          DateTime? @map("completed_at")
+
+  user            User                        @relation(fields: [userId], references: [id])
+  quote           Quote                       @relation(fields: [quoteId], references: [id])
+  corridor        Corridor                    @relation(fields: [corridorId], references: [id])
+  recipient       Recipient                   @relation(fields: [recipientId], references: [id])
+  events          TransferEvent[]
+  /// Present only for transfers from an exchange-control regime.
+  exchangeControl ExchangeControlDeclaration?
+  screenings      ScreeningRecord[]
+  cases           ComplianceCase[]
+  positions       FxPosition[]
+
+  @@index([userId])
+  @@index([state])
+  @@index([nextPollAt])
+  @@map("transfer")
+  @@schema("public")
+}
+
+/// Append-only. Every state change has exactly one row, so no state is
+/// reachable without a recorded event (BUILD_PLAN 5.1 DoD).
+model TransferEvent {
+  id         String   @id @default(uuid())
+  transferId String   @map("transfer_id")
+  fromState  String   @map("from_state")
+  toState    String   @map("to_state")
+  event      String
+  actorType  String   @map("actor_type")
+  actorId    String?  @map("actor_id")
+  detail     Json     @default("{}")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([transferId])
+  @@map("transfer_event")
+  @@schema("public")
+}
+
+/// Open FX exposure created when a quote is locked (BUILD_PLAN 4.4).
+model FxPosition {
+  id             String    @id @default(uuid())
+  transferId     String    @map("transfer_id")
+  sellCurrency   String    @map("sell_currency")
+  sellMinorUnits BigInt    @map("sell_minor_units")
+  buyCurrency    String    @map("buy_currency")
+  buyMinorUnits  BigInt    @map("buy_minor_units")
+  openedAt       DateTime  @default(now()) @map("opened_at")
+  closedAt       DateTime? @map("closed_at")
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([closedAt])
+  @@map("fx_position")
+  @@schema("public")
+}
+
+// =============================================================================
+// Idempotency and webhook replay protection
+// =============================================================================
+
+model IdempotencyRecord {
+  id                 String   @id @default(uuid())
+  scope              String
+  key                String
+  requestFingerprint String   @map("request_fingerprint")
+  responseSnapshot   Json?    @map("response_snapshot")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@unique([scope, key])
+  @@map("idempotency_record")
+  @@schema("public")
+}
+
+/// Callback dedup table (TECHNICAL_ARCHITECTURE §4.1). A second delivery of the
+/// same event id returns 200 without reprocessing.
+model WebhookEvent {
+  id         String   @id @default(uuid())
+  providerId String   @map("provider_id")
+  eventId    String   @map("event_id")
+  receivedAt DateTime @default(now()) @map("received_at")
+  expiresAt  DateTime @map("expires_at")
+
+  @@unique([providerId, eventId])
+  @@index([expiresAt])
+  @@map("webhook_event")
+  @@schema("public")
+}
+
+// =============================================================================
+// Ledger (Phase 1) — the only writer of financial state
+// =============================================================================
+
+model LedgerAccount {
+  id        String   @id @default(uuid())
+  code      String   @unique
+  type      String
+  currency  String
+  partition String
+  ownerRef  String?  @map("owner_ref")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  entries  LedgerEntry[]
+  snapshot LedgerBalanceSnapshot?
+
+  @@index([type, currency])
+  @@map("ledger_account")
+  @@schema("public")
+}
+
+model LedgerTransaction {
+  id             String   @id @default(uuid())
+  reason         String
+  description    String
+  occurredAt     DateTime @map("occurred_at")
+  recordedAt     DateTime @default(now()) @map("recorded_at")
+  reference      String?
+  idempotencyKey String   @unique @map("idempotency_key")
+  fingerprint    String
+  metadata       Json     @default("{}")
+
+  entries LedgerEntry[]
+
+  @@index([reference])
+  @@index([reason])
+  @@map("ledger_transaction")
+  @@schema("public")
+}
+
+model LedgerEntry {
+  id               String  @id @default(uuid())
+  transactionId    String  @map("transaction_id")
+  accountId        String  @map("account_id")
+  direction        String
+  /// Integer minor units. Always positive; the direction carries the sign.
+  amountMinorUnits BigInt  @map("amount_minor_units")
+  currency         String
+  /// Global, monotonic. Snapshots record how far they have folded.
+  sequence         BigInt  @default(autoincrement())
+  memo             String?
+
+  transaction LedgerTransaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  account     LedgerAccount     @relation(fields: [accountId], references: [id])
+
+  @@index([accountId, sequence])
+  @@index([transactionId])
+  @@map("ledger_entry")
+  @@schema("public")
+}
+
+/// A cache, not a source of truth. The drift detector recomputes from genesis
+/// and alerts when the two disagree.
+model LedgerBalanceSnapshot {
+  accountId       String   @id @map("account_id")
+  minorUnits      BigInt   @map("minor_units")
+  throughSequence BigInt   @map("through_sequence")
+  computedAt      DateTime @map("computed_at")
+
+  account LedgerAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("ledger_balance_snapshot")
+  @@schema("public")
+}
+
+// =============================================================================
+// Treasury and reconciliation (Phase 8)
+// =============================================================================
+
+enum PrefundingStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  EXECUTED
+
+  @@schema("public")
+}
+
+/// Four-eyes is enforced server-side: requestedBy may never equal approvedBy
+/// (guardrail G6), and the database refuses it too.
+model PrefundingRequest {
+  id                  String           @id @default(uuid())
+  currency            String
+  amountMinorUnits    BigInt           @map("amount_minor_units")
+  floatAccountCode    String           @map("float_account_code")
+  treasuryAccountCode String           @map("treasury_account_code")
+  status              PrefundingStatus @default(REQUESTED)
+  reason              String
+  requestedBy         String           @map("requested_by")
+  requestedAt         DateTime         @default(now()) @map("requested_at")
+  approvedBy          String?          @map("approved_by")
+  approvedAt          DateTime?        @map("approved_at")
+  rejectedReason      String?          @map("rejected_reason")
+  executedAt          DateTime?        @map("executed_at")
+  ledgerTransactionId String?          @map("ledger_transaction_id")
+
+  @@index([status])
+  @@map("prefunding_request")
+  @@schema("public")
+}
+
+model FloatThreshold {
+  currency               String   @id
+  lowWatermarkMinorUnits BigInt   @map("low_watermark_minor_units")
+  targetMinorUnits       BigInt   @map("target_minor_units")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("float_threshold")
+  @@schema("public")
+}
+
+model PartnerStatement {
+  id          String   @id @default(uuid())
+  providerId  String   @map("provider_id")
+  windowStart DateTime @map("window_start")
+  windowEnd   DateTime @map("window_end")
+  receivedAt  DateTime @default(now()) @map("received_at")
+
+  lines StatementLine[]
+  runs  ReconciliationRun[]
+
+  @@map("partner_statement")
+  @@schema("public")
+}
+
+model StatementLine {
+  id               String   @id @default(uuid())
+  statementId      String   @map("statement_id")
+  providerRef      String   @map("provider_ref")
+  amountMinorUnits BigInt   @map("amount_minor_units")
+  currency         String
+  valueDate        DateTime @map("value_date")
+  description      String
+
+  statement PartnerStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@index([statementId])
+  @@index([providerRef])
+  @@map("statement_line")
+  @@schema("public")
+}
+
+model ReconciliationRun {
+  id           String   @id @default(uuid())
+  statementId  String   @map("statement_id")
+  ranAt        DateTime @default(now()) @map("ran_at")
+  matchedCount Int      @map("matched_count")
+  breakCount   Int      @map("break_count")
+  findings     Json     @default("[]")
+
+  statement PartnerStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+
+  @@map("reconciliation_run")
+  @@schema("public")
+}
+
+model SuspenseItem {
+  id                  String    @id @default(uuid())
+  reference           String
+  currency            String
+  amountMinorUnits    BigInt    @map("amount_minor_units")
+  note                String
+  ledgerTransactionId String?   @map("ledger_transaction_id")
+  openedAt            DateTime  @default(now()) @map("opened_at")
+  resolvedAt          DateTime? @map("resolved_at")
+  resolvedBy          String?   @map("resolved_by")
+
+  @@index([resolvedAt])
+  @@map("suspense_item")
+  @@schema("public")
+}
+
+// =============================================================================
+// Notifications
+// =============================================================================
+
+/// Outbound mail is written here first and delivered by a worker, so a failed
+/// SMTP call never loses a verification link. In local development the outbox
+/// *is* the mailbox.
+model OutboxMessage {
+  id            String    @id @default(uuid())
+  channel       String
+  recipient     String
+  subject       String
+  body          String
+  kind          String
+  metadata      Json      @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  sentAt        DateTime? @map("sent_at")
+  failedAt      DateTime? @map("failed_at")
+  failureReason String?   @map("failure_reason")
+  /// Delivery attempts. Doubles as the optimistic lock the delivery worker
+  /// claims a message with, so two API instances cannot send the same one twice.
+  attempts      Int       @default(0)
+
+  @@index([sentAt])
+  /// The delivery worker's query: undelivered, not exhausted, oldest first.
+  /// Created by the outbox_attempts migration; declared here so the schema and
+  /// the migration history agree — until they did, `prisma migrate dev` would
+  /// have generated a DROP for it.
+  @@index([sentAt, attempts, createdAt], map: "outbox_message_pending_idx")
+  @@map("outbox_message")
+  @@schema("public")
+}
+
+// =============================================================================
+// Partition stores — personal data, addressed only through the partition gateway
+// =============================================================================
+
+/// Russian-resident sender personal data. 152-FZ.
+model SenderProfileRu {
+  piiToken    String   @id @map("pii_token")
+  firstName   String   @map("first_name")
+  lastName    String   @map("last_name")
+  middleName  String?  @map("middle_name")
+  dateOfBirth DateTime @map("date_of_birth")
+  nationality String
+  phone       String?
+  addressLine String?  @map("address_line")
+  city        String?
+  postcode    String?
+  /// Documents realistic for African students and workers in Russia
+  /// (BUILD_PLAN 3.3): passport, migration card, registration, work permit.
+  documents   Json     @default("[]")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ru")
+}
+
+/// Nigerian-resident sender personal data. CBN localisation, NDPA 2023.
+///
+/// A separate model from RecipientProfileNg even though both live in the NG
+/// partition: a sender and a recipient are different subjects with different
+/// retention obligations, and collapsing them would mean a recipient we have
+/// never onboarded inherits a sender's record.
+model SenderProfileNg {
+  piiToken    String   @id @map("pii_token")
+  firstName   String   @map("first_name")
+  lastName    String   @map("last_name")
+  middleName  String?  @map("middle_name")
+  dateOfBirth DateTime @map("date_of_birth")
+  nationality String
+  phone       String?
+  addressLine String?  @map("address_line")
+  city        String?
+  /// Bank Verification Number. The identity anchor CBN tiering is built on,
+  /// and the reason this row may not leave Nigeria.
+  bvn         String?
+  documents   Json     @default("[]")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ng")
+}
+
+/// Ghanaian-resident sender personal data. Data Protection Act 843.
+model SenderProfileGh {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Ghana Card number — the national identifier BoG wallet tiers key on.
+  ghanaCardNo   String?  @map("ghana_card_no")
+  /// The wallet we debit to collect. Personal data, so it lives here and is
+  /// read only at the moment a pay-in is initiated.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_gh")
+}
+
+/// Nigerian recipient personal data. CBN localisation.
+model RecipientProfileNg {
+  piiToken      String   @id @map("pii_token")
+  accountNumber String   @map("account_number")
+  bankCode      String   @map("bank_code")
+  accountName   String   @map("account_name")
+  phone         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ng")
+}
+
+/// Ghanaian recipient personal data.
+model RecipientProfileGh {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_gh")
+}
+
+/// Cameroonian-resident sender personal data. CEMAC/BEAC, Law 2024/017 on
+/// personal data protection.
+model SenderProfileCm {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Carte nationale d'identité number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet we debit to collect, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_cm")
+}
+
+/// Beninese-resident sender personal data. UEMOA/BCEAO, APDP oversight.
+model SenderProfileBj {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Numéro personnel d'identification (NPI).
+  nationalIdNo  String?  @map("national_id_no")
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_bj")
+}
+
+/// South African-resident sender personal data. POPIA.
+///
+/// Carries two fields no other partition needs, because SARB exchange control
+/// needs them: the identity number an Authorised Dealer reports against, and
+/// the tax compliance reference required before the larger allowance may be
+/// used. Both stay in South Africa.
+model SenderProfileZa {
+  piiToken              String   @id @map("pii_token")
+  firstName             String   @map("first_name")
+  lastName              String   @map("last_name")
+  middleName            String?  @map("middle_name")
+  dateOfBirth           DateTime @map("date_of_birth")
+  nationality           String
+  phone                 String?
+  addressLine           String?  @map("address_line")
+  city                  String?
+  postcode              String?
+  /// South African identity number, or passport for a non-resident.
+  nationalIdNo          String?  @map("national_id_no")
+  /// SARS tax reference. Required before the investment allowance may be used.
+  taxReference          String?  @map("tax_reference")
+  /// Exchange-control status: RESIDENT, TEMPORARY_RESIDENT or NON_RESIDENT.
+  /// The allowances differ, and only RESIDENT is modelled today.
+  exchangeControlStatus String?  @map("exchange_control_status")
+  documents             Json     @default("[]")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_za")
+}
+
+/// South African recipient personal data. POPIA.
+model RecipientProfileZa {
+  piiToken      String   @id @map("pii_token")
+  accountNumber String   @map("account_number")
+  /// Universal branch code — identifies the bank, not a branch.
+  bankCode      String   @map("bank_code")
+  accountName   String   @map("account_name")
+  phone         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_za")
+}
+
+/// Cameroonian recipient personal data.
+model RecipientProfileCm {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_cm")
+}
+
+/// Beninese recipient personal data.
+model RecipientProfileBj {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_bj")
+}
+
+// -----------------------------------------------------------------------------
+// The ten standard partitions (BUILD_PLAN 15.3)
+//
+// Congo-Kinshasa, Congo-Brazzaville, Uganda, Kenya, Tanzania, Zambia, Gambia,
+// Niger, Mali and Senegal. Every one of them collects and pays out over mobile
+// money, and every one anchors identity on a single national identity number,
+// so the two models below repeat with only the schema and the doc comment
+// changing. That uniformity is why they share one repository
+// (`partitions/standard`) rather than twenty files.
+//
+// They are still separate schemas. Sharing a table shape is not sharing a
+// jurisdiction: a Kenyan row may not sit in a Tanzanian database however alike
+// the columns look, and in production these are separate instances.
+// -----------------------------------------------------------------------------
+
+/// Congolese (DRC)-resident sender personal data.
+///
+/// Banque Centrale du Congo. Code du numerique (2023) governs the personal data.
+model SenderProfileCd {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Carte d'identite nationale.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_cd")
+}
+
+/// Congolese (DRC) recipient personal data.
+model RecipientProfileCd {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_cd")
+}
+
+/// Congolese (Republic)-resident sender personal data.
+///
+/// CEMAC/BEAC — the same monetary union as Cameroon, a different regulator.
+model SenderProfileCg {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Carte nationale d'identite.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_cg")
+}
+
+/// Congolese (Republic) recipient personal data.
+model RecipientProfileCg {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_cg")
+}
+
+/// Ugandan-resident sender personal data.
+///
+/// Bank of Uganda. Data Protection and Privacy Act 2019.
+model SenderProfileUg {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// National Identification Number (NIN).
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ug")
+}
+
+/// Ugandan recipient personal data.
+model RecipientProfileUg {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ug")
+}
+
+/// Kenyan-resident sender personal data.
+///
+/// Central Bank of Kenya. Data Protection Act 2019, ODPC oversight.
+model SenderProfileKe {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// National identity card number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ke")
+}
+
+/// Kenyan recipient personal data.
+model RecipientProfileKe {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ke")
+}
+
+/// Tanzanian-resident sender personal data.
+///
+/// Bank of Tanzania. Personal Data Protection Act 2022.
+model SenderProfileTz {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// NIDA national identification number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_tz")
+}
+
+/// Tanzanian recipient personal data.
+model RecipientProfileTz {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_tz")
+}
+
+/// Zambian-resident sender personal data.
+///
+/// Bank of Zambia. Data Protection Act 2021.
+model SenderProfileZm {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// National Registration Card (NRC) number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_zm")
+}
+
+/// Zambian recipient personal data.
+model RecipientProfileZm {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_zm")
+}
+
+/// Gambian-resident sender personal data.
+///
+/// Central Bank of The Gambia.
+model SenderProfileGm {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// National identification number.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_gm")
+}
+
+/// Gambian recipient personal data.
+model RecipientProfileGm {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_gm")
+}
+
+/// Nigerien-resident sender personal data.
+///
+/// UEMOA/BCEAO — the XOF is shared with Mali, Senegal and Benin; the authorisation is not.
+model SenderProfileNe {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Numero d'identification nationale.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ne")
+}
+
+/// Nigerien recipient personal data.
+model RecipientProfileNe {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ne")
+}
+
+/// Malian-resident sender personal data.
+///
+/// UEMOA/BCEAO.
+model SenderProfileMl {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Numero d'identification nationale (NINA).
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_ml")
+}
+
+/// Malian recipient personal data.
+model RecipientProfileMl {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_ml")
+}
+
+/// Senegalese-resident sender personal data.
+///
+/// UEMOA/BCEAO, CDP oversight of the personal data.
+model SenderProfileSn {
+  piiToken      String   @id @map("pii_token")
+  firstName     String   @map("first_name")
+  lastName      String   @map("last_name")
+  middleName    String?  @map("middle_name")
+  dateOfBirth   DateTime @map("date_of_birth")
+  nationality   String
+  phone         String?
+  addressLine   String?  @map("address_line")
+  city          String?
+  /// Carte nationale d'identite CEDEAO.
+  nationalIdNo  String?  @map("national_id_no")
+  /// The wallet a collection debits, read only at the moment of collection.
+  walletMsisdn  String?  @map("wallet_msisdn")
+  walletNetwork String?  @map("wallet_network")
+  documents     Json     @default("[]")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("sender_profile")
+  @@schema("partition_sn")
+}
+
+/// Senegalese recipient personal data.
+model RecipientProfileSn {
+  piiToken    String   @id @map("pii_token")
+  msisdn      String
+  network     String
+  accountName String   @map("account_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("recipient_profile")
+  @@schema("partition_sn")
+}
+
+// =============================================================================
+// Exchange control (BUILD_PLAN 4.3c, OPEN_ITEMS B8)
+// =============================================================================
+
+/// One declaration per outward transfer from a regime that requires them.
+///
+/// Neutral tier, deliberately: this is transaction data rather than personal
+/// data — a tokenised subject, a category code and an amount. The Authorised
+/// Dealer files the report and needs these fields; the personal data it must be
+/// joined against stays in its own partition and is fetched at the moment the
+/// report is produced.
+///
+/// `declaredElsewhereMinorUnits` is what the sender told us they had already
+/// used through other providers. It is kept apart from what we observed rather
+/// than summed on the way in, because when a discrepancy is investigated the
+/// question is always which of the two was wrong.
+model ExchangeControlDeclaration {
+  id                          String    @id @default(uuid())
+  transferId                  String    @unique @map("transfer_id")
+  userId                      String    @map("user_id")
+  /// ISO country whose regime governs this payment.
+  regimeCountry               String    @map("regime_country")
+  /// Published reason code, e.g. a SARB balance-of-payments category.
+  categoryCode                String    @map("category_code")
+  categoryLabel               String    @map("category_label")
+  /// DISCRETIONARY or INVESTMENT.
+  allowanceKind               String    @map("allowance_kind")
+  /// Calendar year the allowance is measured over.
+  allowanceYear               Int       @map("allowance_year")
+  amountMinorUnits            BigInt    @map("amount_minor_units")
+  currency                    String
+  /// What we had already observed when this was decided.
+  usedThroughUsMinorUnits     BigInt    @map("used_through_us_minor_units")
+  /// What the sender declared they had used at other providers.
+  declaredElsewhereMinorUnits BigInt    @map("declared_elsewhere_minor_units")
+  /// Tax compliance reference, where the allowance required one.
+  taxClearanceRef             String?   @map("tax_clearance_ref")
+  /// Set once the data has been handed to the Authorised Dealer.
+  reportedAt                  DateTime? @map("reported_at")
+  createdAt                   DateTime  @default(now()) @map("created_at")
+
+  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([userId, allowanceYear])
+  @@index([reportedAt])
+  @@map("exchange_control_declaration")
+  @@schema("public")
+}
+
+// =============================================================================
+// Sender-facing product surface (BUILD_PLAN 14) — notifications, schedules,
+// rate alerts and support. None of it touches financial state; all of it exists
+// to keep a sender informed and to save them retyping.
+// =============================================================================
+
+/// An in-app notification.
+///
+/// The outbox delivers to the outside world; this is what the sender sees when
+/// they open the app. Both are written from the same place, because a status
+/// change the sender cannot see in the app is a support ticket.
+model UserNotification {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  kind      String
+  title     String
+  body      String
+  /// The thing to open when tapped, as an in-app path. Never an external URL.
+  link      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("user_notification")
+  @@schema("public")
+}
+
+/// A standing instruction to prepare a transfer on a cadence.
+///
+/// It prepares; it does not pay. There is no direct-debit mandate behind this,
+/// so each occurrence creates a transfer awaiting the sender's payment and
+/// tells them it is waiting. That is the honest shape: automating the payment
+/// itself would need an authorisation we do not have.
+///
+/// Every occurrence re-quotes, re-screens and re-checks limits. A schedule
+/// never pre-authorises anything — otherwise it would be a way around the
+/// controls that apply to a transfer made by hand.
+model TransferSchedule {
+  id             String    @id @default(uuid())
+  userId         String    @map("user_id")
+  corridorId     String    @map("corridor_id")
+  recipientId    String    @map("recipient_id")
+  sendMinorUnits BigInt    @map("send_minor_units")
+  sendCurrency   String    @map("send_currency")
+  payinMethod    String    @map("payin_method")
+  purpose        String
+  /// WEEKLY or MONTHLY. Anything shorter is a standing order, not a remittance.
+  frequency      String
+  /// Day of month (1-28) for MONTHLY, ISO weekday (1-7) for WEEKLY. Capped at
+  /// 28 deliberately: a schedule set for the 31st would skip four months a year.
+  dayOfPeriod    Int       @map("day_of_period")
+  nextRunAt      DateTime  @map("next_run_at")
+  lastRunAt      DateTime? @map("last_run_at")
+  /// Why the last occurrence did not produce a transfer, if it did not.
+  lastFailure    String?   @map("last_failure")
+  occurrences    Int       @default(0)
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  corridor  Corridor  @relation(fields: [corridorId], references: [id])
+  recipient Recipient @relation(fields: [recipientId], references: [id])
+
+  @@index([active, nextRunAt])
+  @@index([userId])
+  @@map("transfer_schedule")
+  @@schema("public")
+}
+
+/// "Tell me when this corridor's rate passes X."
+///
+/// Fires once and disarms. A repeating alert on a rate that hovers around the
+/// threshold is a notification every minute, which teaches people to ignore
+/// notifications.
+model RateAlert {
+  id            String    @id @default(uuid())
+  userId        String    @map("user_id")
+  corridorId    String    @map("corridor_id")
+  /// ABOVE or BELOW, judged against the effective rate we would quote.
+  direction     String
+  /// Threshold as a decimal string. Never a float.
+  thresholdRate String    @map("threshold_rate")
+  active        Boolean   @default(true)
+  triggeredAt   DateTime? @map("triggered_at")
+  /// The rate that tripped it, kept so the notification can be explained later.
+  triggeredRate String?   @map("triggered_rate")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  corridor Corridor @relation(fields: [corridorId], references: [id])
+
+  @@index([active, corridorId])
+  @@index([userId])
+  @@map("rate_alert")
+  @@schema("public")
+}
+
+/// Customer support correspondence.
+///
+/// Deliberately not a ComplianceCase. A compliance case is a regulated record
+/// with a decision and a reason; a support thread is a conversation about a
+/// delayed payment. Merging them would either put customer chatter into the
+/// compliance queue or put regulated decisions somewhere without four-eyes.
+///
+/// The bodies live in the neutral tier because correspondence is not identity
+/// data. Staff must not paste identity numbers into a reply — there is a
+/// partition for that, and this is not it.
+model SupportThread {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  subject    String
+  /// OPEN, ANSWERED or RESOLVED.
+  status     String    @default("OPEN")
+  /// The transfer this is about, when it is about one.
+  transferId String?   @map("transfer_id")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  resolvedAt DateTime? @map("resolved_at")
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages SupportMessage[]
+
+  @@index([userId])
+  @@index([status, updatedAt])
+  @@map("support_thread")
+  @@schema("public")
+}
+
+model SupportMessage {
+  id         String   @id @default(uuid())
+  threadId   String   @map("thread_id")
+  /// USER or STAFF. Never SYSTEM — a support thread is between two people.
+  authorType String   @map("author_type")
+  authorId   String   @map("author_id")
+  body       String
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  thread SupportThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+
+  @@index([threadId, createdAt])
+  @@map("support_message")
+  @@schema("public")
+}

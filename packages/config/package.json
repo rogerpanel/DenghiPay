@@ -1,0 +1,16 @@
+{
+  "name": "@morapay/config",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "main": "index.js",
+  "files": [
+    "eslint",
+    "tsconfig"
+  ],
+  "scripts": {
+    "build": "echo \"@morapay/config ships static presets\"",
+    "lint": "echo \"no sources\"",
+    "typecheck": "echo \"no sources\""
+  }
+}
