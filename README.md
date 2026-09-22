@@ -9,23 +9,24 @@ corridors**, plus four inbound from Russia and Belarus.
 > against a simulator until partner agreements and written legal opinions are in
 > place (guardrail G1). See [`CLAUDE.md`](./CLAUDE.md) for the full guardrail set.
 
-|                     |                                                                            |
-| ------------------- | -------------------------------------------------------------------------- |
-| Build plan          | [`docs/BUILD_PLAN.md`](./docs/BUILD_PLAN.md)                               |
-| Architecture        | [`docs/TECHNICAL_ARCHITECTURE.md`](./docs/TECHNICAL_ARCHITECTURE.md)       |
-| Decisions           | [`docs/adr/`](./docs/adr/)                                                 |
-| Guardrails          | [`CLAUDE.md`](./CLAUDE.md)                                                 |
-| Demo script         | [`docs/DEMO.md`](./docs/DEMO.md)                                           |
-| Corridors           | [`docs/CORRIDORS.md`](./docs/CORRIDORS.md)                                 |
-| FX rates            | [`docs/FX_RATES.md`](./docs/FX_RATES.md)                                   |
-| Open items          | [`docs/OPEN_ITEMS.md`](./docs/OPEN_ITEMS.md)                               |
-| Partners            | [`docs/PARTNER_PAYCREST.md`](./docs/PARTNER_PAYCREST.md)                   |
-| Call sheet          | [`docs/PAYCREST_CALL_SHEET.md`](./docs/PAYCREST_CALL_SHEET.md)             |
-| Integration         | [`docs/PARTNER_INTEGRATION_SPEC.md`](./docs/PARTNER_INTEGRATION_SPEC.md)   |
-| Decisions in flight | [`docs/DECISION_STABLECOIN_ROUTE.md`](./docs/DECISION_STABLECOIN_ROUTE.md) |
-| Stablecoin design   | [`docs/DESIGN_STABLECOIN_RAIL.md`](./docs/DESIGN_STABLECOIN_RAIL.md)       |
-| Mail setup          | [`docs/MAIL_SETUP.md`](./docs/MAIL_SETUP.md)                               |
-| Feature gap         | [`docs/FEATURE_GAP_LEMFI.md`](./docs/FEATURE_GAP_LEMFI.md)                 |
+|                     |                                                                                  |
+| ------------------- | -------------------------------------------------------------------------------- |
+| Build plan          | [`docs/BUILD_PLAN.md`](./docs/BUILD_PLAN.md)                                     |
+| Architecture        | [`docs/TECHNICAL_ARCHITECTURE.md`](./docs/TECHNICAL_ARCHITECTURE.md)             |
+| Decisions           | [`docs/adr/`](./docs/adr/)                                                       |
+| Guardrails          | [`CLAUDE.md`](./CLAUDE.md)                                                       |
+| Demo script         | [`docs/DEMO.md`](./docs/DEMO.md)                                                 |
+| Corridors           | [`docs/CORRIDORS.md`](./docs/CORRIDORS.md)                                       |
+| FX rates            | [`docs/FX_RATES.md`](./docs/FX_RATES.md)                                         |
+| Open items          | [`docs/OPEN_ITEMS.md`](./docs/OPEN_ITEMS.md)                                     |
+| Partners            | [`docs/PARTNER_PAYCREST.md`](./docs/PARTNER_PAYCREST.md)                         |
+| Call sheet          | [`docs/PAYCREST_CALL_SHEET.md`](./docs/PAYCREST_CALL_SHEET.md)                   |
+| Integration         | [`docs/PARTNER_INTEGRATION_SPEC.md`](./docs/PARTNER_INTEGRATION_SPEC.md)         |
+| Contractor rules    | [`docs/CONTRACTOR_ENGINEERING_RULES.md`](./docs/CONTRACTOR_ENGINEERING_RULES.md) |
+| Decisions in flight | [`docs/DECISION_STABLECOIN_ROUTE.md`](./docs/DECISION_STABLECOIN_ROUTE.md)       |
+| Stablecoin design   | [`docs/DESIGN_STABLECOIN_RAIL.md`](./docs/DESIGN_STABLECOIN_RAIL.md)             |
+| Mail setup          | [`docs/MAIL_SETUP.md`](./docs/MAIL_SETUP.md)                                     |
+| Feature gap         | [`docs/FEATURE_GAP_LEMFI.md`](./docs/FEATURE_GAP_LEMFI.md)                       |
 
 ## Getting started
 

@@ -258,6 +258,11 @@ only `getStatus` and the statement produce something the ledger accepts.
 - That they use their own sandbox credentials, never ours
 - That the engagement is for the adapter, named explicitly
 
+All of the above, plus the money-safety rules from `CLAUDE.md`, are written out
+as contract text in [`CONTRACTOR_ENGINEERING_RULES.md`](./CONTRACTOR_ENGINEERING_RULES.md).
+It is the Annex 3 of every integration engagement; attach it rather than
+paraphrasing it.
+
 ### One thing to enable on GitHub
 
 Branch protection on the working branch: require a pull request, require review
