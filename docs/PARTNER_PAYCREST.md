@@ -216,3 +216,32 @@ If sandbox credentials arrive, the next engineering step is a
 transfer saga, the ledger or the corridors changes — that is what the port is
 for, and it is the reason this integration is days of work rather than a
 project.
+
+---
+
+## 6 · How the engagement is actually structured (October 2026)
+
+Two agreements, in sequence, and this repository is party to neither.
+
+1. **Agreement No. 04 — the application.** Two Paycrest-affiliated engineers
+   deliver an independent, rebranded payment application, integrate it with the
+   Paycrest protocol, verify it in the Paycrest sandbox and deploy it on our
+   own infrastructure. USD 4,000, half on signature, half on a recorded
+   demonstration in Nigeria, Uganda, Kenya and Tanzania. They get **no access to
+   this repository**; the access rules in
+   [`CONTRACTOR_ENGINEERING_RULES.md`](CONTRACTOR_ENGINEERING_RULES.md) apply
+   only if that ever changes.
+2. **The Paycrest Agreement — the network.** Between Paycrest and the operating
+   company, proposed by Paycrest after the application is delivered. It is what
+   gives us our own sandbox and production credentials. Check it against the
+   technical questions in §2 and the call sheet before it is signed: idempotency
+   key, per-event webhook id, decimals per currency, status list, statement
+   export, and whether the operating company would ever hold a stablecoin.
+
+Only after both does MoraPay change. The delivered application is **reference
+material, not code to paste in**: its integration note says which of its parts
+does name enquiry, initiation, status, webhook verification and reconciliation,
+and those become a `PaycrestPayoutProvider` in `packages/adapters/src/paycrest/`
+behind `PAYCREST_ENABLED` (off by default), written to this repository's rules —
+integer money at the edge, acknowledgement is not settlement, the callback only
+enqueues a poll. Fincra follows the same path in its own folder.
