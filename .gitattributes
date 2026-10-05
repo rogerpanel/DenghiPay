@@ -1,0 +1,43 @@
+# Line endings.
+#
+# Git on Windows defaults to converting LF to CRLF on checkout. For most files
+# that is invisible and harmless. For the files below it is not:
+#
+#   *.sh        piped to `bash -s` over ssh, a carriage return becomes part of
+#               every command, and the shell reports `$'\r': command not found`
+#               on a line that looks perfectly correct
+#   Dockerfile  the same, inside RUN instructions
+#   *.yml       docker compose parses it, but scripts embedded in it break the
+#               same way
+#   *.sql       psql tolerates it; the diff noise is the problem
+#
+# Forcing LF on them costs Windows editors nothing — every editor in current use
+# handles LF — and removes a class of failure that always presents as something
+# other than what it is.
+* text=auto eol=lf
+
+*.sh text eol=lf
+*.bash text eol=lf
+Dockerfile text eol=lf
+*.Dockerfile text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sql text eol=lf
+*.conf text eol=lf
+*.inc text eol=lf
+.env.example text eol=lf
+
+# Binary: never touched, never diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+
+# Generated. Collapsed in review, and never a merge conflict worth resolving
+# by hand.
+pnpm-lock.yaml linguist-generated=true -diff
+docs/api/openapi.json linguist-generated=true

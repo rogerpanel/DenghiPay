@@ -1,0 +1,9 @@
+/*
+ * The design system, imported by relative path rather than by package
+ * specifier: webpack's css-loader does not read the `exports` map in
+ * package.json, so `@import '@morapay/ui/tokens.css'` does not resolve. The
+ * files still live in packages/ui and are still the single source of truth —
+ * both apps import these same two files.
+ */
+@import '../../../packages/ui/src/tokens.css';
+@import '../../../packages/ui/src/components.css';

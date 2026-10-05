@@ -1,0 +1,39 @@
+# Staging (BUILD_PLAN 12.3, 12.5).
+#
+# Identical to production in shape — that is the point of a staging
+# environment — with four deliberate differences:
+#
+#   1. its own database and its own secrets, so a staging mistake cannot touch
+#      production data;
+#   2. `noindex` and HTTP basic auth at the edge, so a half-finished screen
+#      never appears in a search result;
+#   3. debug-level logging;
+#   4. the simulators stay on regardless of what any partner flag says.
+#
+#   docker compose -f infra/compose/production.yml -f infra/compose/staging.yml up -d
+name: morapay-staging
+
+services:
+  api:
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: debug
+      # Staging never moves real money, whatever else is configured.
+      LIVE_FUNDS_ENABLED: 'false'
+      PAYCREST_ENABLED: 'false'
+      FINCRA_ENABLED: 'false'
+      PAYIN_RU_PARTNER_ENABLED: 'false'
+      # Fast auto-confirm so a staging walkthrough does not wait.
+      SIMULATOR_AUTOCONFIRM_SECONDS: '5'
+
+  nginx:
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/staging.d:/etc/nginx/conf.d:ro
+      - ../nginx/htpasswd:/etc/nginx/htpasswd:ro
+      - certbot-www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+
+  grafana:
+    environment:
+      GF_SERVER_ROOT_URL: ${GRAFANA_URL:-https://staging-grafana.morapay.example}

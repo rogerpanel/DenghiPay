@@ -1,0 +1,6 @@
+/*
+ * Same design system as the sender app, imported by relative path — css-loader
+ * does not read package `exports`. See apps/web/app/globals.css.
+ */
+@import '../../../packages/ui/src/tokens.css';
+@import '../../../packages/ui/src/components.css';

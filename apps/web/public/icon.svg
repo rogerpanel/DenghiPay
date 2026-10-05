@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MoraPay">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F5A623"/>
+      <stop offset="1" stop-color="#D98A0B"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#g)"/>
+  <!-- The mark is a shape, not text: the signature orange fails contrast for
+       anything a user has to read, so it carries the fill and #1A1A1A carries
+       the letterform. -->
+  <path d="M16 44V20h6l10 14 10-14h6v24h-6V30l-8 11h-4l-8-11v14z" fill="#1A1A1A"/>
+</svg>
