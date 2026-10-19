@@ -290,6 +290,7 @@ _DoD:_ Mismatched name enquiry blocks the transfer and prompts the sender.
 
 **7.3 Payout partner adapter (when contracted).** Split into **7.3a Paycrest (Nigeria)** and **7.3b Fincra (Nigeria + Ghana)**. Dual-source from first live transaction. Feature-flagged per G1.
 _DoD:_ Sandbox payout confirmed and reconciled.
+_Status 7.3a (2026-10-19):_ **adapter built, wired, payouts held back.** `packages/adapters/src/paycrest/` implements all five port operations against Paycrest's v2 API for Nigeria, Kenya, Uganda and Tanzania (diverging from the plan's Nigeria-only scope because Agreement No. 04 is accepted against those four). Tested offline and through a running API. Two facts change the DoD: Paycrest **has no sandbox**, so it becomes one live nominal payout per country; and an order is **funded in stablecoin**, so it waits on the Model B decision (`DESIGN_STABLECOIN_RAIL.md`). Until a funder exists, `PAYCREST_ENABLED=true` registers Paycrest disabled and the simulators keep serving. See `docs/PAYCREST_ADAPTER.md`.
 
 **7.4 Payout failure handling.** Failed payouts return funds to `USER_PAYABLE` and trigger sender notification plus a support task. Never silently retried into a duplicate.
 _DoD:_ Duplicate-payout test proves impossibility under retry storm.

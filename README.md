@@ -23,6 +23,7 @@ corridors**, plus four inbound from Russia and Belarus.
 | Call sheet          | [`docs/PAYCREST_CALL_SHEET.md`](./docs/PAYCREST_CALL_SHEET.md)                   |
 | Integration         | [`docs/PARTNER_INTEGRATION_SPEC.md`](./docs/PARTNER_INTEGRATION_SPEC.md)         |
 | Contractor rules    | [`docs/CONTRACTOR_ENGINEERING_RULES.md`](./docs/CONTRACTOR_ENGINEERING_RULES.md) |
+| Paycrest adapter    | [`docs/PAYCREST_ADAPTER.md`](./docs/PAYCREST_ADAPTER.md)                         |
 | Decisions in flight | [`docs/DECISION_STABLECOIN_ROUTE.md`](./docs/DECISION_STABLECOIN_ROUTE.md)       |
 | Stablecoin design   | [`docs/DESIGN_STABLECOIN_RAIL.md`](./docs/DESIGN_STABLECOIN_RAIL.md)             |
 | Mail setup          | [`docs/MAIL_SETUP.md`](./docs/MAIL_SETUP.md)                                     |

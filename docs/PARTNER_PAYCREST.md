@@ -245,3 +245,7 @@ and those become a `PaycrestPayoutProvider` in `packages/adapters/src/paycrest/`
 behind `PAYCREST_ENABLED` (off by default), written to this repository's rules —
 integer money at the edge, acknowledgement is not settlement, the callback only
 enqueues a poll. Fincra follows the same path in its own folder.
+
+That adapter now exists — see [`PAYCREST_ADAPTER.md`](PAYCREST_ADAPTER.md) for
+what it does, how to probe the key on the server, and the funding decision that
+holds its payouts back.
