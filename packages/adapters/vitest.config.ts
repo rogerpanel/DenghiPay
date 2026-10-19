@@ -7,7 +7,8 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text-summary', 'lcov'],
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.spec.ts', 'src/index.ts'],
+      // The probe is a command-line tool run by hand against the real API.
+      exclude: ['src/**/*.spec.ts', 'src/index.ts', 'src/paycrest/probe.ts'],
       thresholds: { lines: 70, statements: 70, functions: 70, branches: 65 },
     },
   },

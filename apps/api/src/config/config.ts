@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import { Authorisation, parseAuthorisations } from '@morapay/domain';
+import {
+  PAYCREST_DEFAULT_BASE_URL,
+  PAYCREST_NETWORKS,
+  PAYCREST_TOKENS,
+  parsePaycrestInstitutions,
+} from '@morapay/adapters';
 
 /**
  * Environment configuration, validated at boot.
@@ -70,6 +76,26 @@ export const configSchema = z.object({
 
   // Contracted rails. All disabled until G1 is satisfied.
   PAYCREST_ENABLED: booleanFromEnv,
+  /**
+   * Paycrest (BUILD_PLAN 7.3a, docs/PAYCREST_ADAPTER.md). Paycrest has no
+   * sandbox — every key is a live key — so none of these has a usable default,
+   * and `loadConfig` refuses to boot with the flag on and any of them missing.
+   */
+  PAYCREST_BASE_URL: z
+    .string()
+    .optional()
+    .transform((value) =>
+      value === undefined || value === '' ? PAYCREST_DEFAULT_BASE_URL : value,
+    ),
+  PAYCREST_API_KEY: z.string().default(''),
+  /** Verifies webhook signatures. Never sent to Paycrest. */
+  PAYCREST_API_SECRET: z.string().default(''),
+  PAYCREST_TOKEN: z.enum(PAYCREST_TOKENS).default('USDT'),
+  PAYCREST_NETWORK: z.enum(PAYCREST_NETWORKS).default('base'),
+  /** Our wallet on PAYCREST_NETWORK, where an order that cannot be fulfilled is refunded. */
+  PAYCREST_REFUND_ADDRESS: z.string().default(''),
+  /** Our bank and network codes → Paycrest institution codes. See the probe. */
+  PAYCREST_INSTITUTIONS: z.string().default('{}'),
   FINCRA_ENABLED: booleanFromEnv,
   PAYIN_RU_PARTNER_ENABLED: booleanFromEnv,
 
@@ -184,6 +210,24 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
         'MAIL_TRANSPORT=smtp with the placeholder MAIL_FROM. Set a From address ' +
           'the receiving domain will accept, or mail will be delivered to spam ' +
           'folders at best.',
+      );
+    }
+  }
+
+  // The institution table is parsed even with Paycrest off, so a malformed one
+  // is found when it is written rather than on the day the flag is turned on.
+  parsePaycrestInstitutions(config.PAYCREST_INSTITUTIONS);
+  if (config.PAYCREST_ENABLED) {
+    const placeholder = (value: string) => value === '' || value === 'replace-in-vault';
+    const missing = [
+      placeholder(config.PAYCREST_API_KEY) ? 'PAYCREST_API_KEY' : null,
+      placeholder(config.PAYCREST_API_SECRET) ? 'PAYCREST_API_SECRET' : null,
+      config.PAYCREST_REFUND_ADDRESS === '' ? 'PAYCREST_REFUND_ADDRESS' : null,
+    ].filter((key): key is string => key !== null);
+    if (missing.length > 0) {
+      throw new Error(
+        `PAYCREST_ENABLED=true needs ${missing.join(', ')}. Paycrest keys are live keys; ` +
+          'see docs/PAYCREST_ADAPTER.md before setting them.',
       );
     }
   }

@@ -10,7 +10,13 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ProviderRegistry, verifySignature, withinSkew } from '@morapay/adapters';
+import {
+  PAYCREST_PROVIDER_ID,
+  PaycrestSignatureError,
+  ProviderRegistry,
+  verifySignature,
+  withinSkew,
+} from '@morapay/adapters';
 import { PrismaService } from '../common/prisma.service';
 import { AppConfig } from '../config/config';
 import { APP_CONFIG } from '../config/tokens';
@@ -28,7 +34,15 @@ import { TransferSagaService } from '../transfers/transfer-saga.service';
  * The order of checks is deliberate — freshness first because it is cheap, then
  * the signature over raw bytes in constant time, then normalisation, then
  * dedup, then an idempotent enqueue.
+ *
+ * One provider signs differently. Paycrest sends `X-Paycrest-Signature` over the
+ * raw body and no timestamp at all, so it cannot pass our `x-signature` /
+ * `x-timestamp` checks and the adapter verifies its own scheme inside
+ * `parseCallback` instead. Losing the freshness check costs nothing: what a
+ * replay can achieve is a poll, and dedup absorbs it.
  */
+const SELF_VERIFYING_PROVIDERS: ReadonlySet<string> = new Set([PAYCREST_PROVIDER_ID]);
+
 @Controller('webhooks')
 export class ProviderCallbackController {
   constructor(
@@ -48,27 +62,35 @@ export class ProviderCallbackController {
     @Req() request: RawBodyRequest<Request>,
   ): Promise<void> {
     const rawBody = request.rawBody;
-    if (rawBody === undefined || signature === undefined || timestamp === undefined) {
+    if (rawBody === undefined) {
       this.metrics.callbackReceived(providerId, 'malformed');
       throw new UnauthorizedException();
     }
 
-    const secret = this.signingSecretFor(providerId);
-    if (secret === null) {
-      this.metrics.callbackReceived(providerId, 'malformed');
-      throw new UnauthorizedException();
-    }
+    const selfVerifying = SELF_VERIFYING_PROVIDERS.has(providerId);
+    if (!selfVerifying) {
+      if (signature === undefined || timestamp === undefined) {
+        this.metrics.callbackReceived(providerId, 'malformed');
+        throw new UnauthorizedException();
+      }
 
-    // 1. Freshness — cheap, do it first.
-    if (!withinSkew(timestamp, this.config.CALLBACK_MAX_SKEW_SECONDS)) {
-      this.metrics.callbackReceived(providerId, 'rejected.stale');
-      throw new UnauthorizedException();
-    }
+      const secret = this.signingSecretFor(providerId);
+      if (secret === null) {
+        this.metrics.callbackReceived(providerId, 'malformed');
+        throw new UnauthorizedException();
+      }
 
-    // 2. Signature over raw bytes, constant-time.
-    if (!verifySignature(secret, timestamp, rawBody, signature)) {
-      this.metrics.callbackReceived(providerId, 'rejected.signature');
-      throw new UnauthorizedException();
+      // 1. Freshness — cheap, do it first.
+      if (!withinSkew(timestamp, this.config.CALLBACK_MAX_SKEW_SECONDS)) {
+        this.metrics.callbackReceived(providerId, 'rejected.stale');
+        throw new UnauthorizedException();
+      }
+
+      // 2. Signature over raw bytes, constant-time.
+      if (!verifySignature(secret, timestamp, rawBody, signature)) {
+        this.metrics.callbackReceived(providerId, 'rejected.signature');
+        throw new UnauthorizedException();
+      }
     }
 
     // 3. Normalise. Yields a TRIGGER — never an outcome.
@@ -82,11 +104,15 @@ export class ProviderCallbackController {
     try {
       trigger = await provider.parseCallback({
         rawBody,
-        timestamp,
+        timestamp: timestamp ?? '',
         headers: request.headers as Record<string, string | undefined>,
       });
-    } catch {
-      this.metrics.callbackReceived(providerId, 'malformed');
+    } catch (error) {
+      // A self-verifying provider reports a bad signature from here.
+      this.metrics.callbackReceived(
+        providerId,
+        error instanceof PaycrestSignatureError ? 'rejected.signature' : 'malformed',
+      );
       throw new UnauthorizedException();
     }
 

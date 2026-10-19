@@ -3,15 +3,19 @@ import { APP_GUARD, Reflector } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { AFRICAN_COUNTRIES, AfricanCountry, asCorridorId } from '@morapay/domain';
+import { AFRICAN_COUNTRIES, AfricanCountry, CorridorId, asCorridorId } from '@morapay/domain';
 import { LedgerService } from '@morapay/ledger';
 import {
   MockKycProvider,
   MockScreeningProvider,
+  PAYCREST_PAYOUT_CURRENCIES,
+  PaycrestClient,
+  PaycrestPayoutProvider,
   ProviderRegistry,
   SimulatedRateSource,
   createPayinSimulator,
   createPayoutSimulator,
+  parsePaycrestInstitutions,
 } from '@morapay/adapters';
 
 import { AppConfig, loadConfig } from './config/config';
@@ -132,6 +136,19 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
   // 4.3c). Its outward payments need a declaration and an allowance check that
   // no other origin does, and both live above this layer — the rail itself is
   // an ordinary push.
+  // Paycrest (BUILD_PLAN 7.3a). Registered when its flag is on, but it carries
+  // payouts only once something can fund its orders — funding one means holding
+  // a stablecoin, which is a decision (docs/DESIGN_STABLECOIN_RAIL.md) and not a
+  // flag. Until then it is listed, disabled, and the simulators keep serving
+  // its four countries.
+  const paycrest = cfg.PAYCREST_ENABLED
+    ? buildPaycrest(cfg, Object.keys(PAYCREST_PAYOUT_CURRENCIES).flatMap(to))
+    : null;
+  const paycrestCarriesPayouts = paycrest?.canFundPayouts ?? false;
+  if (paycrest !== null) {
+    registry.registerPayout({ provider: paycrest, priority: 50, enabled: paycrestCarriesPayouts });
+  }
+
   for (const market of AFRICAN_COUNTRIES) {
     registry.registerPayin({
       provider: createPayinSimulator(market, from(market), payinOptions),
@@ -141,31 +158,49 @@ function buildRegistry(cfg: AppConfig): ProviderRegistry {
     registry.registerPayout({
       provider: createPayoutSimulator(market, to(market)),
       priority: 100,
-      enabled: payoutSimulatorEnabled(market, cfg),
+      enabled: payoutSimulatorEnabled(market, cfg, paycrestCarriesPayouts),
     });
   }
 
   return registry;
 }
 
+function buildPaycrest(cfg: AppConfig, corridors: readonly CorridorId[]): PaycrestPayoutProvider {
+  return new PaycrestPayoutProvider({
+    client: new PaycrestClient({ baseUrl: cfg.PAYCREST_BASE_URL, apiKey: cfg.PAYCREST_API_KEY }),
+    apiSecret: cfg.PAYCREST_API_SECRET,
+    token: cfg.PAYCREST_TOKEN,
+    network: cfg.PAYCREST_NETWORK,
+    refundAddress: cfg.PAYCREST_REFUND_ADDRESS,
+    corridors,
+    institutions: parsePaycrestInstitutions(cfg.PAYCREST_INSTITUTIONS),
+    // No funder: the repository ships only the one that refuses. See above.
+  });
+}
+
 /**
  * A payout simulator is enabled exactly when no real provider covers that
  * destination yet.
  *
- * Two destinations have a real one behind a flag, and both flags default to
- * false (guardrail G1), so today every simulator is on. The list is here rather
- * than inline so that turning a provider on is a one-line change in one place —
- * and so that "which destinations have a real rail?" has an answer you can read
- * rather than one you have to assemble.
+ * Paycrest covers Nigeria, Kenya, Uganda and Tanzania once it can carry payouts;
+ * Fincra covers Nigeria and Ghana behind its flag. Every flag defaults to false
+ * (guardrail G1), so today every simulator is on. The list is here rather than
+ * inline so that "which destinations have a real rail?" has an answer you can
+ * read rather than one you have to assemble.
  */
-function payoutSimulatorEnabled(market: AfricanCountry, cfg: AppConfig): boolean {
+function payoutSimulatorEnabled(
+  market: AfricanCountry,
+  cfg: AppConfig,
+  paycrestCarriesPayouts: boolean,
+): boolean {
+  const paycrestCovers = market in PAYCREST_PAYOUT_CURRENCIES && paycrestCarriesPayouts;
   switch (market) {
     case 'NG':
-      return !cfg.PAYCREST_ENABLED && !cfg.FINCRA_ENABLED;
+      return !paycrestCovers && !cfg.FINCRA_ENABLED;
     case 'GH':
       return !cfg.FINCRA_ENABLED;
     default:
-      return true;
+      return !paycrestCovers;
   }
 }
 
