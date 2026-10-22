@@ -37,6 +37,12 @@ export const PAYCREST_CONFIRMED_INSTITUTIONS: PaycrestInstitutionMap = {
  * deliberately maps nothing).
  */
 export function paycrestInstitutionsFromConfig(value: string | undefined): PaycrestInstitutionMap {
-  const trimmed = (value ?? '').trim();
-  return trimmed === '' ? PAYCREST_CONFIRMED_INSTITUTIONS : parsePaycrestInstitutions(trimmed);
+  // The same invisible characters a console paste leaves on a URL, and the
+  // quotes an editor may keep around the value.
+  const cleaned = (value ?? '')
+    .replace(/[\p{Cc}\p{Cf}]/gu, '')
+    .trim()
+    .replace(/^'(.*)'$/s, '$1')
+    .trim();
+  return cleaned === '' ? PAYCREST_CONFIRMED_INSTITUTIONS : parsePaycrestInstitutions(cleaned);
 }

@@ -223,9 +223,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     }
   }
 
-  // The institution table is parsed even with Paycrest off, so a malformed one
-  // is found when it is written rather than on the day the flag is turned on.
-  paycrestInstitutionsFromConfig(config.PAYCREST_INSTITUTIONS);
+  // The institution table is checked even with Paycrest off, so a malformed one
+  // is found when it is written rather than on the day the flag is turned on —
+  // but while the flag is off it is a warning, not a refusal to boot. A typo in
+  // a setting nothing reads must not take the whole site down, which is what it
+  // did on the demonstration server on 22 October 2026.
+  try {
+    paycrestInstitutionsFromConfig(config.PAYCREST_INSTITUTIONS);
+  } catch (error) {
+    if (config.PAYCREST_ENABLED) throw error;
+    process.emitWarning(
+      `${(error as Error).message}. Ignored because PAYCREST_ENABLED is false; ` +
+        'fix or blank it before turning Paycrest on.',
+    );
+  }
   if (config.PAYCREST_ENABLED) {
     const placeholder = (value: string) => value === '' || value === 'replace-in-vault';
     const missing = [

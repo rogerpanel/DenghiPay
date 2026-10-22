@@ -85,10 +85,20 @@ describe('Paycrest configuration', () => {
     expect(() => load({ PAYCREST_NETWORK: 'base-sepolia' })).toThrow(/PAYCREST_NETWORK/);
   });
 
-  it('checks the institution table even while the flag is off', () => {
-    expect(() => load({ PAYCREST_INSTITUTIONS: '{"bank":{"GH":{"1":"X"}}}' })).toThrow(
-      /does not pay out/,
-    );
+  it('boots with a broken institution table while the flag is off, and refuses once it is on', () => {
+    const warn = jest.spyOn(process, 'emitWarning').mockImplementation(() => undefined);
+    try {
+      expect(load({ PAYCREST_INSTITUTIONS: '{"bank":' }).PAYCREST_ENABLED).toBe(false);
+      expect(warn).toHaveBeenCalledWith(expect.stringMatching(/not valid JSON.*Ignored/));
+      expect(() => load({ ...ENABLED, PAYCREST_INSTITUTIONS: '{"bank":' })).toThrow(
+        /not valid JSON/,
+      );
+      expect(() =>
+        load({ ...ENABLED, PAYCREST_INSTITUTIONS: '{"bank":{"GH":{"1":"X"}}}' }),
+      ).toThrow(/does not pay out/);
+    } finally {
+      warn.mockRestore();
+    }
     expect(
       load({ PAYCREST_INSTITUTIONS: '{"bank":{"NG":{"058":"GTBINGLA"}}}' }).PAYCREST_INSTITUTIONS,
     ).toContain('GTBINGLA');

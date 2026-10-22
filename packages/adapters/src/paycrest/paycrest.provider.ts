@@ -496,8 +496,10 @@ export function parsePaycrestInstitutions(json: string): PaycrestInstitutionMap 
   let raw: unknown;
   try {
     raw = JSON.parse(json === '' ? '{}' : json);
-  } catch {
-    throw new Error('PAYCREST_INSTITUTIONS is not valid JSON');
+  } catch (error) {
+    // The parser's message names the position, which is what finds a typo in a
+    // line typed through a console. The value is reference data, not a secret.
+    throw new Error(`PAYCREST_INSTITUTIONS is not valid JSON (${(error as Error).message})`);
   }
   const out: Record<'bank' | 'mobileMoney', Record<string, Record<string, string>>> = {
     bank: {},

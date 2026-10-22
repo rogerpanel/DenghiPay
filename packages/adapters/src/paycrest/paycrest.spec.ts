@@ -725,6 +725,23 @@ describe('confirmed Paycrest institutions', () => {
     });
   });
 
+  it('reads a value wrapped in single quotes or carrying invisible characters', () => {
+    expect(paycrestInstitutionsFromConfig(`'{"bank":{"NG":{"011":"FBNINGLA"}}}'`).bank?.NG).toEqual(
+      {
+        '011': 'FBNINGLA',
+      },
+    );
+    expect(
+      paycrestInstitutionsFromConfig('\ufeff{"bank":{"NG":{"011":"FBNINGLA"}}}\r').bank?.NG,
+    ).toEqual({ '011': 'FBNINGLA' });
+  });
+
+  it('says where a typed table breaks', () => {
+    expect(() => paycrestInstitutionsFromConfig('{"bank":{"NG":{"011" "X"}}}')).toThrow(
+      /not valid JSON \(.+\)/,
+    );
+  });
+
   it('maps no bank it has not read off Paycrest, so those are refused, not guessed', () => {
     expect(PAYCREST_CONFIRMED_INSTITUTIONS.bank?.NG?.['011']).toBeUndefined(); // First Bank
     expect(PAYCREST_CONFIRMED_INSTITUTIONS.bank?.NG?.['033']).toBeUndefined(); // UBA
