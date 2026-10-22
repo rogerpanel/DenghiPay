@@ -43,7 +43,8 @@ describe('Paycrest configuration', () => {
     expect(config.PAYCREST_BASE_URL).toBe('https://api.paycrest.io/v2');
     expect(config.PAYCREST_TOKEN).toBe('USDT');
     expect(config.PAYCREST_NETWORK).toBe('base');
-    expect(config.PAYCREST_INSTITUTIONS).toBe('{}');
+    // Blank: the confirmed table in adapters/paycrest/institutions.ts applies.
+    expect(config.PAYCREST_INSTITUTIONS).toBe('');
   });
 
   it('cleans a base URL pasted with an invisible byte-order mark', () => {

@@ -4,7 +4,7 @@ import {
   normalisePaycrestBaseUrl,
   PAYCREST_NETWORKS,
   PAYCREST_TOKENS,
-  parsePaycrestInstitutions,
+  paycrestInstitutionsFromConfig,
 } from '@morapay/adapters';
 
 /**
@@ -99,8 +99,12 @@ export const configSchema = z.object({
   PAYCREST_NETWORK: z.enum(PAYCREST_NETWORKS).default('base'),
   /** Our wallet on PAYCREST_NETWORK, where an order that cannot be fulfilled is refunded. */
   PAYCREST_REFUND_ADDRESS: z.string().default(''),
-  /** Our bank and network codes → Paycrest institution codes. See the probe. */
-  PAYCREST_INSTITUTIONS: z.string().default('{}'),
+  /**
+   * Our bank and network codes → Paycrest institution codes. Blank uses the
+   * table confirmed from Paycrest's own list (adapters/paycrest/institutions.ts);
+   * a JSON value replaces it entirely.
+   */
+  PAYCREST_INSTITUTIONS: z.string().default(''),
   FINCRA_ENABLED: booleanFromEnv,
   PAYIN_RU_PARTNER_ENABLED: booleanFromEnv,
 
@@ -221,7 +225,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   // The institution table is parsed even with Paycrest off, so a malformed one
   // is found when it is written rather than on the day the flag is turned on.
-  parsePaycrestInstitutions(config.PAYCREST_INSTITUTIONS);
+  paycrestInstitutionsFromConfig(config.PAYCREST_INSTITUTIONS);
   if (config.PAYCREST_ENABLED) {
     const placeholder = (value: string) => value === '' || value === 'replace-in-vault';
     const missing = [

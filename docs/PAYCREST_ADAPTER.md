@@ -86,21 +86,31 @@ docker compose -f infra/compose/server.yml exec api \
 
 The resolved name prints to your terminal only. Do not paste it anywhere.
 
-### Filling `PAYCREST_INSTITUTIONS`
+### The institution table
 
 Paycrest names a bank or wallet by its own code (a SWIFT code, or one ending in
 `PC`, e.g. `SAFAKEPC` for Safaricom M-Pesa). MoraPay stores the Nigerian NIP
-bank code and a network name. The table maps one to the other. It is one line of
-JSON in `.env`:
+bank code and a network name. The table that maps one to the other is now **in
+the code** — `packages/adapters/src/paycrest/institutions.ts` — filled from
+Paycrest's own list as the probe printed it on the server (§6). Leave
+`PAYCREST_INSTITUTIONS` blank to use it; a JSON value replaces it entirely.
 
-```
-PAYCREST_INSTITUTIONS={"bank":{"NG":{"058":"GTBINGLA","011":"FBNINGLA"}},"mobileMoney":{"KE":{"MPESA":"SAFAKEPC"}}}
+A recipient whose bank or network is missing is refused as UNSUPPORTED before
+anything is sent.
+
+### Short probe commands
+
+These run as `deploy` over ssh from PowerShell — the `deploy` user is in the
+`docker` group, and paste works there, unlike the web console:
+
+```bash
+docker exec $(docker ps -qf name=api | head -1) node /app/packages/adapters/dist/paycrest/probe.js find first
+docker exec $(docker ps -qf name=api | head -1) node /app/packages/adapters/dist/paycrest/probe.js networks
 ```
 
-Take every right-hand value from the probe's output, never from memory. A
-recipient whose bank or network is missing is refused as UNSUPPORTED before
-anything is sent. The API checks the table's shape at boot, even with the flag
-off.
+`find <words>` lists institutions whose name or code contains the words, in the
+four currencies. `networks` shows, for each currency and each chain, whether a
+provider is quoting the off-ramp side at 100 USDT. Neither creates anything.
 
 ## 3 · What `PAYCREST_ENABLED=true` does today
 

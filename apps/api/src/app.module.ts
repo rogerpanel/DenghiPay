@@ -15,7 +15,7 @@ import {
   SimulatedRateSource,
   createPayinSimulator,
   createPayoutSimulator,
-  parsePaycrestInstitutions,
+  paycrestInstitutionsFromConfig,
 } from '@morapay/adapters';
 
 import { AppConfig, loadConfig } from './config/config';
@@ -173,7 +173,7 @@ function buildPaycrest(cfg: AppConfig, corridors: readonly CorridorId[]): Paycre
     network: cfg.PAYCREST_NETWORK,
     refundAddress: cfg.PAYCREST_REFUND_ADDRESS,
     corridors,
-    institutions: parsePaycrestInstitutions(cfg.PAYCREST_INSTITUTIONS),
+    institutions: paycrestInstitutionsFromConfig(cfg.PAYCREST_INSTITUTIONS),
     // No funder: the repository ships only the one that refuses. See above.
   });
 }

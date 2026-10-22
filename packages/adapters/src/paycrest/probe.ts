@@ -4,6 +4,8 @@
  *
  *   node /app/packages/adapters/dist/paycrest/probe.js   (inside the API container)
  *   node /app/packages/adapters/dist/paycrest/probe.js verify <INSTITUTION> <ACCOUNT>
+ *   node /app/packages/adapters/dist/paycrest/probe.js find <part of a bank name>
+ *   node /app/packages/adapters/dist/paycrest/probe.js networks
  *
  * Reads PAYCREST_API_KEY, and optionally PAYCREST_BASE_URL, PAYCREST_TOKEN and
  * PAYCREST_NETWORK, from the environment. It **never creates an order** — and
@@ -18,7 +20,7 @@
  */
 import { getCurrency } from '@morapay/domain';
 import { PaycrestApiError, PaycrestClient, normalisePaycrestBaseUrl } from './client';
-import { PAYCREST_PAYOUT_CURRENCIES } from './paycrest.provider';
+import { PAYCREST_NETWORKS, PAYCREST_PAYOUT_CURRENCIES } from './paycrest.provider';
 
 async function main(): Promise<void> {
   const apiKey = process.env.PAYCREST_API_KEY ?? '';
@@ -33,7 +35,45 @@ async function main(): Promise<void> {
   const network = process.env.PAYCREST_NETWORK || 'base';
   const client = new PaycrestClient({ baseUrl, apiKey });
 
-  const [command, institution, account] = process.argv.slice(2);
+  const [command, institution, account, ...more] = process.argv.slice(2);
+
+  // `find first bank` — institutions in the four currencies whose name or code
+  // contains the words, ignoring case. Short enough to type into a web console.
+  if (command === 'find') {
+    const needle = [institution, account, ...more].filter(Boolean).join(' ').toLowerCase();
+    if (needle === '') {
+      console.error('usage: probe.js find <part of a bank or wallet name>');
+      process.exit(2);
+    }
+    for (const [country, currency] of Object.entries(PAYCREST_PAYOUT_CURRENCIES)) {
+      const list = await client.institutions(currency);
+      for (const inst of list) {
+        if (`${inst.name} ${inst.code}`.toLowerCase().includes(needle)) {
+          console.log(`${country}  ${inst.code.padEnd(12)} ${inst.type.padEnd(14)} ${inst.name}`);
+        }
+      }
+    }
+    return;
+  }
+
+  // `networks` — which chains have a provider quoting the off-ramp side for
+  // each of the four currencies, at 100 tokens. Public data; no order is made.
+  if (command === 'networks') {
+    for (const [, currency] of Object.entries(PAYCREST_PAYOUT_CURRENCIES)) {
+      for (const network of PAYCREST_NETWORKS) {
+        let result: string;
+        try {
+          result =
+            (await client.sellRate(network, token, '100', currency)) ?? 'no provider quoting';
+        } catch (error) {
+          result = describe(error);
+        }
+        console.log(`${currency}  ${network.padEnd(16)} ${result}`);
+      }
+    }
+    return;
+  }
+
   if (command === 'verify') {
     if (institution === undefined || account === undefined) {
       console.error('usage: probe.js verify <INSTITUTION_CODE> <ACCOUNT_OR_WALLET>');

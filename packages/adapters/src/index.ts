@@ -13,6 +13,7 @@ export * from './simulators/rate-source.simulated';
 export * from './registry';
 export * from './paycrest/client';
 export * from './paycrest/paycrest.provider';
+export * from './paycrest/institutions';
 
 // The provider outcome types live in @morapay/domain so that @morapay/ledger can
 // depend on them without depending on the adapter layer (docs/DIVERGENCE_LOG.md

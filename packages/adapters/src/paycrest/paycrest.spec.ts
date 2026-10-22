@@ -17,6 +17,7 @@ import {
 } from './client';
 import { decimalToMinorUnits, fiatMinorForToken, formatMinorUnits, parseDecimal } from './decimal';
 import { parseJsonExact } from './json';
+import { PAYCREST_CONFIRMED_INSTITUTIONS, paycrestInstitutionsFromConfig } from './institutions';
 import {
   PaycrestFundingInstruction,
   PaycrestFundingUnavailable,
@@ -705,5 +706,28 @@ describe('cleanPaycrestCredential', () => {
     const body = Buffer.from('{}');
     const sig = createHmac('sha256', 'secret').update(body).digest('hex');
     expect(verifyPaycrestSignature('\ufeffsecret\r', body, sig)).toBe(true);
+  });
+});
+
+describe('confirmed Paycrest institutions', () => {
+  it('passes the same validation a hand-written table must', () => {
+    expect(parsePaycrestInstitutions(JSON.stringify(PAYCREST_CONFIRMED_INSTITUTIONS))).toEqual(
+      PAYCREST_CONFIRMED_INSTITUTIONS,
+    );
+  });
+
+  it('applies when the setting is blank, and is replaced entirely when it is not', () => {
+    expect(paycrestInstitutionsFromConfig(undefined)).toBe(PAYCREST_CONFIRMED_INSTITUTIONS);
+    expect(paycrestInstitutionsFromConfig('  ')).toBe(PAYCREST_CONFIRMED_INSTITUTIONS);
+    expect(paycrestInstitutionsFromConfig('{}')).toEqual({ bank: {}, mobileMoney: {} });
+    expect(paycrestInstitutionsFromConfig('{"bank":{"NG":{"011":"FBNINGLA"}}}').bank?.NG).toEqual({
+      '011': 'FBNINGLA',
+    });
+  });
+
+  it('maps no bank it has not read off Paycrest, so those are refused, not guessed', () => {
+    expect(PAYCREST_CONFIRMED_INSTITUTIONS.bank?.NG?.['011']).toBeUndefined(); // First Bank
+    expect(PAYCREST_CONFIRMED_INSTITUTIONS.bank?.NG?.['033']).toBeUndefined(); // UBA
+    expect(PAYCREST_CONFIRMED_INSTITUTIONS.mobileMoney?.TZ?.MPESA).toBeUndefined();
   });
 });
