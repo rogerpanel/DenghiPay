@@ -195,7 +195,9 @@ export class PaycrestClient {
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers: {
-        'API-Key': this.options.apiKey,
+        // Trimmed: a key pasted into .env through a console can carry a stray
+        // carriage return, and Node refuses the whole request over it.
+        'API-Key': this.options.apiKey.trim(),
         Accept: 'application/json',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },

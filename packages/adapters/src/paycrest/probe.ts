@@ -100,9 +100,23 @@ async function main(): Promise<void> {
   console.log(JSON.stringify(skeleton, null, 2));
 }
 
+/**
+ * Enough to act on, never the key. Node reports a request that never reached
+ * Paycrest — no route, DNS, TLS, a bad header — as a bare `TypeError`, with
+ * the reason in `cause`; that reason is what an operator needs.
+ */
 function describe(error: unknown): string {
   if (error instanceof PaycrestApiError) return `HTTP ${error.httpStatus}`;
-  return error instanceof Error ? error.name : 'error';
+  if (!(error instanceof Error)) return 'error';
+  const key = (process.env.PAYCREST_API_KEY ?? '').trim();
+  const redact = (text: string) => (key === '' ? text : text.split(key).join('[API key]'));
+  const cause = error.cause as { code?: unknown; message?: unknown } | undefined;
+  const parts = [`${error.name}: ${redact(error.message)}`];
+  if (cause !== undefined) {
+    if (typeof cause.code === 'string') parts.push(`cause ${cause.code}`);
+    if (typeof cause.message === 'string') parts.push(redact(cause.message));
+  }
+  return parts.join(' — ');
 }
 
 main().catch((error: unknown) => {
