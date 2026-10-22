@@ -2,8 +2,8 @@
 /**
  * Read-only Paycrest probe, for running on the server with the real key.
  *
- *   node packages/adapters/dist/paycrest/probe.js
- *   node packages/adapters/dist/paycrest/probe.js verify <INSTITUTION> <ACCOUNT>
+ *   node /app/packages/adapters/dist/paycrest/probe.js   (inside the API container)
+ *   node /app/packages/adapters/dist/paycrest/probe.js verify <INSTITUTION> <ACCOUNT>
  *
  * Reads PAYCREST_API_KEY, and optionally PAYCREST_BASE_URL, PAYCREST_TOKEN and
  * PAYCREST_NETWORK, from the environment. It **never creates an order** — and

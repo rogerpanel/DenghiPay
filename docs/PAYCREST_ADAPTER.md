@@ -66,7 +66,7 @@ Then run the **read-only probe** inside the API container, which already loads
 
 ```bash
 docker compose -f infra/compose/server.yml exec api \
-  node packages/adapters/dist/paycrest/probe.js
+  node /app/packages/adapters/dist/paycrest/probe.js
 ```
 
 It never creates an order. For each of the four countries it prints:
@@ -81,7 +81,7 @@ account name:
 
 ```bash
 docker compose -f infra/compose/server.yml exec api \
-  node packages/adapters/dist/paycrest/probe.js verify GTBINGLA 0123456789
+  node /app/packages/adapters/dist/paycrest/probe.js verify GTBINGLA 0123456789
 ```
 
 The resolved name prints to your terminal only. Do not paste it anywhere.
