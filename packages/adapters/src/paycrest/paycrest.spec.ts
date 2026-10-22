@@ -742,9 +742,17 @@ describe('confirmed Paycrest institutions', () => {
     );
   });
 
-  it('maps no bank it has not read off Paycrest, so those are refused, not guessed', () => {
-    expect(PAYCREST_CONFIRMED_INSTITUTIONS.bank?.NG?.['011']).toBeUndefined(); // First Bank
-    expect(PAYCREST_CONFIRMED_INSTITUTIONS.bank?.NG?.['033']).toBeUndefined(); // UBA
+  it('maps every Nigerian bank MoraPay offers, and nothing Paycrest does not list', () => {
+    expect(Object.keys(PAYCREST_CONFIRMED_INSTITUTIONS.bank?.NG ?? {}).sort()).toEqual([
+      '011',
+      '033',
+      '044',
+      '057',
+      '058',
+      '070',
+      '221',
+    ]);
+    // Paycrest lists no M-Pesa for Tanzania: refused, not guessed.
     expect(PAYCREST_CONFIRMED_INSTITUTIONS.mobileMoney?.TZ?.MPESA).toBeUndefined();
   });
 });

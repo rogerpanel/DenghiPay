@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   }
   const baseUrl = normalisePaycrestBaseUrl(process.env.PAYCREST_BASE_URL);
   const token = process.env.PAYCREST_TOKEN || 'USDT';
-  const network = process.env.PAYCREST_NETWORK || 'base';
+  const network = process.env.PAYCREST_NETWORK || 'polygon';
   const client = new PaycrestClient({ baseUrl, apiKey });
 
   const [command, institution, account, ...more] = process.argv.slice(2);

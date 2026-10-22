@@ -96,7 +96,13 @@ export const configSchema = z.object({
   /** Verifies webhook signatures. Never sent to Paycrest. */
   PAYCREST_API_SECRET: z.string().default(''),
   PAYCREST_TOKEN: z.enum(PAYCREST_TOKENS).default('USDT'),
-  PAYCREST_NETWORK: z.enum(PAYCREST_NETWORKS).default('base'),
+  /**
+   * Polygon by default: on 22 October 2026 Base had no provider quoting KES, UGX
+   * or TZS, so three of the four countries could not have been paid. Polygon,
+   * Arbitrum, BNB Smart Chain, Tron, Celo and Solana quoted all four. The final
+   * choice follows wherever the funding wallet lives (docs/PAYCREST_ADAPTER.md §4).
+   */
+  PAYCREST_NETWORK: z.enum(PAYCREST_NETWORKS).default('polygon'),
   /** Our wallet on PAYCREST_NETWORK, where an order that cannot be fulfilled is refunded. */
   PAYCREST_REFUND_ADDRESS: z.string().default(''),
   /**

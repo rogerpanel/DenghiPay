@@ -185,16 +185,16 @@ with `refunding → refunded` and `initiated → expired` as the failure paths.
 
 First run with the temporary key, from the Hetzner server:
 
-- **Nigeria is live.** Decimals agree (2), and an off-ramp rate is quoted
-  (₦1,353.78 per USDT for 10 USDT on Base). Paycrest codes for our banks:
-  044 Access `ABNGNGLA`, 070 Fidelity `FIDTNGLA`, 058 GTBank `GTBINGLA`,
-  057 Zenith `ZEIBNGLA`, 221 Stanbic IBTC `SBICNGLX`. First Bank (011) and UBA
-  (033) still to be read from the full list.
-- **Kenya, Uganda, Tanzania: no rate (HTTP 404)** for 10 USDT on Base: no
-  provider was quoting the off-ramp side. Agreement No. 04 is accepted against
-  all four countries, so this goes to the Developers and Paycrest before the
-  acceptance demonstration. Check other networks and a larger amount first.
-- **Wallet codes:** KE M-Pesa `SAFAKEPC`, Airtel `AIRTKEPC`; UG MTN `MOMOUGPC`,
+- **All four countries are live — on the right network.** Off-ramp rates for
+  100 USDT: ₦1,354, KSh 128.57, USh 4,172, TSh 2,615. Nigeria is quoted on every
+  network; **Kenya, Uganda and Tanzania are not quoted on Base** (HTTP 404), but
+  are on Polygon, Arbitrum, BNB Smart Chain, Tron, Celo and Solana. The default
+  network is therefore Polygon, not Base. Lisk answered HTTP 400 for every
+  currency; Starknet and Ethereum quoted Nigeria only.
+- **Banks:** all seven Nigerian banks MoraPay offers — 044 Access `ABNGNGLA`,
+  070 Fidelity `FIDTNGLA`, 058 GTBank `GTBINGLA`, 057 Zenith `ZEIBNGLA`,
+  221 Stanbic IBTC `SBICNGLX`, 011 First Bank `FBNINGLA`, 033 UBA `UNAFNGLA`.
+- **Wallets:** KE M-Pesa `SAFAKEPC`, Airtel `AIRTKEPC`; UG MTN `MOMOUGPC`,
   Airtel `AIRTUGPC`; TZ Tigo `TIGOTZPC`, Airtel `AIRTTZPC`, Halopesa `HALOTZPC`.
   **No M-Pesa for Tanzania** is listed; a Tanzanian M-Pesa recipient is refused
   as UNSUPPORTED until one is.

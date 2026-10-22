@@ -37,12 +37,12 @@ const ENABLED = {
 };
 
 describe('Paycrest configuration', () => {
-  it('is off, on v2, USDT on Base, with an empty institution table by default', () => {
+  it('is off, on v2, USDT on Polygon, with the confirmed institution table by default', () => {
     const config = load({});
     expect(config.PAYCREST_ENABLED).toBe(false);
     expect(config.PAYCREST_BASE_URL).toBe('https://api.paycrest.io/v2');
     expect(config.PAYCREST_TOKEN).toBe('USDT');
-    expect(config.PAYCREST_NETWORK).toBe('base');
+    expect(config.PAYCREST_NETWORK).toBe('polygon');
     // Blank: the confirmed table in adapters/paycrest/institutions.ts applies.
     expect(config.PAYCREST_INSTITUTIONS).toBe('');
   });

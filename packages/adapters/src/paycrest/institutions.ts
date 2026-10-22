@@ -10,9 +10,9 @@ import { PaycrestInstitutionMap, parsePaycrestInstitutions } from './paycrest.pr
  * line somebody has to type through a web console. `PAYCREST_INSTITUTIONS`
  * still replaces it entirely when set.
  *
- * Gaps, each refused as UNSUPPORTED rather than guessed:
- *   - First Bank (011) and UBA (033): not yet read from Paycrest's NGN list.
- *   - Tanzania M-Pesa: Paycrest lists no M-Pesa institution for TZS.
+ * All seven Nigerian banks MoraPay offers are mapped. The one gap, refused as
+ * UNSUPPORTED rather than guessed: Tanzania M-Pesa — Paycrest lists no M-Pesa
+ * institution for TZS.
  */
 export const PAYCREST_CONFIRMED_INSTITUTIONS: PaycrestInstitutionMap = {
   bank: {
@@ -22,6 +22,8 @@ export const PAYCREST_CONFIRMED_INSTITUTIONS: PaycrestInstitutionMap = {
       '058': 'GTBINGLA', // Guaranty Trust Bank
       '057': 'ZEIBNGLA', // Zenith Bank
       '221': 'SBICNGLX', // Stanbic IBTC Bank
+      '011': 'FBNINGLA', // First Bank of Nigeria
+      '033': 'UNAFNGLA', // United Bank for Africa
     },
   },
   mobileMoney: {
