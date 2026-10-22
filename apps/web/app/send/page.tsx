@@ -12,6 +12,7 @@ import {
   newIdempotencyKey,
   rememberCorridor,
 } from '@/lib/api';
+import { CountryCode, MSISDN_FORMAT } from '@morapay/domain';
 import { AppShell, ErrorNotice, Field, MoneyDto, RequireAuth } from '@/components/shell';
 import type { TranslationKey } from '@/lib/i18n';
 
@@ -494,6 +495,7 @@ function SendFlow() {
       {step === 1 ? (
         <RecipientStep
           destinationPaysWallets={destinationPaysWallets}
+          msisdnPlaceholder={msisdnPlaceholder(destinationCountry)}
           recipients={recipients.filter((r) => r.country === corridor?.destinationCountry)}
           institutions={institutions}
           selected={selectedRecipient}
@@ -710,8 +712,20 @@ function QuoteBreakdown({ quote }: { quote: Quote }) {
 
 /* --------------------------------------------------------- step: recipient */
 
+/**
+ * The shape of a wallet number in the destination country — "254XXXXXXXXX" for
+ * Kenya — from the same table the API validates against. This used to be the
+ * literal "233XXXXXXXXX" for every country, which told a sender paying a
+ * Kenyan wallet to type a Ghanaian number.
+ */
+function msisdnPlaceholder(country: string | null): string | undefined {
+  const format = country === null ? undefined : MSISDN_FORMAT[country as CountryCode];
+  return format === undefined ? undefined : `${format.prefix}${'X'.repeat(format.maxDigits)}`;
+}
+
 function RecipientStep(props: {
   destinationPaysWallets: boolean;
+  msisdnPlaceholder: string | undefined;
   recipients: Recipient[];
   institutions: Institutions;
   selected: Recipient | null;
@@ -785,7 +799,7 @@ function RecipientStep(props: {
                 ))}
               </select>
             </Field>
-            <Field label={t('send.recipient.msisdn')} hint="233XXXXXXXXX">
+            <Field label={t('send.recipient.msisdn')} hint={props.msisdnPlaceholder}>
               <input
                 className="mp-input mp-numeric"
                 inputMode="numeric"
