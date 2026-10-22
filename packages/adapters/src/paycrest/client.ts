@@ -19,6 +19,35 @@ import { parseJsonExact } from './json';
 
 export const PAYCREST_DEFAULT_BASE_URL = 'https://api.paycrest.io/v2';
 
+/**
+ * A base URL as it should have been typed.
+ *
+ * Values pasted into .env through a browser console arrive with characters
+ * nobody can see — a byte-order mark, a zero-width space, a carriage return,
+ * quotes the editor kept — and Node then refuses a URL that looks perfect on
+ * screen. Those are stripped; anything still unusable is refused here, with
+ * the hidden characters spelled out, instead of on the first request.
+ */
+export function normalisePaycrestBaseUrl(raw: string | undefined): string {
+  const cleaned = (raw ?? '')
+    // Control and format characters (\r, BOM, zero-width) and any whitespace,
+    // including non-breaking spaces: a URL never legitimately contains one.
+    .replace(/[\p{Cc}\p{Cf}\s]/gu, '')
+    .replace(/^["']|["']$/g, '')
+    .replace(/\/+$/, '');
+  if (cleaned === '') return PAYCREST_DEFAULT_BASE_URL;
+  try {
+    const url = new URL(cleaned);
+    if (url.protocol !== 'https:') throw new Error('not https');
+  } catch {
+    throw new Error(
+      `PAYCREST_BASE_URL is not a usable https URL: ${JSON.stringify(raw)}. ` +
+        'Leave it empty to use the default.',
+    );
+  }
+  return cleaned;
+}
+
 export type FetchLike = (
   url: string,
   init: {
@@ -120,7 +149,7 @@ export class PaycrestClient {
   private readonly timeoutMs: number;
 
   constructor(private readonly options: PaycrestClientOptions) {
-    this.baseUrl = (options.baseUrl || PAYCREST_DEFAULT_BASE_URL).replace(/\/+$/, '');
+    this.baseUrl = normalisePaycrestBaseUrl(options.baseUrl);
     this.fetchImpl = options.fetch ?? (globalThis.fetch as unknown as FetchLike);
     this.timeoutMs = options.timeoutMs ?? 15_000;
   }

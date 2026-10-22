@@ -46,6 +46,18 @@ describe('Paycrest configuration', () => {
     expect(config.PAYCREST_INSTITUTIONS).toBe('{}');
   });
 
+  it('cleans a base URL pasted with an invisible byte-order mark', () => {
+    expect(load({ PAYCREST_BASE_URL: '\ufeffhttps://api.paycrest.io/v2' }).PAYCREST_BASE_URL).toBe(
+      'https://api.paycrest.io/v2',
+    );
+  });
+
+  it('refuses to boot on a base URL that is not https', () => {
+    expect(() => load({ PAYCREST_BASE_URL: 'http://api.paycrest.io/v2' })).toThrow(
+      /PAYCREST_BASE_URL/,
+    );
+  });
+
   it('treats the blank base URL in .env.example as the default', () => {
     expect(load({ PAYCREST_BASE_URL: '' }).PAYCREST_BASE_URL).toBe('https://api.paycrest.io/v2');
   });

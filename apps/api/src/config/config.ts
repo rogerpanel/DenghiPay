@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { Authorisation, parseAuthorisations } from '@morapay/domain';
 import {
-  PAYCREST_DEFAULT_BASE_URL,
+  normalisePaycrestBaseUrl,
   PAYCREST_NETWORKS,
   PAYCREST_TOKENS,
   parsePaycrestInstitutions,
@@ -84,9 +84,14 @@ export const configSchema = z.object({
   PAYCREST_BASE_URL: z
     .string()
     .optional()
-    .transform((value) =>
-      value === undefined || value === '' ? PAYCREST_DEFAULT_BASE_URL : value,
-    ),
+    .transform((value, ctx) => {
+      try {
+        return normalisePaycrestBaseUrl(value);
+      } catch (error) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: (error as Error).message });
+        return z.NEVER;
+      }
+    }),
   PAYCREST_API_KEY: z.string().default(''),
   /** Verifies webhook signatures. Never sent to Paycrest. */
   PAYCREST_API_SECRET: z.string().default(''),

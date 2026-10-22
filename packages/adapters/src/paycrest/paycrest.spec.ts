@@ -8,7 +8,7 @@ import {
   asProviderRef,
 } from '@morapay/domain';
 import { ProviderContractViolation } from '../callback/signature';
-import { FetchLike, PaycrestApiError, PaycrestClient } from './client';
+import { FetchLike, PaycrestApiError, PaycrestClient, normalisePaycrestBaseUrl } from './client';
 import { decimalToMinorUnits, fiatMinorForToken, formatMinorUnits, parseDecimal } from './decimal';
 import { parseJsonExact } from './json';
 import {
@@ -646,5 +646,30 @@ describe('parsePaycrestInstitutions', () => {
       /does not pay out/,
     );
     expect(() => parsePaycrestInstitutions('{"bank":{"NG":{"058":""}}}')).toThrow(/Paycrest code/);
+  });
+});
+
+describe('normalisePaycrestBaseUrl', () => {
+  it('uses the v2 default when the value is blank or missing', () => {
+    expect(normalisePaycrestBaseUrl(undefined)).toBe('https://api.paycrest.io/v2');
+    expect(normalisePaycrestBaseUrl('')).toBe('https://api.paycrest.io/v2');
+  });
+
+  it('strips what a console paste leaves behind and nobody can see', () => {
+    const clean = 'https://api.paycrest.io/v2';
+    for (const pasted of [
+      '\ufeffhttps://api.paycrest.io/v2',
+      'https://api.paycrest.io/v2\r',
+      '"https://api.paycrest.io/v2"',
+      'https://api.paycrest\u00a0.io/v2/',
+      'https://api.paycrest.io\u200b/v2 ',
+    ]) {
+      expect(normalisePaycrestBaseUrl(pasted)).toBe(clean);
+    }
+  });
+
+  it('refuses anything that is not an https URL, showing the hidden characters', () => {
+    expect(() => normalisePaycrestBaseUrl('http://api.paycrest.io/v2')).toThrow(/https/);
+    expect(() => normalisePaycrestBaseUrl('https\uff1a//api.paycrest.io/v2')).toThrow(/\\uff1a|：/);
   });
 });

@@ -17,7 +17,7 @@
  * terminal and nowhere else — do not paste that output into a ticket or chat.
  */
 import { getCurrency } from '@morapay/domain';
-import { PAYCREST_DEFAULT_BASE_URL, PaycrestApiError, PaycrestClient } from './client';
+import { PaycrestApiError, PaycrestClient, normalisePaycrestBaseUrl } from './client';
 import { PAYCREST_PAYOUT_CURRENCIES } from './paycrest.provider';
 
 async function main(): Promise<void> {
@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     );
     process.exit(2);
   }
-  const baseUrl = process.env.PAYCREST_BASE_URL || PAYCREST_DEFAULT_BASE_URL;
+  const baseUrl = normalisePaycrestBaseUrl(process.env.PAYCREST_BASE_URL);
   const token = process.env.PAYCREST_TOKEN || 'USDT';
   const network = process.env.PAYCREST_NETWORK || 'base';
   const client = new PaycrestClient({ baseUrl, apiKey });
