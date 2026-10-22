@@ -8,7 +8,13 @@ import {
   asProviderRef,
 } from '@morapay/domain';
 import { ProviderContractViolation } from '../callback/signature';
-import { FetchLike, PaycrestApiError, PaycrestClient, normalisePaycrestBaseUrl } from './client';
+import {
+  FetchLike,
+  PaycrestApiError,
+  PaycrestClient,
+  cleanPaycrestCredential,
+  normalisePaycrestBaseUrl,
+} from './client';
 import { decimalToMinorUnits, fiatMinorForToken, formatMinorUnits, parseDecimal } from './decimal';
 import { parseJsonExact } from './json';
 import {
@@ -671,5 +677,33 @@ describe('normalisePaycrestBaseUrl', () => {
   it('refuses anything that is not an https URL, showing the hidden characters', () => {
     expect(() => normalisePaycrestBaseUrl('http://api.paycrest.io/v2')).toThrow(/https/);
     expect(() => normalisePaycrestBaseUrl('https\uff1a//api.paycrest.io/v2')).toThrow(/\\uff1a|：/);
+  });
+});
+
+describe('cleanPaycrestCredential', () => {
+  it('drops what a console paste adds to a key, and nothing else', () => {
+    expect(cleanPaycrestCredential('\ufeff79711dc9-4680\u200b-412a\r\n')).toBe(
+      '79711dc9-4680-412a',
+    );
+    expect(cleanPaycrestCredential('"abc_DEF-123="')).toBe('abc_DEF-123=');
+  });
+
+  it('is what the client sends and what the webhook check signs with', async () => {
+    const { calls, client } = (() => {
+      const seen: Record<string, string>[] = [];
+      const c = new PaycrestClient({
+        apiKey: ' key-1\u200b\r',
+        fetch: async (_url, init) => {
+          seen.push(init.headers);
+          return { status: 200, text: async () => ok('[]') };
+        },
+      });
+      return { calls: seen, client: c };
+    })();
+    await client.currencies();
+    expect(calls[0]!['API-Key']).toBe('key-1');
+    const body = Buffer.from('{}');
+    const sig = createHmac('sha256', 'secret').update(body).digest('hex');
+    expect(verifyPaycrestSignature('\ufeffsecret\r', body, sig)).toBe(true);
   });
 });

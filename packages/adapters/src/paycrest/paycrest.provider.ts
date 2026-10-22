@@ -24,7 +24,7 @@ import {
   StatementLine,
 } from '../ports/payout-provider';
 import { ProviderContractViolation } from '../callback/signature';
-import { PaycrestApiError, PaycrestClient, PaycrestOrder } from './client';
+import { PaycrestApiError, PaycrestClient, PaycrestOrder, cleanPaycrestCredential } from './client';
 import { decimalToMinorUnits, fiatMinorForToken, formatMinorUnits, parseDecimal } from './decimal';
 import { parseJsonExact } from './json';
 
@@ -472,7 +472,10 @@ export function verifyPaycrestSignature(
   presented: string,
 ): boolean {
   const computed = Buffer.from(
-    createHmac('sha256', secret.trim()).update(rawBody).digest('hex').toLowerCase(),
+    createHmac('sha256', cleanPaycrestCredential(secret))
+      .update(rawBody)
+      .digest('hex')
+      .toLowerCase(),
     'utf8',
   );
   const candidate = Buffer.from(presented.trim().toLowerCase(), 'utf8');

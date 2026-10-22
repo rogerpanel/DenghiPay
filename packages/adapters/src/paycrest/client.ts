@@ -20,6 +20,15 @@ import { parseJsonExact } from './json';
 export const PAYCREST_DEFAULT_BASE_URL = 'https://api.paycrest.io/v2';
 
 /**
+ * A credential as it should have been typed. Keys and secrets never contain
+ * whitespace, control or format characters, so any that arrive with a console
+ * paste are dropped rather than sent — Node refuses a header carrying one.
+ */
+export function cleanPaycrestCredential(raw: string): string {
+  return raw.replace(/[\p{Cc}\p{Cf}\s]/gu, '').replace(/^["']|["']$/g, '');
+}
+
+/**
  * A base URL as it should have been typed.
  *
  * Values pasted into .env through a browser console arrive with characters
@@ -224,9 +233,7 @@ export class PaycrestClient {
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers: {
-        // Trimmed: a key pasted into .env through a console can carry a stray
-        // carriage return, and Node refuses the whole request over it.
-        'API-Key': this.options.apiKey.trim(),
+        'API-Key': cleanPaycrestCredential(this.options.apiKey),
         Accept: 'application/json',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       },
