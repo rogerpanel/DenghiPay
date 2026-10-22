@@ -67,7 +67,7 @@ async function main(): Promise<void> {
     } else {
       const agrees = listed.decimals === null || listed.decimals === String(ours);
       console.log(
-        `   decimals: Paycrest ${listed.decimals ?? '?'}, MoraPay ${ours}${agrees ? '' : '   ← MISMATCH: stop and resolve before any order'}`,
+        `   decimals: Paycrest ${listed.decimals ?? '?'}, MoraPay ${ours}${agrees ? '' : '   ← differs: confirm with Paycrest (amounts travel as decimal text, so a fractional amount is refused, never rescaled)'}`,
       );
     }
     try {
