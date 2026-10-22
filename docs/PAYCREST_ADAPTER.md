@@ -48,8 +48,13 @@ endpoint is `POST /webhooks/paycrest/callback`.
 Put the credentials in the server's `.env`. It is gitignored and mode 600, and
 it is the only place they go: never the repository, a chat or a ticket.
 
+The clone on the server is `~/DenghiPay`, owned by the `deploy` user — root
+cannot log in over ssh once `harden-host.sh` has run ([`DEPLOY_SERVER.md`](DEPLOY_SERVER.md) §2–4).
+`docker compose ls` on the server shows the folder actually deployed, if in doubt.
+Pull and redeploy first so the probe exists in the running image:
+
 ```bash
-cd ~/MoraPay
+cd ~/DenghiPay && git pull && infra/scripts/server-deploy.sh   # add TLS=1 if the site runs on https
 nano .env
 #   PAYCREST_API_KEY=<API key>
 #   PAYCREST_API_SECRET=<API secret>
