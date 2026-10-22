@@ -120,7 +120,7 @@ provider is quoting the off-ramp side at 100 USDT. Neither creates anything.
 | `PAYCREST_API_SECRET`     | yes                   | —                             |
 | `PAYCREST_REFUND_ADDRESS` | yes                   | — (our wallet on the network) |
 | `PAYCREST_TOKEN`          | no                    | `USDT` (or `USDC`)            |
-| `PAYCREST_NETWORK`        | no                    | `base`                        |
+| `PAYCREST_NETWORK`        | no                    | `polygon`                     |
 | `PAYCREST_BASE_URL`       | no                    | `https://api.paycrest.io/v2`  |
 | `PAYCREST_INSTITUTIONS`   | no                    | `{}`                          |
 
