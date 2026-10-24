@@ -18,6 +18,7 @@ import {
 import { decimalToMinorUnits, fiatMinorForToken, formatMinorUnits, parseDecimal } from './decimal';
 import { parseJsonExact } from './json';
 import { PAYCREST_CONFIRMED_INSTITUTIONS, paycrestInstitutionsFromConfig } from './institutions';
+import { NG_FINTECHS } from '../simulators/payout.simulator';
 import {
   PaycrestFundingInstruction,
   PaycrestFundingUnavailable,
@@ -742,16 +743,14 @@ describe('confirmed Paycrest institutions', () => {
     );
   });
 
-  it('maps every Nigerian bank MoraPay offers, and nothing Paycrest does not list', () => {
-    expect(Object.keys(PAYCREST_CONFIRMED_INSTITUTIONS.bank?.NG ?? {}).sort()).toEqual([
-      '011',
-      '033',
-      '044',
-      '057',
-      '058',
-      '070',
-      '221',
-    ]);
+  it('maps every Nigerian bank and fintech wallet MoraPay offers, and nothing Paycrest does not list', () => {
+    const ng = PAYCREST_CONFIRMED_INSTITUTIONS.bank?.NG ?? {};
+    for (const code of ['011', '033', '044', '057', '058', '070', '221'])
+      expect(ng[code]).toBeDefined();
+    // Every fintech wallet the app offers maps to itself: it is catalogued
+    // under Paycrest's own code.
+    for (const code of Object.keys(NG_FINTECHS)) expect(ng[code]).toBe(code);
+    expect(Object.keys(ng)).toHaveLength(7 + Object.keys(NG_FINTECHS).length);
     // Paycrest lists no M-Pesa for Tanzania: refused, not guessed.
     expect(PAYCREST_CONFIRMED_INSTITUTIONS.mobileMoney?.TZ?.MPESA).toBeUndefined();
   });

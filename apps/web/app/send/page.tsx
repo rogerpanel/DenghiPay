@@ -713,6 +713,20 @@ function QuoteBreakdown({ quote }: { quote: Quote }) {
 /* --------------------------------------------------------- step: recipient */
 
 /**
+ * Banks, then fintech wallets. A bank carries its central-bank code, which is
+ * all digits; a wallet such as OPay or PalmPay is catalogued under an
+ * eight-character institution code, so the code alone says which group it is.
+ */
+function groupInstitutions(
+  list: Array<{ code: string; name: string }>,
+): Array<{ label: TranslationKey; items: Array<{ code: string; name: string }> }> {
+  return [
+    { label: 'send.recipient.banksGroup', items: list.filter((i) => /^\d+$/.test(i.code)) },
+    { label: 'send.recipient.walletsGroup', items: list.filter((i) => !/^\d+$/.test(i.code)) },
+  ];
+}
+
+/**
  * The shape of a wallet number in the destination country — "254XXXXXXXXX" for
  * Kenya — from the same table the API validates against. This used to be the
  * literal "233XXXXXXXXX" for every country, which told a sender paying a
@@ -816,11 +830,17 @@ function RecipientStep(props: {
                 value={props.newBankCode}
                 onChange={(e) => props.setNewBankCode(e.target.value)}
               >
-                {props.institutions.banks.map((bank) => (
-                  <option key={bank.code} value={bank.code}>
-                    {bank.name}
-                  </option>
-                ))}
+                {groupInstitutions(props.institutions.banks).map((group) =>
+                  group.items.length === 0 ? null : (
+                    <optgroup key={group.label} label={t(group.label)}>
+                      {group.items.map((bank) => (
+                        <option key={bank.code} value={bank.code}>
+                          {bank.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ),
+                )}
               </select>
             </Field>
             <Field label={t('send.recipient.accountNumber')} hint="10 digits">

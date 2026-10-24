@@ -89,6 +89,21 @@ describe('recipient details', () => {
     expect(details.method).toBe('BANK_ACCOUNT');
   });
 
+  it('accepts a fintech wallet catalogued under its eight-character institution code', () => {
+    const base = {
+      method: 'BANK_ACCOUNT',
+      country: 'NG',
+      accountNumber: '8012345678',
+      declaredName: 'ADA OKAFOR',
+    };
+    expect(recipientDetailsSchema.parse({ ...base, bankCode: 'OPAYNGPC' }).method).toBe(
+      'BANK_ACCOUNT',
+    );
+    expect(() => recipientDetailsSchema.parse({ ...base, bankCode: 'opayngpc' })).toThrow();
+    expect(() => recipientDetailsSchema.parse({ ...base, bankCode: 'OPAY' })).toThrow();
+    expect(() => recipientDetailsSchema.parse({ ...base, bankCode: '0580' })).toThrow();
+  });
+
   it('rejects a NUBAN that is not exactly ten digits', () => {
     const base = {
       method: 'BANK_ACCOUNT',

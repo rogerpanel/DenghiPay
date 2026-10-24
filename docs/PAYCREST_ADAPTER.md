@@ -194,6 +194,14 @@ First run with the temporary key, from the Hetzner server:
 - **Banks:** all seven Nigerian banks MoraPay offers — 044 Access `ABNGNGLA`,
   070 Fidelity `FIDTNGLA`, 058 GTBank `GTBINGLA`, 057 Zenith `ZEIBNGLA`,
   221 Stanbic IBTC `SBICNGLX`, 011 First Bank `FBNINGLA`, 033 UBA `UNAFNGLA`.
+- **Nigerian fintech wallets** (added 24 October 2026): OPay `OPAYNGPC`,
+  PalmPay `PALMNGPC`, Moniepoint `MONINGPC`, Kuda `KUDANGPC`, Paga `PAGANGPC`,
+  FairMoney `FAIRNGPC`, Carbon `CARBNGPC`, VFD `VFDXNGPC`, MoMo PSB `MOMONGPC`.
+  Each holder has a ten-digit NUBAN, so they are paid as bank accounts. They are
+  catalogued in the app under these Paycrest codes rather than NIBSS numbers,
+  because published NIBSS codes for them disagree between sources. Paycrest
+  lists 174 Nigerian institutions in all; adding another is one line in
+  `NG_FINTECHS` (`packages/adapters/src/simulators/payout.simulator.ts`).
 - **Wallets:** KE M-Pesa `SAFAKEPC`, Airtel `AIRTKEPC`; UG MTN `MOMOUGPC`,
   Airtel `AIRTUGPC`; TZ Tigo `TIGOTZPC`, Airtel `AIRTTZPC`, Halopesa `HALOTZPC`.
   **No M-Pesa for Tanzania** is listed; a Tanzanian M-Pesa recipient is refused

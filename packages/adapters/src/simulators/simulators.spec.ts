@@ -69,6 +69,15 @@ describe('payout simulator — name enquiry (BUILD_PLAN 7.2)', () => {
     }
   });
 
+  it('resolves a fintech wallet account the same way as a bank account', async () => {
+    const result = await sim.resolveRecipient({
+      corridorId: RU_NG,
+      recipient: { ...ngRecipient('8012345678'), bankCode: 'OPAYNGPC' },
+    });
+    expect(result._tag).toBe('RESOLVED');
+    if (result._tag === 'RESOLVED') expect(result.institution).toBe('OPay');
+  });
+
   it('is deterministic — the same account always resolves to the same person', async () => {
     const a = await sim.resolveRecipient({
       corridorId: RU_NG,
@@ -839,6 +848,21 @@ describe('payout simulator — South Africa, Cameroon and Benin', () => {
       },
     });
     expect(result._tag).toBe('NOT_FOUND');
+  });
+
+  it('offers Nigerian fintech wallets after the banks', () => {
+    const codes = institutionsForDestination('NG').banks.map((b) => b.code);
+    // The seven banks come first, whatever order JavaScript keeps their keys in.
+    expect([...codes.slice(0, 7)].sort()).toEqual([
+      '011',
+      '033',
+      '044',
+      '057',
+      '058',
+      '070',
+      '221',
+    ]);
+    expect(codes).toEqual(expect.arrayContaining(['OPAYNGPC', 'PALMNGPC', 'MONINGPC', 'KUDANGPC']));
   });
 
   it('serves the institutions of one destination at a time', () => {

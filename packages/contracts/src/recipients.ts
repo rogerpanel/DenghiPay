@@ -18,7 +18,9 @@ import { countryCodeSchema } from './common';
  *
  * Within each shape the **country decides the format**. A Nigerian NUBAN is ten
  * digits and a South African account is nine to eleven; a Nigerian bank code is
- * three digits and a South African universal branch code is six. Validating
+ * three digits — or, for a fintech wallet such as OPay or PalmPay, the
+ * eight-character institution code it is catalogued under — and a South
+ * African universal branch code is six. Validating
  * these here means a mistyped number is refused with a message about the
  * country the sender actually chose, rather than reaching a rail that rejects
  * it minutes later with a reference number.
@@ -31,7 +33,12 @@ export const ngRecipientSchema = z.object({
   country: z.literal('NG'),
   /** NUBAN is exactly ten digits. */
   accountNumber: z.string().regex(/^\d{10}$/, 'a Nigerian account number is 10 digits'),
-  bankCode: z.string().regex(/^\d{3}$/, 'a Nigerian bank code is 3 digits'),
+  bankCode: z
+    .string()
+    .regex(
+      /^(\d{3}|[A-Z0-9]{8})$/,
+      'a Nigerian bank code is 3 digits, or the 8-character code of a fintech wallet',
+    ),
   declaredName,
 });
 

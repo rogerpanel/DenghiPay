@@ -63,6 +63,29 @@ const NG_BANKS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Nigerian fintech wallets. Each holder has an ordinary ten-digit NUBAN, so
+ * they are credited exactly like a bank account — only the institution differs.
+ *
+ * Keyed by **Paycrest's institution code**, read off Paycrest's live NGN list on
+ * 22 October 2026, not by a NIBSS number. Published NIBSS codes for these
+ * institutions disagree between sources (OPay appears as 999992 and as 100004),
+ * and the issuers' own documentation says the list changes; a code that looks
+ * authoritative and is not would be worse than one that says where it came
+ * from. A second rail maps these keys to its own codes from its own live list.
+ */
+const NG_FINTECHS: Readonly<Record<string, string>> = {
+  OPAYNGPC: 'OPay',
+  PALMNGPC: 'PalmPay',
+  MONINGPC: 'Moniepoint',
+  KUDANGPC: 'Kuda',
+  PAGANGPC: 'Paga',
+  FAIRNGPC: 'FairMoney',
+  CARBNGPC: 'Carbon',
+  VFDXNGPC: 'VFD Microfinance Bank',
+  MOMONGPC: 'MoMo Payment Service Bank',
+};
+
+/**
  * South African universal branch codes. Unlike a Nigerian bank code, these
  * identify the bank rather than a branch — South Africa moved to universal
  * codes precisely so a payer need not know which branch holds the account.
@@ -196,7 +219,8 @@ export type PayoutMarket =
 
 const MARKETS: Readonly<Record<PayoutMarket, PayoutMarketProfile>> = {
   NG: {
-    banks: NG_BANKS,
+    // Banks first, then wallets, as the sender's dropdown shows them.
+    banks: { ...NG_BANKS, ...NG_FINTECHS },
     networks: {},
     switchName: 'NIP',
   },
@@ -606,4 +630,4 @@ export function institutionsForDestination(market: PayoutMarket): {
   };
 }
 
-export { NG_BANKS, ZA_BANKS, GH_NETWORKS, CM_NETWORKS, BJ_NETWORKS };
+export { NG_BANKS, NG_FINTECHS, ZA_BANKS, GH_NETWORKS, CM_NETWORKS, BJ_NETWORKS };

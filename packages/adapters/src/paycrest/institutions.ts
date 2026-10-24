@@ -1,3 +1,4 @@
+import { NG_FINTECHS } from '../simulators/payout.simulator';
 import { PaycrestInstitutionMap, parsePaycrestInstitutions } from './paycrest.provider';
 
 /**
@@ -10,7 +11,9 @@ import { PaycrestInstitutionMap, parsePaycrestInstitutions } from './paycrest.pr
  * line somebody has to type through a web console. `PAYCREST_INSTITUTIONS`
  * still replaces it entirely when set.
  *
- * All seven Nigerian banks MoraPay offers are mapped. The one gap, refused as
+ * All seven Nigerian banks MoraPay offers are mapped, and every Nigerian fintech
+ * wallet in its catalogue (`NG_FINTECHS`), which is keyed by these same Paycrest
+ * codes so it maps to itself. The one gap, refused as
  * UNSUPPORTED rather than guessed: Tanzania M-Pesa — Paycrest lists no M-Pesa
  * institution for TZS.
  */
@@ -24,6 +27,8 @@ export const PAYCREST_CONFIRMED_INSTITUTIONS: PaycrestInstitutionMap = {
       '221': 'SBICNGLX', // Stanbic IBTC Bank
       '011': 'FBNINGLA', // First Bank of Nigeria
       '033': 'UNAFNGLA', // United Bank for Africa
+      // Fintech wallets: catalogued under Paycrest's own code.
+      ...Object.fromEntries(Object.keys(NG_FINTECHS).map((code) => [code, code])),
     },
   },
   mobileMoney: {
