@@ -1,0 +1,165 @@
+/* eslint-disable no-console -- a command-line tool: the terminal is its only output. */
+/**
+ * Read-only Paycrest probe, for running on the server with the real key.
+ *
+ *   node /app/packages/adapters/dist/paycrest/probe.js   (inside the API container)
+ *   node /app/packages/adapters/dist/paycrest/probe.js verify <INSTITUTION> <ACCOUNT>
+ *   node /app/packages/adapters/dist/paycrest/probe.js find <part of a bank name>
+ *   node /app/packages/adapters/dist/paycrest/probe.js networks
+ *
+ * Reads PAYCREST_API_KEY, and optionally PAYCREST_BASE_URL, PAYCREST_TOKEN and
+ * PAYCREST_NETWORK, from the environment. It **never creates an order** — and
+ * that matters, because Paycrest has no sandbox: every key is a live key. It
+ * lists currencies (with Paycrest's own decimal places, checked against ours),
+ * institutions and off-ramp rates for the four countries, and can run one name
+ * enquiry. That proves the key works, shows which countries are live for it, and
+ * produces the PAYCREST_INSTITUTIONS skeleton from Paycrest's real codes.
+ *
+ * It prints no key and no secret. A name enquiry prints the resolved name to the
+ * terminal and nowhere else — do not paste that output into a ticket or chat.
+ */
+import { getCurrency } from '@morapay/domain';
+import { PaycrestApiError, PaycrestClient, normalisePaycrestBaseUrl } from './client';
+import { PAYCREST_NETWORKS, PAYCREST_PAYOUT_CURRENCIES } from './paycrest.provider';
+
+async function main(): Promise<void> {
+  const apiKey = process.env.PAYCREST_API_KEY ?? '';
+  if (apiKey === '' || apiKey === 'replace-in-vault') {
+    console.error(
+      'PAYCREST_API_KEY is not set. Load the server .env first:  set -a; . ./.env; set +a',
+    );
+    process.exit(2);
+  }
+  const baseUrl = normalisePaycrestBaseUrl(process.env.PAYCREST_BASE_URL);
+  const token = process.env.PAYCREST_TOKEN || 'USDT';
+  const network = process.env.PAYCREST_NETWORK || 'polygon';
+  const client = new PaycrestClient({ baseUrl, apiKey });
+
+  const [command, institution, account, ...more] = process.argv.slice(2);
+
+  // `find first bank` — institutions in the four currencies whose name or code
+  // contains the words, ignoring case. Short enough to type into a web console.
+  if (command === 'find') {
+    const needle = [institution, account, ...more].filter(Boolean).join(' ').toLowerCase();
+    if (needle === '') {
+      console.error('usage: probe.js find <part of a bank or wallet name>');
+      process.exit(2);
+    }
+    for (const [country, currency] of Object.entries(PAYCREST_PAYOUT_CURRENCIES)) {
+      const list = await client.institutions(currency);
+      for (const inst of list) {
+        if (`${inst.name} ${inst.code}`.toLowerCase().includes(needle)) {
+          console.log(`${country}  ${inst.code.padEnd(12)} ${inst.type.padEnd(14)} ${inst.name}`);
+        }
+      }
+    }
+    return;
+  }
+
+  // `networks` — which chains have a provider quoting the off-ramp side for
+  // each of the four currencies, at 100 tokens. Public data; no order is made.
+  if (command === 'networks') {
+    for (const [, currency] of Object.entries(PAYCREST_PAYOUT_CURRENCIES)) {
+      for (const network of PAYCREST_NETWORKS) {
+        let result: string;
+        try {
+          result =
+            (await client.sellRate(network, token, '100', currency)) ?? 'no provider quoting';
+        } catch (error) {
+          result = describe(error);
+        }
+        console.log(`${currency}  ${network.padEnd(16)} ${result}`);
+      }
+    }
+    return;
+  }
+
+  if (command === 'verify') {
+    if (institution === undefined || account === undefined) {
+      console.error('usage: probe.js verify <INSTITUTION_CODE> <ACCOUNT_OR_WALLET>');
+      process.exit(2);
+    }
+    const name = await client.verifyAccount(institution, account);
+    console.log(
+      name === null ? 'Account accepted; Paycrest gives no name for it.' : `Resolved: ${name}`,
+    );
+    return;
+  }
+
+  console.log(
+    `Paycrest probe — ${baseUrl}, ${token} on ${network} (read-only; no order is created)\n`,
+  );
+
+  const currencies = await client.currencies();
+  console.log(`Currencies visible to this key: ${currencies.map((c) => c.code).join(', ')}\n`);
+
+  const skeleton: Record<'bank' | 'mobileMoney', Record<string, Record<string, string>>> = {
+    bank: {},
+    mobileMoney: {},
+  };
+
+  for (const [country, currency] of Object.entries(PAYCREST_PAYOUT_CURRENCIES)) {
+    console.log(`── ${country} / ${currency}`);
+    const listed = currencies.find((c) => c.code === currency);
+    const ours = getCurrency(currency).exponent;
+    if (listed === undefined) {
+      console.log('   not listed by Paycrest for this key');
+    } else {
+      const agrees = listed.decimals === null || listed.decimals === String(ours);
+      console.log(
+        `   decimals: Paycrest ${listed.decimals ?? '?'}, MoraPay ${ours}${agrees ? '' : '   ← differs: confirm with Paycrest (amounts travel as decimal text, so a fractional amount is refused, never rescaled)'}`,
+      );
+    }
+    try {
+      const rate = await client.sellRate(network, token, '10', currency);
+      console.log(
+        `   off-ramp rate for 10 ${token}: ${rate ?? 'no provider quoting'}${rate ? ` ${currency} per ${token}` : ''}`,
+      );
+    } catch (error) {
+      console.log(`   rate: unavailable (${describe(error)})`);
+    }
+    try {
+      const list = await client.institutions(currency);
+      console.log(`   ${list.length} institutions`);
+      for (const inst of list) {
+        console.log(`     ${inst.code.padEnd(12)} ${inst.type.padEnd(14)} ${inst.name}`);
+        const bucket = inst.type.toLowerCase().includes('mobile')
+          ? skeleton.mobileMoney
+          : skeleton.bank;
+        (bucket[country] ??= {})[`<our code for ${inst.name}>`] = inst.code;
+      }
+    } catch (error) {
+      console.log(`   institutions: unavailable (${describe(error)})`);
+    }
+    console.log('');
+  }
+
+  console.log('Skeleton for PAYCREST_INSTITUTIONS. Replace each "<our code …>" key with the');
+  console.log('NIP bank code (Nigeria) or network code (MPESA, MTN, AIRTEL, …) MoraPay stores,');
+  console.log('delete the rows you do not need, and put the result on one line in .env:\n');
+  console.log(JSON.stringify(skeleton, null, 2));
+}
+
+/**
+ * Enough to act on, never the key. Node reports a request that never reached
+ * Paycrest — no route, DNS, TLS, a bad header — as a bare `TypeError`, with
+ * the reason in `cause`; that reason is what an operator needs.
+ */
+function describe(error: unknown): string {
+  if (error instanceof PaycrestApiError) return `HTTP ${error.httpStatus}`;
+  if (!(error instanceof Error)) return 'error';
+  const key = (process.env.PAYCREST_API_KEY ?? '').trim();
+  const redact = (text: string) => (key === '' ? text : text.split(key).join('[API key]'));
+  const cause = error.cause as { code?: unknown; message?: unknown } | undefined;
+  const parts = [`${error.name}: ${redact(error.message)}`];
+  if (cause !== undefined) {
+    if (typeof cause.code === 'string') parts.push(`cause ${cause.code}`);
+    if (typeof cause.message === 'string') parts.push(redact(cause.message));
+  }
+  return parts.join(' — ');
+}
+
+main().catch((error: unknown) => {
+  console.error(`Probe failed: ${describe(error)}`);
+  process.exit(1);
+});

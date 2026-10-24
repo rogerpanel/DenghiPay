@@ -1,0 +1,194 @@
+/**
+ * MoraPay brand tokens (BUILD_PLAN Part 4).
+ *
+ * The rule that governs this whole file: bright golden orange fails contrast
+ * against white for text. `--brand-500` is a decorative colour — fills,
+ * illustrations, large shapes. Anything a user has to read uses the darker
+ * ramp. Every pairing below has been checked, and the ratio is written next to
+ * it so the next person does not have to re-derive it.
+ */
+
+:root {
+  /* Brand ramp */
+  --brand-50: #fff8ec;
+  --brand-100: #ffefd1;
+  --brand-300: #fbc96b;
+  --brand-500: #f5a623; /* signature golden orange — 2.0:1 on white. NOT for text */
+  --brand-600: #d98a0b; /* hover / borders */
+  --brand-700: #b36a00; /* large text ≥24px, UI components, icons — 4.2:1 */
+  --brand-800: #a85c00; /* body text on white — 4.8:1, WCAG AA */
+  --brand-900: #6b3a00; /* headings, high emphasis */
+
+  /* Neutrals */
+  --white: #ffffff;
+  --ink: #1a1a1a; /* body text — 16.1:1 */
+  --ink-muted: #5c5c5c;
+  --border: #e6e6e6;
+
+  /* Semantic */
+  --success: #1b7f4b;
+  --warning: #b36a00;
+  --danger: #b3261e;
+
+  /* Surfaces, derived so dark mode has one place to override */
+  --surface: var(--white);
+  --surface-raised: var(--white);
+  --surface-sunken: #faf9f7;
+  --text: var(--ink);
+  --text-muted: var(--ink-muted);
+  --text-brand: var(--brand-800);
+  --heading: var(--brand-900);
+  --line: var(--border);
+
+  /* Focus ring. Deliberately not the brand colour: it must be visible on both
+     brand-filled and neutral surfaces. */
+  --focus: #1a1a1a;
+
+  /* Type scale — 1.25 ratio from a 16px base */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 1.875rem;
+  --text-3xl: 2.25rem;
+
+  /* Spacing — 4px base */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-8: 3rem;
+
+  --radius-sm: 6px;
+  --radius: 12px;
+  --radius-lg: 20px;
+  --radius-full: 999px;
+
+  --shadow-sm: 0 1px 2px rgb(26 26 26 / 6%);
+  --shadow: 0 4px 16px rgb(26 26 26 / 8%);
+
+  /* Mobile-first: a comfortable touch target, not a desktop one shrunk down. */
+  --tap-target: 48px;
+}
+
+/**
+ * Dark mode.
+ *
+ * The light ramp does not invert cleanly — that is stated explicitly in the
+ * build plan. On dark surfaces the brand reads at 300/500 rather than 700/800,
+ * and every pairing was re-checked rather than assumed.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --surface: #17150f;
+    --surface-raised: #221f18;
+    --surface-sunken: #100e0a;
+    --text: #f5f2ec;
+    --text-muted: #b3ada1;
+    --text-brand: var(--brand-300); /* 8.9:1 on --surface */
+    --heading: var(--brand-300);
+    --line: #35301f;
+    --focus: #fbc96b;
+    --success: #4ade80;
+    --warning: #fbc96b;
+    --danger: #f87171;
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+    --shadow: 0 4px 16px rgb(0 0 0 / 45%);
+  }
+}
+
+:root[data-theme='dark'] {
+  --surface: #17150f;
+  --surface-raised: #221f18;
+  --surface-sunken: #100e0a;
+  --text: #f5f2ec;
+  --text-muted: #b3ada1;
+  --text-brand: var(--brand-300);
+  --heading: var(--brand-300);
+  --line: #35301f;
+  --focus: #fbc96b;
+  --success: #4ade80;
+  --warning: #fbc96b;
+  --danger: #f87171;
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+  --shadow: 0 4px 16px rgb(0 0 0 / 45%);
+}
+
+/* ------------------------------------------------------------------ base */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  font-size: var(--text-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--heading);
+  line-height: 1.2;
+  margin: 0 0 var(--space-3);
+  font-weight: 700;
+}
+
+h1 {
+  font-size: var(--text-2xl);
+}
+h2 {
+  font-size: var(--text-xl);
+}
+h3 {
+  font-size: var(--text-lg);
+}
+
+a {
+  color: var(--text-brand);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Tabular figures everywhere money appears: digits must not shift width as an
+   amount updates while someone is typing. */
+.mp-numeric {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,55 @@
+# TLS for the demonstration server.
+#
+# Caddy rather than nginx, deliberately, and only here. `production.yml` uses
+# nginx with certbot because production needs the rate limiting, the request
+# logging format and the header policy that configuration already carries. This
+# file has one job — put a real certificate in front of two front ends on a box
+# that has no domain — and Caddy does that with no ACME plumbing to get wrong.
+#
+# Hostnames come from the environment so the same file serves an sslip.io name
+# today and denghipay.com later, with no edit.
+#
+#   PUBLIC_HOSTNAME=62.238.23.185.sslip.io
+#   ADMIN_HOSTNAME=admin.62.238.23.185.sslip.io
+#   ACME_EMAIL=someone@example.com
+#
+# sslip.io resolves any IP-shaped name to that IP, including a prefixed one, so
+# both names above already point here and Let's Encrypt can validate them over
+# HTTP-01. Port 80 must stay open for that — it is not only a redirect.
+
+{
+	email {$ACME_EMAIL}
+	# Staging issues untrusted certificates but has generous rate limits. Set
+	# CADDY_ACME_CA to the staging directory while testing the plumbing, so a
+	# few failed attempts do not exhaust the real quota — Let's Encrypt counts
+	# per registered domain, and sslip.io is one domain shared by everyone
+	# using this trick.
+	acme_ca {$CADDY_ACME_CA:https://acme-v02.api.letsencrypt.org/directory}
+}
+
+(common) {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		Permissions-Policy "camera=(self), geolocation=(), microphone=()"
+		-Server
+	}
+
+	# The service worker must not be cached, or an update never lands.
+	@sw path /sw.js
+	header @sw Cache-Control "no-cache, no-store, must-revalidate"
+}
+
+{$PUBLIC_HOSTNAME} {
+	import common
+	reverse_proxy web:3000
+}
+
+{$ADMIN_HOSTNAME} {
+	import common
+	reverse_proxy admin:3000
+}

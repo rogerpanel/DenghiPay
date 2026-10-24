@@ -1,0 +1,160 @@
+# Production stack, neutral tier (Hetzner).
+#
+# What this host runs: the API, the saga workers, both front ends, Redis, Nginx,
+# and observability. What it does NOT run: any residency partition. Russian
+# sender PII and Nigerian payment data live in their own jurisdictions and are
+# reached over the partition connection strings (BUILD_PLAN 12.1).
+#
+# Every secret arrives from the environment, injected by the deploy pipeline
+# from the vault. There are no defaults in this file, deliberately: a missing
+# secret must fail the boot, not silently weaken it.
+name: morapay
+
+services:
+  api:
+    image: ghcr.io/rogerpanel/morapay-api:${IMAGE_TAG:?set IMAGE_TAG}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # G1. Flipped by a human, once, after the go-live gate (13.5).
+      LIVE_FUNDS_ENABLED: ${LIVE_FUNDS_ENABLED:-false}
+      API_PORT: 4000
+      API_PUBLIC_URL: ${API_PUBLIC_URL:?}
+      WEB_PUBLIC_URL: ${WEB_PUBLIC_URL:?}
+      ADMIN_PUBLIC_URL: ${ADMIN_PUBLIC_URL:?}
+      API_CORS_ORIGINS: ${API_CORS_ORIGINS:?}
+      DATABASE_URL: ${DATABASE_URL:?}
+      DATABASE_URL_RU: ${DATABASE_URL_RU:-}
+      DATABASE_URL_NG: ${DATABASE_URL_NG:-}
+      DATABASE_URL_GH: ${DATABASE_URL_GH:-}
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?}
+      ADMIN_JWT_ACCESS_SECRET: ${ADMIN_JWT_ACCESS_SECRET:?}
+      QUOTE_SIGNING_SECRET: ${QUOTE_SIGNING_SECRET:?}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?}
+      TOKENISATION_SALT: ${TOKENISATION_SALT:?}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      SCREENING_PROVIDER: ${SCREENING_PROVIDER:-mock}
+      KYC_PROVIDER: ${KYC_PROVIDER:-mock}
+      RATE_SOURCE: ${RATE_SOURCE:-simulated}
+      # Contracted rails stay off until there is a signed agreement.
+      PAYCREST_ENABLED: ${PAYCREST_ENABLED:-false}
+      FINCRA_ENABLED: ${FINCRA_ENABLED:-false}
+      PAYIN_RU_PARTNER_ENABLED: ${PAYIN_RU_PARTNER_ENABLED:-false}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [internal]
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { memory: 1g }
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '5' }
+
+  web:
+    image: ghcr.io/rogerpanel/morapay-web:${IMAGE_TAG:?}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    networks: [internal]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  admin:
+    image: ghcr.io/rogerpanel/morapay-admin:${IMAGE_TAG:?}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+    networks: [internal]
+    depends_on:
+      api:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    volumes:
+      - redisdata:/data
+    networks: [internal]
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/conf.d:/etc/nginx/conf.d:ro
+      - certbot-www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
+    depends_on: [api, web, admin]
+    networks: [internal, edge]
+
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    volumes:
+      - certbot-www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
+    # Renew twice a day at a random offset; Let's Encrypt asks for exactly this.
+    entrypoint: >
+      sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+             sleep 12h & wait $${!}; done"
+
+  prometheus:
+    image: prom/prometheus:latest
+    restart: unless-stopped
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus:/prometheus
+    networks: [internal]
+
+  grafana:
+    image: grafana/grafana:latest
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_SERVER_ROOT_URL: ${GRAFANA_URL:-http://localhost:3002}
+    volumes:
+      - grafana:/var/lib/grafana
+    networks: [internal]
+
+volumes:
+  redisdata:
+  letsencrypt:
+  certbot-www:
+  prometheus:
+  grafana:
+
+networks:
+  # Only nginx sits on the edge network; everything else is unreachable from
+  # outside the host.
+  edge:
+  internal:
+    internal: true
