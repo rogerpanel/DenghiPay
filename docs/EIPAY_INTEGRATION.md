@@ -82,6 +82,12 @@ match it. Counsel's view on custody needs the corrected version.
 - **Russian-language users.** The app switches to Russian for Moscow-timezone
   browsers. Paying with digital currency is restricted in Russia (259-FZ);
   counsel should say whether Russian residents may use it.
+- **Guest refunds go to a hard-coded address.** A failed guest order is
+  refunded to `NEXT_PUBLIC_GUEST_REFUND_ADDRESS`, and when that is unset to
+  `0x2B4f…d3be`, written into `app/pages/TransactionPreview.tsx` and
+  `app/api/v1/payment-orders/route.ts`. Whose wallet that is has not been
+  stated. The deploy script refuses to run without the Company's own address.
+  A customer's refund landing in a Company wallet is also custody (§1.1).
 - **Amounts as JavaScript numbers.** Fine inside eipay, but none of that code
   can be lifted into MoraPay's adapters (CLAUDE.md rule 12).
 - `rogerpanel/eipay-client` and `rogerpanel/eipay-api` (Vite, NestJS,
@@ -105,27 +111,37 @@ The new values go in one place only: `/root/DenghiPay/eipay.env` on the server.
 
 ## 3. Running it on the server
 
-One-time, in the Hetzner console as root:
+One-time. The Hetzner console garbles long pasted or typed strings, so tokens
+and keys go through PowerShell (`ssh`/`scp` as `deploy`), and the console only
+moves files.
 
-```
-cd /root/DenghiPay
-git clone https://github.com/Dprof-in-tech/eipay eipay
-cp eipay/.env.example eipay.env
-chmod 600 eipay.env
-nano eipay.env
-```
+1. **The code.** Clone into `/root/DenghiPay/eipay`, either from GitHub with
+   access to the private repository, or from a `git bundle` copied up with
+   `scp` (`git clone -b main /home/deploy/eipay.bundle eipay`).
+2. **The keys.** Fill in `infra/eipay.env.template` on a PC. It lists every
+   value, where in which dashboard to find it, and safe settings for the test
+   phase. Save it as `eipay.env`, then:
 
-In `eipay.env` set, at least, the **new** values of the keys in §2, and:
+   ```
+   scp -i "$env:USERPROFILE\.ssh\denghipay" eipay.env deploy@62.238.23.185:~/
+   ```
 
-```
-NEXT_PUBLIC_APP_URL=https://eipay.62.238.23.185.sslip.io
-APP_URL=https://eipay.62.238.23.185.sslip.io
-```
+   and in the console, as root:
 
-Add the same address as an allowed origin in the Privy dashboard, and the Smile
-ID callback as `https://eipay.62.238.23.185.sslip.io/api/kyc/smile-id/callback`.
+   ```
+   mv /home/deploy/eipay.env /root/DenghiPay/eipay.env
+   chown root:root /root/DenghiPay/eipay.env
+   chmod 600 /root/DenghiPay/eipay.env
+   ```
+
+The deploy script writes the values that follow from the deployment itself
+(`APP_URL`, `NEXT_PUBLIC_APP_URL`, `SMILE_ID_CALLBACK_URL`, `PRIVY_JWKS_URL`)
+and generates `INTERNAL_API_KEY`, `ENCRYPTION_KEY` and
+`INJECTED_SESSION_SECRET` once. It strips Notepad's line endings.
+
+In Privy, add `https://eipay.62.238.23.185.sslip.io` to the allowed domains.
 The reconciliation worker (`supabase/functions/reconcile-pending-orders`) runs
-in their Supabase project, not on this server; deploy it there.
+in the Supabase project, not on this server; deploy it there.
 
 Then, every time:
 

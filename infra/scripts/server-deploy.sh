@@ -149,22 +149,53 @@ if [ "$EIPAY" = "1" ]; then
   [ "$(stat -c %a "$EIPAY_ENV_FILE")" = "600" ] || {
     echo "✗ $EIPAY_ENV_FILE must be mode 600: chmod 600 $EIPAY_ENV_FILE" >&2; exit 1; }
 
+  # Windows line endings from Notepad would end up inside every value.
+  sed -i 's/\r$//' "$EIPAY_ENV_FILE"
   eipay_val() { grep -E "^$1=" "$EIPAY_ENV_FILE" | tail -1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//'; }
+  # Replaces every line for $1 with one line, so the file never holds two
+  # values for a key and the reader never has to guess which one wins.
+  eipay_set() { sed -i "/^$1=/d" "$EIPAY_ENV_FILE"; printf '%s=%s\n' "$1" "$2" >> "$EIPAY_ENV_FILE"; }
+
+  # Values derived from this deployment, written here so nobody types them.
+  # They follow EIPAY_HOSTNAME, so moving to a real domain updates all of them.
+  eipay_set APP_URL "https://${EIPAY_HOSTNAME}"
+  eipay_set NEXT_PUBLIC_APP_URL "https://${EIPAY_HOSTNAME}"
+  eipay_set SMILE_ID_CALLBACK_URL "https://${EIPAY_HOSTNAME}/api/kyc/smile-id/callback"
+  privy_id="$(eipay_val NEXT_PUBLIC_PRIVY_APP_ID)"
+  if [ -n "$privy_id" ]; then
+    eipay_set PRIVY_JWKS_URL "https://auth.privy.io/api/v1/apps/${privy_id}/jwks.json"
+    [ -n "$(eipay_val PRIVY_ISSUER)" ] || eipay_set PRIVY_ISSUER privy.io
+  fi
+  [ -n "$(eipay_val PAYCREST_BASE_API_URL)" ] || eipay_set PAYCREST_BASE_API_URL https://api.paycrest.io/v1
+
+  # Secrets that belong to this deployment alone, generated once. Rotating
+  # ENCRYPTION_KEY later makes saved recipients unreadable (their runbook has
+  # the re-encryption step), so it is never regenerated once present.
+  for k in INTERNAL_API_KEY ENCRYPTION_KEY INJECTED_SESSION_SECRET; do
+    if [ -z "$(eipay_val "$k")" ]; then
+      eipay_set "$k" "$(openssl rand -hex 32)"
+      echo "  generated $k in $EIPAY_ENV_FILE"
+    fi
+  done
+
   missing=""
   for k in NEXT_PUBLIC_PRIVY_APP_ID PRIVY_APP_SECRET SUPABASE_URL SUPABASE_SECRET_KEY \
-           INTERNAL_API_KEY ENCRYPTION_KEY PAYCREST_SENDER_KEY NEXT_PUBLIC_APP_URL APP_URL; do
-    [ -n "$(eipay_val "$k")" ] || missing="$missing $k"
+           PAYCREST_SENDER_KEY NEXT_PUBLIC_STARKNET_RPC_URL NEXT_PUBLIC_GUEST_REFUND_ADDRESS; do
+    v="$(eipay_val "$k")"
+    case "$v" in ""|*your*|*YOUR*|*PLACEHOLDER*|*"<"*|"0x...") missing="$missing $k" ;; esac
   done
-  [ -z "$missing" ] || { echo "✗ $EIPAY_ENV_FILE has no value for:$missing" >&2; exit 1; }
+  [ -z "$missing" ] || { echo "✗ $EIPAY_ENV_FILE has no real value for:$missing" >&2; exit 1; }
+  # Without this, eipay refunds failed guest orders to an address hard-coded in
+  # its source, which belongs to nobody we can name.
+  if [ "$(eipay_val NEXT_PUBLIC_GUEST_REFUND_ADDRESS | tr 'A-F' 'a-f')" = "0x2b4fb6f7255def56d985fb01134ab1431efbd3be" ]; then
+    echo "✗ NEXT_PUBLIC_GUEST_REFUND_ADDRESS is eipay's built-in default. Set the Company's own wallet address." >&2; exit 1
+  fi
   # The nTZS webhook skips its signature check when this is unset, and that
   # path is outside the testers' gate.
   if [ -n "$(eipay_val NTZS_API_KEY)" ] && [ -z "$(eipay_val NTZS_WEBHOOK_SECRET)" ]; then
     echo "✗ NTZS_API_KEY is set without NTZS_WEBHOOK_SECRET: the webhook would accept unsigned calls." >&2; exit 1
   fi
-  for k in NEXT_PUBLIC_APP_URL APP_URL; do
-    [ "$(eipay_val "$k")" = "https://${EIPAY_HOSTNAME}" ] || \
-      echo "  ! $k is not https://${EIPAY_HOSTNAME}; links and Privy's allowed origin will not match" >&2
-  done
+  echo "  eipay address https://${EIPAY_HOSTNAME} (add it to Privy's allowed domains)"
 
   # The testers' gate. One shared login, generated once, kept in MoraPay's .env
   # as a bcrypt hash; the password itself is printed once and never stored.
