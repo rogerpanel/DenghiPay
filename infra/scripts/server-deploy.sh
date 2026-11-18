@@ -112,6 +112,83 @@ export PUBLIC_ORIGIN ADMIN_ORIGIN WEB_PUBLIC_PORT="$WEB_PORT" ADMIN_PUBLIC_PORT=
 # shellcheck disable=SC2046
 export POSTGRES_PASSWORD="$(grep -E '^POSTGRES_PASSWORD=' .env | cut -d= -f2-)"
 
+# -------------------------------------------------------------------- eipay
+#
+# Opt in with EIPAY=1 (and TLS=1). Runs the developers' eipay app as its own
+# service next to MoraPay, for integration testing. docs/EIPAY_INTEGRATION.md
+# is the runbook; this block only refuses the unsafe ways of doing it.
+#
+#   TLS=1 EIPAY=1 infra/scripts/server-deploy.sh
+#
+# The optional-sites directory is rewritten every run, so a run without EIPAY=1
+# takes eipay off the public address again.
+rm -rf .caddy-sites && mkdir -p .caddy-sites
+EIPAY="${EIPAY:-0}"
+if [ "$EIPAY" = "1" ]; then
+  [ "$TLS" = "1" ] || {
+    echo "✗ EIPAY=1 needs TLS=1: wallet sign-in does not work over plain HTTP." >&2; exit 1; }
+
+  EIPAY_SRC="${EIPAY_SRC:-$(cd "$ROOT/.." && pwd)/eipay}"
+  EIPAY_ENV_FILE="${EIPAY_ENV_FILE:-$(cd "$ROOT/.." && pwd)/eipay.env}"
+  EIPAY_HOSTNAME="${EIPAY_HOSTNAME:-eipay.${PUBLIC_HOST}.sslip.io}"
+
+  [ -d "$EIPAY_SRC/.git" ] || {
+    echo "✗ no eipay checkout at $EIPAY_SRC" >&2
+    echo "  git clone <eipay repository> $EIPAY_SRC" >&2; exit 1; }
+  # A live .env inside the checkout is how the keys leaked the first time, and
+  # the image build would copy it into a layer.
+  if find "$EIPAY_SRC" -maxdepth 1 -name '.env*' ! -name '.env.example' | grep -q .; then
+    echo "✗ $EIPAY_SRC contains an .env file. Move it to $EIPAY_ENV_FILE and delete it there." >&2; exit 1
+  fi
+  [ -f "$EIPAY_ENV_FILE" ] || {
+    echo "✗ $EIPAY_ENV_FILE is missing. Start from $EIPAY_SRC/.env.example, with NEW keys." >&2; exit 1; }
+  case "$(cd "$(dirname "$EIPAY_ENV_FILE")" && pwd)/" in
+    "$ROOT"/*|"$EIPAY_SRC"/*)
+      echo "✗ $EIPAY_ENV_FILE must live outside both repositories." >&2; exit 1 ;;
+  esac
+  [ "$(stat -c %a "$EIPAY_ENV_FILE")" = "600" ] || {
+    echo "✗ $EIPAY_ENV_FILE must be mode 600: chmod 600 $EIPAY_ENV_FILE" >&2; exit 1; }
+
+  eipay_val() { grep -E "^$1=" "$EIPAY_ENV_FILE" | tail -1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//'; }
+  missing=""
+  for k in NEXT_PUBLIC_PRIVY_APP_ID PRIVY_APP_SECRET SUPABASE_URL SUPABASE_SECRET_KEY \
+           INTERNAL_API_KEY ENCRYPTION_KEY PAYCREST_SENDER_KEY NEXT_PUBLIC_APP_URL APP_URL; do
+    [ -n "$(eipay_val "$k")" ] || missing="$missing $k"
+  done
+  [ -z "$missing" ] || { echo "✗ $EIPAY_ENV_FILE has no value for:$missing" >&2; exit 1; }
+  # The nTZS webhook skips its signature check when this is unset, and that
+  # path is outside the testers' gate.
+  if [ -n "$(eipay_val NTZS_API_KEY)" ] && [ -z "$(eipay_val NTZS_WEBHOOK_SECRET)" ]; then
+    echo "✗ NTZS_API_KEY is set without NTZS_WEBHOOK_SECRET: the webhook would accept unsigned calls." >&2; exit 1
+  fi
+  for k in NEXT_PUBLIC_APP_URL APP_URL; do
+    [ "$(eipay_val "$k")" = "https://${EIPAY_HOSTNAME}" ] || \
+      echo "  ! $k is not https://${EIPAY_HOSTNAME}; links and Privy's allowed origin will not match" >&2
+  done
+
+  # The testers' gate. One shared login, generated once, kept in MoraPay's .env
+  # as a bcrypt hash; the password itself is printed once and never stored.
+  if ! grep -qE '^EIPAY_TEST_PASSWORD_HASH=' .env; then
+    command -v openssl >/dev/null 2>&1 || { echo "✗ openssl is required" >&2; exit 1; }
+    EIPAY_TEST_PASSWORD="$(openssl rand -base64 24 | tr -d '\n=+/' | cut -c1-24)"
+    hash="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$EIPAY_TEST_PASSWORD")"
+    { echo ""; echo "# eipay testers' gate (server-deploy.sh). Remove both lines to issue a new password."
+      echo "EIPAY_TEST_USER=tester"
+      echo "EIPAY_TEST_PASSWORD_HASH='${hash}'"; } >> .env
+  fi
+  EIPAY_TEST_USER="$(grep -E '^EIPAY_TEST_USER=' .env | tail -1 | cut -d= -f2-)"
+  EIPAY_TEST_PASSWORD_HASH="$(grep -E '^EIPAY_TEST_PASSWORD_HASH=' .env | tail -1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'$//")"
+  export EIPAY_HOSTNAME EIPAY_ENV_FILE EIPAY_TEST_USER EIPAY_TEST_PASSWORD_HASH
+
+  cp infra/caddy/eipay.caddy .caddy-sites/
+  COMPOSE="$COMPOSE --profile eipay"
+
+  echo "→ building eipay from $EIPAY_SRC ($(git -C "$EIPAY_SRC" rev-parse --short HEAD))"
+  DOCKER_BUILDKIT=1 docker build -f infra/docker/eipay.Dockerfile \
+    --secret id=eipay_env,src="$EIPAY_ENV_FILE" \
+    -t morapay-eipay:local "$EIPAY_SRC"
+fi
+
 echo "→ building (a few minutes on the first run; layers are cached after that)"
 $COMPOSE build
 
@@ -197,6 +274,27 @@ if [ "$TLS" = "1" ]; then
   done
 fi
 
+if [ "$EIPAY" = "1" ]; then
+  echo "→ verifying eipay"
+  wait_for "http://localhost:${EIPAY_LOCAL_PORT:-3002}/" 200 90 || {
+    echo "✗ eipay did not come up" >&2; $COMPOSE logs --tail=40 eipay >&2; exit 1; }
+  echo "✓ eipay answers on the server"
+  ok=0
+  for _ in $(seq 45); do
+    code="$(curl -s -o /dev/null -m 8 -w '%{http_code}' "https://${EIPAY_HOSTNAME}/" 2>/dev/null || echo 000)"
+    [ "$code" = "401" ] && { ok=1; break; }
+    sleep 2
+  done
+  if [ "$ok" = "1" ]; then
+    echo "✓ https://${EIPAY_HOSTNAME} has a trusted certificate and asks testers to sign in"
+  else
+    echo "✗ https://${EIPAY_HOSTNAME} did not answer 401 without a login (got ${code})." >&2
+    echo "  Either the certificate is not issued yet or the gate is not in place. Not ready." >&2
+    $COMPOSE logs --tail=25 caddy >&2
+    exit 1
+  fi
+fi
+
 cat <<EOF
 
   Sender app     ${PUBLIC_ORIGIN}
@@ -227,6 +325,24 @@ else
 
   For a real certificate today, without owning a domain:
       TLS=1 infra/scripts/server-deploy.sh
+EOF
+fi
+
+if [ "$EIPAY" = "1" ]; then
+  cat <<EOF
+
+  eipay          https://${EIPAY_HOSTNAME}   (testers only, user: ${EIPAY_TEST_USER})
+EOF
+  if [ -n "${EIPAY_TEST_PASSWORD:-}" ]; then
+    cat <<EOF
+  Testers' password, shown this once and not stored anywhere in clear:
+                 ${EIPAY_TEST_PASSWORD}
+  Give it only to the named testers. To issue a new one, delete the two
+  EIPAY_TEST_* lines from .env and re-run.
+EOF
+  fi
+  cat <<EOF
+  Integration checks: infra/scripts/eipay-check.sh
 EOF
 fi
 

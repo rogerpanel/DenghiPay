@@ -53,3 +53,8 @@
 	import common
 	reverse_proxy admin:3000
 }
+
+# Optional sites the deploy script switched on for this run (EIPAY=1 copies
+# eipay.caddy here). An empty directory is fine: a glob that matches nothing is
+# a warning, not an error, so MoraPay is never taken down by an add-on.
+import /etc/caddy/sites/*.caddy

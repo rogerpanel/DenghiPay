@@ -172,16 +172,50 @@ services:
       ADMIN_HOSTNAME: ${ADMIN_HOSTNAME:-}
       ACME_EMAIL: ${ACME_EMAIL:-}
       CADDY_ACME_CA: ${CADDY_ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+      # Read only by infra/caddy/eipay.caddy, which is present only with EIPAY=1.
+      EIPAY_HOSTNAME: ${EIPAY_HOSTNAME:-}
+      EIPAY_TEST_USER: ${EIPAY_TEST_USER:-}
+      EIPAY_TEST_PASSWORD_HASH: ${EIPAY_TEST_PASSWORD_HASH:-}
     ports:
       - '80:80'
       - '443:443'
     volumes:
       - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Optional sites for this run, written by the deploy script. Gitignored.
+      - ../../.caddy-sites:/etc/caddy/sites:ro
       - caddydata:/data
       - caddyconfig:/config
     depends_on:
       web: { condition: service_started }
       admin: { condition: service_started }
+    networks: [internal]
+
+  # eipay, the developers' Paycrest app (Agreement No. 04), only with
+  # `--profile eipay`, which the deploy script adds for EIPAY=1.
+  #
+  # Its own image, its own env file, nothing shared with MoraPay: it does not
+  # see MoraPay's .env, database or Redis, and MoraPay does not see its keys.
+  # The image is built by the deploy script rather than here, because the build
+  # needs the env file as a BuildKit secret (see infra/docker/eipay.Dockerfile).
+  #
+  # Published on loopback only. Caddy, and so the testers' gate, is the only
+  # way in from outside; the loopback port is for the deploy script's checks.
+  eipay:
+    image: morapay-eipay:local
+    # Built locally by the deploy script; there is nothing to pull.
+    pull_policy: never
+    profiles: [eipay]
+    restart: unless-stopped
+    # required: false so the MoraPay stack still starts on a server with no
+    # eipay at all; with EIPAY=1 the deploy script checks the file itself.
+    env_file:
+      - path: '${EIPAY_ENV_FILE:-../../../eipay.env}'
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+    ports:
+      - '127.0.0.1:${EIPAY_LOCAL_PORT:-3002}:3000'
     networks: [internal]
 
 volumes:

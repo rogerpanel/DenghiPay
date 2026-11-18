@@ -292,6 +292,8 @@ _DoD:_ Mismatched name enquiry blocks the transfer and prompts the sender.
 _DoD:_ Sandbox payout confirmed and reconciled.
 _Status 7.3a (2026-10-19):_ **adapter built, wired, payouts held back.** `packages/adapters/src/paycrest/` implements all five port operations against Paycrest's v2 API for Nigeria, Kenya, Uganda and Tanzania (diverging from the plan's Nigeria-only scope because Agreement No. 04 is accepted against those four). Tested offline and through a running API. Two facts change the DoD: Paycrest **has no sandbox**, so it becomes one live nominal payout per country; and an order is **funded in stablecoin**, so it waits on the Model B decision (`DESIGN_STABLECOIN_RAIL.md`). Until a funder exists, `PAYCREST_ENABLED=true` registers Paycrest disabled and the simulators keep serving. See `docs/PAYCREST_ADAPTER.md`.
 
+_Status 7.3a, eipay (2026-11-18):_ **the developers' own Paycrest app runs beside MoraPay for integration testing.** eipay, delivered under Agreement No. 04, is a standalone Next.js app with its own database and keys. It is deployed as a separate service behind a testers' login (`TLS=1 EIPAY=1 infra/scripts/server-deploy.sh`), shares nothing with MoraPay, and moves no money through the MoraPay ledger. The handover review, test report and go-live checklist are in `docs/EIPAY_INTEGRATION.md`. This is not a substitute for the adapter above, which stays the route for MoraPay corridors.
+
 **7.4 Payout failure handling.** Failed payouts return funds to `USER_PAYABLE` and trigger sender notification plus a support task. Never silently retried into a duplicate.
 _DoD:_ Duplicate-payout test proves impossibility under retry storm.
 

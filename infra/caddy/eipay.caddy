@@ -1,0 +1,32 @@
+# eipay, served next to the MoraPay front ends. Imported by the Caddyfile only
+# when the deploy script runs with EIPAY=1, which copies this file into the
+# runtime sites directory; otherwise there is no such site at all.
+#
+#   EIPAY_HOSTNAME=eipay.62.238.23.185.sslip.io   (or the real domain later)
+#
+# Access during integration testing is limited to the named testers in
+# EIPAY_TEST_USER / EIPAY_TEST_PASSWORD_HASH. The app holds live provider keys
+# (Paycrest has no sandbox), so an open URL would let anyone move real money
+# through it before the go-live checklist in docs/EIPAY_INTEGRATION.md is met.
+#
+# Two paths stay open because the provider calling them cannot log in, and each
+# route checks the provider's own signature: the nTZS webhook and the Smile ID
+# callback. The deploy script refuses to start eipay with nTZS configured and no
+# NTZS_WEBHOOK_SECRET, because that route skips its check when the secret is
+# missing.
+
+{$EIPAY_HOSTNAME} {
+	import common
+
+	@tester {
+		not path /api/webhooks/ntzs /api/kyc/smile-id/callback
+	}
+	basic_auth @tester {
+		{$EIPAY_TEST_USER} {$EIPAY_TEST_PASSWORD_HASH}
+	}
+
+	# Not for search engines while it is under test.
+	header X-Robots-Tag "noindex, nofollow"
+
+	reverse_proxy eipay:3000
+}
