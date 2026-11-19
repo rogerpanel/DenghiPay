@@ -60,10 +60,14 @@ match it. Counsel's view on custody needs the corrected version.
 
 ### 1.2 Other findings
 
-- **Operator named in the legal pages is COGEL SARL**, not LLC "Expat
-  Groupe" (71 mentions in `app/components/TermsOfService.tsx`, also the
-  Privacy Policy, French versions included). Must name the entity that actually
-  operates the service before anyone outside the test team uses it.
+- **Operator named in the legal pages is COGEL SARL** (71 mentions in
+  `app/components/TermsOfService.tsx`, also the Privacy Policy, French versions
+  included). The developers have since said (18 Nov) that COGEL SARL, a company
+  in the DR Congo under the Clients' ownership, is the entity Paycrest verified
+  (see §1.3), and that the legal pages are optional extras. The pages, the
+  Paycrest verification and every service account must name the same operating
+  entity; which one that is (COGEL SARL or LLC "Expat Groupe") is the Clients'
+  decision, with counsel.
 - **Licence.** `LICENSE` says "proprietary, copyright eipay", while the Terms
   say eipay "was developed using an open-source codebase", and the README's
   wording and contribution links (Paycrest's contribution guide and developer
@@ -85,13 +89,55 @@ match it. Counsel's view on custody needs the corrected version.
 - **Guest refunds go to a hard-coded address.** A failed guest order is
   refunded to `NEXT_PUBLIC_GUEST_REFUND_ADDRESS`, and when that is unset to
   `0x2B4f…d3be`, written into `app/pages/TransactionPreview.tsx` and
-  `app/api/v1/payment-orders/route.ts`. Whose wallet that is has not been
-  stated. The deploy script refuses to run without the Company's own address.
-  A customer's refund landing in a Company wallet is also custody (§1.1).
+  `app/api/v1/payment-orders/route.ts`. The developers state (18 Nov) that it
+  is a developer's personal wallet and that no refund has been sent to it. The
+  deploy script refuses to run without the Company's own address. A customer's
+  refund landing in a Company wallet is also custody (§1.1).
 - **Amounts as JavaScript numbers.** Fine inside eipay, but none of that code
   can be lifted into MoraPay's adapters (CLAUDE.md rule 12).
 - `rogerpanel/eipay-client` and `rogerpanel/eipay-api` (Vite, NestJS,
   Firebase) are a different, earlier codebase, not this handover.
+- **CI is red on `main`, but not because of the code.** The `migrate` job runs
+  `supabase db push` with no database address configured; the build and test
+  jobs pass. Database migrations are therefore not applied automatically.
+
+### 1.3 Accounts, and the Paycrest Sender Business Agreement
+
+The developers' own service accounts (Privy, Supabase, Alchemy, KudiSMS,
+Smile ID, Dojah, Vercel) belong to an entity of theirs and are not handed
+over; the Company opens its own, set up from the handover documents (the
+developers declined a joint setup session, 18 Nov). Setting eipay up from those
+documents alone is itself the Annex 1 "deploys from its docs" test; gaps found
+on the way go in the report.
+
+The Paycrest account was handed over. It is verified (KYB) under COGEL SARL
+with the developers' help, and its login email is a third party's, which could
+not yet be removed from the team. Paycrest's standard **Sender Business
+Agreement** applies, generated automatically when the KYB was approved. It is
+not the separately negotiated, signed agreement Agreement No. 04 anticipates:
+it names no parties, carries no signature and is accepted by use. What it puts
+on the Sender Business, that is COGEL SARL:
+
+| Clause          | Effect                                                                                                                                                            |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3.2–3.3, 8.2(b) | Everything given in the KYB must be true and complete, nothing material withheld, and updated promptly when it changes; otherwise Paycrest may terminate at once. |
+| 4.1             | **Sole** responsibility for KYC/AML/CFT on every end user, transaction monitoring, licences in every country served, and sanctions compliance.                    |
+| 5.1–5.2         | Unlimited liability and indemnity for end users' transactions, including anything done on the account before the agreement's effective date.                      |
+| 6               | Paycrest's liability capped at USD 100.                                                                                                                           |
+| 7               | Paycrest may ask for the AML/KYC policies and evidence of compliance.                                                                                             |
+| 9               | Delaware law, binding arbitration.                                                                                                                                |
+
+Consequences for this integration:
+
+- **Sanctions screening and transaction monitoring are contractual
+  obligations**, not only MoraPay guardrails. eipay has neither (§1.1).
+- **The KYB file must describe the business as it will actually run:** the
+  operating entity, every beneficial owner with their real address, the people
+  operating the account, the countries served, and the login email. A change of
+  owner, operator or contact is an update owed to Paycrest under 3.2(c).
+- **Anything already run through this account is COGEL SARL's liability**
+  (5.1). The Order History tab shows whether the developers' public copy used
+  it; if it did, that copy must stop using it now, independently of payment.
 
 ## 2. Before eipay goes on the server: the leaked keys
 
@@ -224,17 +270,21 @@ decision under the Agreement; this report is the evidence for it.
 
 Each item needs a name and a date.
 
-| Item                                                                            | Owner                | Done |
-| ------------------------------------------------------------------------------- | -------------------- | ---- |
-| All keys in §2 replaced; old wallets empty                                      | Developers           |      |
-| The Company's own Paycrest key (after KYB); the developers' key revoked         | Company              |      |
-| Sanctions screening of sender and recipient before every order, blocking        | Developers           |      |
-| Settlement statement corrected to match the code (§1.1)                         | Developers           |      |
-| Counsel's written view: custody (§1.1), licences per country, Russian residents | Counsel              |      |
-| Operator entity in Terms and Privacy corrected                                  | Company / counsel    |      |
-| Upstream licence named and cleared; component list delivered                    | Developers           |      |
-| Production KYC limits set                                                       | Company / counsel    |      |
-| Supabase region and data-processing agreements                                  | Developers / Company |      |
-| Real domain, monitoring, backups tested by a restore                            | Company              |      |
-| Integration test report (§5) complete                                           | Lead Engineer        |      |
-| Go-live approved                                                                | Company (name, date) |      |
+| Item                                                                                                 | Owner                | Done |
+| ---------------------------------------------------------------------------------------------------- | -------------------- | ---- |
+| All keys in §2 replaced; old wallets empty (sponsor wallet: reported emptied 18 Nov)                 | Developers           |      |
+| Operating entity decided; legal pages, Paycrest KYB and service accounts all name it                 | Company / counsel    |      |
+| Paycrest KYB file current (owners, addresses, operators, countries); third-party login email removed | Company              |      |
+| Sender Business Agreement read and accepted by an authorised signatory of the Sender Business        | Company              |      |
+| New Paycrest key in use; every older key revoked; developers' public copy no longer on this account  | Company              |      |
+| AML/KYC and transaction-monitoring policies written (Sender Agreement §7)                            | Company / counsel    |      |
+| Sanctions screening of sender and recipient before every order, blocking                             | Developers           |      |
+| Settlement statement corrected to match the code (§1.1)                                              | Developers           |      |
+| Counsel's written view: custody (§1.1), licences per country, Russian residents                      | Counsel              |      |
+| Operator entity in Terms and Privacy corrected                                                       | Company / counsel    |      |
+| Upstream licence named and cleared; component list delivered                                         | Developers           |      |
+| Production KYC limits set                                                                            | Company / counsel    |      |
+| Supabase region and data-processing agreements                                                       | Developers / Company |      |
+| Real domain, monitoring, backups tested by a restore                                                 | Company              |      |
+| Integration test report (§5) complete                                                                | Lead Engineer        |      |
+| Go-live approved                                                                                     | Company (name, date) |      |
