@@ -1,0 +1,63 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2022,
+    "sourceType": "module"
+  },
+  "plugins": ["@typescript-eslint"],
+  "extends": ["eslint:recommended", "plugin:@typescript-eslint/recommended", "prettier"],
+  "env": {
+    "node": true,
+    "es2022": true
+  },
+  "ignorePatterns": [
+    "node_modules",
+    "dist",
+    ".next",
+    "coverage",
+    "*.js",
+    "*.mjs",
+    "*.cjs",
+    "prisma/generated",
+    "next-env.d.ts"
+  ],
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "@typescript-eslint/consistent-type-imports": "off",
+    "no-console": [
+      "warn",
+      {
+        "allow": ["warn", "error"]
+      }
+    ],
+    "eqeqeq": ["error", "smart"],
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "NewExpression[callee.name='Number']",
+        "message": "Money is never a Number. Use Money from @morapay/domain."
+      },
+      {
+        "selector": "CallExpression[callee.name='parseFloat']",
+        "message": "parseFloat has no place in this codebase \u2014 floating point money is a bug, always."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.spec.ts", "**/*.test.ts", "**/prisma/*.ts"],
+      "rules": {
+        "no-console": "off",
+        "@typescript-eslint/no-non-null-assertion": "off"
+      }
+    }
+  ]
+}

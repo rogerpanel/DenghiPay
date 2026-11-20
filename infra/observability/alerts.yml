@@ -1,0 +1,102 @@
+# On-call alerts (BUILD_PLAN 11.5).
+#
+# Five things wake someone up, and they are the five the build plan names:
+# stuck transfers, float thresholds, reconciliation breaks, screening backlog
+# and error-rate spikes. Everything else is a dashboard.
+
+groups:
+  - name: morapay-money
+    interval: 30s
+    rules:
+      - alert: StuckTransfers
+        expr: morapay_stuck_transfers > 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: '{{ $value }} transfer(s) stuck on {{ $labels.corridor }}'
+          description: >
+            A transfer has exhausted its poll schedule without reaching a terminal
+            state. Someone else has the customer's money. Runbook:
+            docs/runbooks/stuck-transfer.md
+
+      - alert: FloatBelowWatermark
+        expr: morapay_float_balance_minor_units < 0
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: 'Float for {{ $labels.currency }} has gone negative'
+          description: >
+            A negative float means we have paid out more than we hold. Stop
+            payouts on this corridor and reconcile before anything else.
+
+      - alert: LedgerImbalance
+        # The whole-ledger invariant, scraped as a gauge. Anything but zero
+        # means money has been created or destroyed.
+        expr: absent(morapay_ledger_balanced) or morapay_ledger_balanced != 1
+        for: 1m
+        labels: { severity: page }
+        annotations:
+          summary: 'The ledger does not balance'
+          description: >
+            Debits and credits have diverged. Halt all movement and page the
+            engineering lead. This should be impossible: the database enforces
+            it with a constraint trigger.
+
+      - alert: ReconciliationBreaks
+        expr: morapay_reconciliation_breaks > 0
+        for: 15m
+        labels: { severity: ticket }
+        annotations:
+          summary: '{{ $value }} unreconciled item(s) with {{ $labels.provider }}'
+          description: 'Runbook: docs/runbooks/reconciliation-break.md'
+
+  - name: morapay-compliance
+    interval: 60s
+    rules:
+      - alert: ScreeningBacklog
+        expr: increase(morapay_screening_results_total{result="hit"}[1h]) > 5
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Screening hits are accumulating'
+          description: >
+            More than five hits in an hour. Either the list changed or something
+            is wrong with matching. A blocked sender is waiting on a human.
+
+      - alert: ScreeningProviderErrors
+        expr: increase(morapay_screening_results_total{result="error"}[10m]) > 0
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: 'The screening provider is failing'
+          description: >
+            Screening errors block transfers by design — we never treat an
+            unavailable provider as a pass. Senders are being held.
+
+  - name: morapay-platform
+    interval: 30s
+    rules:
+      - alert: CallbackRejectionSpike
+        expr: increase(morapay_callbacks_total{outcome=~"rejected.*"}[10m]) > 20
+        for: 5m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Callbacks from {{ $labels.provider }} are being rejected'
+          description: >
+            Either a partner rotated a signing secret without telling us, clocks
+            have drifted, or someone is forging callbacks. All three are worth
+            looking at.
+
+      - alert: ProviderLatency
+        expr: histogram_quantile(0.95, sum(rate(morapay_provider_call_duration_seconds_bucket[5m])) by (le, provider)) > 5
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'p95 latency to {{ $labels.provider }} is above 5s'
+
+      - alert: ApiDown
+        expr: up{job="morapay-api"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: 'The API is not responding to scrapes'

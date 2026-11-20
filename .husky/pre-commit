@@ -1,0 +1,17 @@
+#!/usr/bin/env sh
+
+# Guardrail G7. If gitleaks is installed, no commit leaves this machine with a
+# secret in it. If it is not installed, say so loudly rather than passing quietly.
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --config .gitleaks.toml || {
+    echo ""
+    echo "gitleaks found a secret in the staged changes. Nothing was committed."
+    echo "Guardrail G7: no secrets in the repository, ever."
+    exit 1
+  }
+else
+  echo "WARNING: gitleaks is not installed — install it before committing again."
+  echo "  https://github.com/gitleaks/gitleaks  (CI will still block the push)"
+fi
+
+pnpm exec lint-staged
