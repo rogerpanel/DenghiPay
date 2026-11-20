@@ -110,6 +110,21 @@ developers declined a joint setup session, 18 Nov). Setting eipay up from those
 documents alone is itself the Annex 1 "deploys from its docs" test; gaps found
 on the way go in the report.
 
+Gaps found so far in `docs/deployment-guide.md` §9 (the background
+reconciler), each of which would leave it silently doing nothing:
+
+- It says the cron job comes from `20261014000000_catch_up_schema.sql`; neither
+  migration creates one. It has to be scheduled by hand, after enabling the
+  `pg_cron` and `pg_net` extensions.
+- Its `cron.schedule` example sends no `x-reconcile-secret` header, and the
+  function answers 401 to any call without it
+  (`supabase/functions/reconcile-pending-orders/index.ts`).
+- The function also needs the `RECONCILE_CRON_SECRET` and `AGGREGATOR_URL`
+  secrets (it throws without the latter); only `PAYCREST_SENDER_KEY` is
+  documented. `supabase/config.toml` is the only place the secret is mentioned.
+- Privy's dashboard settings (login methods, allowed domains) are not listed;
+  the code fixes only the embedded EVM wallet and the chains.
+
 The Paycrest account was handed over. It is verified (KYB) under COGEL SARL
 with the developers' help, and its login email is a third party's, which could
 not yet be removed from the team. Paycrest's standard **Sender Business
