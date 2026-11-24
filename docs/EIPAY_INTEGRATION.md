@@ -101,6 +101,11 @@ match it. Counsel's view on custody needs the corrected version.
   first transfer, 24 Nov), so it has to stay unrestricted. A separate
   server-only key would let the public one be locked to the domain. On the
   free plan without a card the exposure is quota, not money.
+- **KYC limits fall as verification rises.** The code defaults
+  (`app/lib/kyc-tier-limits.ts`) give USD 10 a month with no verification and
+  USD 0.50, 1 and 2 for tiers 1–3, so verifying a phone number lowers a user's
+  limit twentyfold. They apply whenever the `NEXT_PUBLIC_KYC_TIER_*` values are
+  missing at build time.
 - **Balances on Lisk** are read through Lisk's public RPC, which often fails;
   the wallet then warns that its total may be too low. Cosmetic.
 - **Amounts as JavaScript numbers.** Fine inside eipay, but none of that code

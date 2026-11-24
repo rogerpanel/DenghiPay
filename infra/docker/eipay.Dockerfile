@@ -43,9 +43,14 @@ RUN if ls -a | grep -E '^\.env' | grep -vqx '.env.example'; then \
     fi
 ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=3072
+# A fingerprint of the public (NEXT_PUBLIC_*) values, from the deploy script.
+# The secret below is not part of the cache key; this is, so changing one of
+# those values rebuilds instead of reusing a bundle that has the old ones.
+ARG EIPAY_PUBLIC_FINGERPRINT=unset
 # Node 22 reads a dotenv file itself, which avoids sourcing it with a shell
 # (values with spaces or quotes would break, or worse, execute).
 RUN --mount=type=secret,id=eipay_env,required=true \
+    echo "public settings ${EIPAY_PUBLIC_FINGERPRINT}" && \
     node -e "process.loadEnvFile('/run/secrets/eipay_env'); \
       require('child_process').execFileSync('pnpm', ['build'], { stdio: 'inherit', env: process.env })" \
   && rm -rf .next/cache

@@ -262,8 +262,15 @@ if [ "$EIPAY" = "1" ]; then
   COMPOSE="$COMPOSE --profile eipay"
 
   echo "→ building eipay from $EIPAY_SRC ($(git -C "$EIPAY_SRC" rev-parse --short HEAD))"
+  # A build secret is not part of Docker's cache key, so without this a change
+  # to a NEXT_PUBLIC_* value (baked into the browser bundle) reused the old
+  # build and never reached the browser: the KYC limits stayed at eipay's
+  # defaults (24 Nov). The fingerprint covers only values that are public by
+  # design, so putting it in the build arguments exposes nothing.
+  public_fp="$(grep -E '^(NEXT_PUBLIC_[A-Z0-9_]*|APP_URL)=' "$EIPAY_ENV_FILE" | sort | sha256sum | cut -c1-16)"
   DOCKER_BUILDKIT=1 docker build -f infra/docker/eipay.Dockerfile \
     --secret id=eipay_env,src="$EIPAY_ENV_FILE" \
+    --build-arg EIPAY_PUBLIC_FINGERPRINT="$public_fp" \
     -t morapay-eipay:local "$EIPAY_SRC"
 fi
 
