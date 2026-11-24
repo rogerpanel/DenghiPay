@@ -120,11 +120,16 @@ match it. Counsel's view on custody needs the corrected version.
   fiat (leg 1) and sells it into the destination currency (leg 2), always on
   Base (`app/pages/TransactionPreview.tsx`, six places, and the
   `intermediateNetwork: "base"` type in `app/lib/chained-remittance.ts`). In
-  October Paycrest had payout providers on Base for NGN only, so KES, UGX and
-  TZS remits cannot be priced or filled there; the first NGN → UGX test
-  (24 Nov) failed before any naira was taken. `infra/scripts/eipay-routes.sh`
-  shows, per network, which legs Paycrest can quote now. The network should
-  be chosen per corridor from that, not fixed.
+  October Paycrest had payout providers on Base for NGN only. On 24 Nov
+  (`infra/scripts/eipay-routes.sh`, 5-unit quotes) Base quoted USDC payouts
+  for all four currencies and USDC purchases with NGN and TZS only; Polygon
+  quoted no NGN purchase at all. So NGN → UGX on Base is possible today, and
+  Base happens to be the only network that can carry an NGN-sourced remit,
+  but routes change: a corridor whose leg disappears from Base fails with no
+  fallback. No network today buys USDC with KES or UGX, so remits _from_
+  Kenya or Uganda cannot work on any of them. The first NGN → UGX test
+  (24 Nov) failed before any naira was taken; with the route available, the
+  missing identity data below is the likely cause.
 - **A remit also needs identity verification.** Leg 1 sends the sender's full
   name and ID document (from Smile ID) to Paycrest, which rejects an on-ramp
   without them; with Smile ID unconfigured, no remit can complete.
