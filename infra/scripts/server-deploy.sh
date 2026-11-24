@@ -98,7 +98,7 @@ fi
 if [ "$TLS" = "1" ]; then
   # The Caddyfile's global `email` line has no value without this, which Caddy
   # rejects, so the certificate never arrives. Given once, remembered in .env.
-  ACME_EMAIL="${ACME_EMAIL:-$(grep -E '^ACME_EMAIL=' .env | tail -1 | cut -d= -f2-)}"
+  ACME_EMAIL="${ACME_EMAIL:-$(grep -E '^ACME_EMAIL=' .env | tail -1 | cut -d= -f2- || true)}"
   if [ -z "$ACME_EMAIL" ]; then
     echo "✗ TLS=1 needs an address for certificate notices, once:" >&2
     echo "    ACME_EMAIL=you@example.com TLS=1 infra/scripts/server-deploy.sh" >&2
@@ -160,7 +160,13 @@ if [ "$EIPAY" = "1" ]; then
 
   # Windows line endings from Notepad would end up inside every value.
   sed -i 's/\r$//' "$EIPAY_ENV_FILE"
-  eipay_val() { grep -E "^$1=" "$EIPAY_ENV_FILE" | tail -1 | cut -d= -f2- | sed -e 's/^["'\'']//' -e 's/["'\'']$//'; }
+  # Always succeeds: under `set -e -o pipefail` a key that is absent (grep finds
+  # nothing) would otherwise end the whole script silently at the first
+  # `v="$(eipay_val ...)"`, before any message could say which key.
+  eipay_val() {
+    { grep -E "^$1=" "$EIPAY_ENV_FILE" | tail -1 | cut -d= -f2- \
+        | sed -e 's/^["'\'']//' -e 's/["'\'']$//'; } || true
+  }
   # Replaces every line for $1 with one line, so the file never holds two
   # values for a key and the reader never has to guess which one wins.
   eipay_set() { sed -i "/^$1=/d" "$EIPAY_ENV_FILE"; printf '%s=%s\n' "$1" "$2" >> "$EIPAY_ENV_FILE"; }
@@ -216,8 +222,11 @@ if [ "$EIPAY" = "1" ]; then
       echo "EIPAY_TEST_USER=tester"
       echo "EIPAY_TEST_PASSWORD_HASH='${hash}'"; } >> .env
   fi
-  EIPAY_TEST_USER="$(grep -E '^EIPAY_TEST_USER=' .env | tail -1 | cut -d= -f2-)"
-  EIPAY_TEST_PASSWORD_HASH="$(grep -E '^EIPAY_TEST_PASSWORD_HASH=' .env | tail -1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'$//")"
+  EIPAY_TEST_USER="$(grep -E '^EIPAY_TEST_USER=' .env | tail -1 | cut -d= -f2- || true)"
+  EIPAY_TEST_PASSWORD_HASH="$(grep -E '^EIPAY_TEST_PASSWORD_HASH=' .env | tail -1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'$//" || true)"
+  if [ -z "$EIPAY_TEST_USER" ] || [ -z "$EIPAY_TEST_PASSWORD_HASH" ]; then
+    echo "✗ the testers' login in .env is incomplete. Delete both EIPAY_TEST_* lines and re-run." >&2; exit 1
+  fi
   export EIPAY_HOSTNAME EIPAY_ENV_FILE EIPAY_TEST_USER EIPAY_TEST_PASSWORD_HASH
 
   cp infra/caddy/eipay.caddy .caddy-sites/
