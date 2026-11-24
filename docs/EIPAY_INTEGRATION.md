@@ -115,6 +115,25 @@ match it. Counsel's view on custody needs the corrected version.
   estimate it. **Applied in our build** (`infra/eipay-patches/apply.sh`, run
   by the image build on top of their unmodified checkout) and reported to the
   developers; the patch reports "already fixed" once their repository has it.
+- **Cross-border remit (fiat → fiat) is routed through Base, hard-coded.** The
+  "Cross-Border Transfer" flow (e.g. NGN → UGX) buys USDC with the sender's
+  fiat (leg 1) and sells it into the destination currency (leg 2), always on
+  Base (`app/pages/TransactionPreview.tsx`, six places, and the
+  `intermediateNetwork: "base"` type in `app/lib/chained-remittance.ts`). In
+  October Paycrest had payout providers on Base for NGN only, so KES, UGX and
+  TZS remits cannot be priced or filled there; the first NGN → UGX test
+  (24 Nov) failed before any naira was taken. `infra/scripts/eipay-routes.sh`
+  shows, per network, which legs Paycrest can quote now. The network should
+  be chosen per corridor from that, not fixed.
+- **A remit also needs identity verification.** Leg 1 sends the sender's full
+  name and ID document (from Smile ID) to Paycrest, which rejects an on-ramp
+  without them; with Smile ID unconfigured, no remit can complete.
+- **Remits out of Nigeria are a regulatory question before they are a
+  technical one.** Collecting naira and paying it out in another country is
+  an outbound remittance under the CBN's foreign-exchange rules, whatever the
+  rail in between. Like MoraPay's own corridors (`LIVE_CORRIDOR_AUTHORISATIONS`),
+  each remit corridor should open to customers only with the authorisation it
+  rests on and counsel's written view; testers may verify the mechanics.
 - **KYC limits fall as verification rises.** The code defaults
   (`app/lib/kyc-tier-limits.ts`) give USD 10 a month with no verification and
   USD 0.50, 1 and 2 for tiers 1–3, so verifying a phone number lowers a user's
