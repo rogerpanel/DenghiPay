@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MoraPay">
+  <!-- Maskable: the mark sits inside the 40% safe zone so Android can crop it
+       to a circle, a squircle or a rounded square without clipping. -->
+  <rect width="64" height="64" fill="#F5A623"/>
+  <path d="M20 42V24h5l7 10 7-10h5v18h-5V32l-5 7h-4l-5-7v10z" fill="#1A1A1A"/>
+</svg>

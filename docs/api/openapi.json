@@ -1,0 +1,5456 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "MoraPay API",
+    "version": "0.1.0",
+    "description": "Cross-border remittance platform. Russia/CIS → Nigeria & Ghana.\n\n**No live funds.** `LIVE_FUNDS_ENABLED` defaults to false and every provider\nruns against a simulator until partner agreements and written legal opinions\nare in place.\n\nTwo conventions that differ from most payment APIs, and both are deliberate:\n\n1. **Money is never a JSON number.** Amounts carry `minorUnits` as a string,\n   which is the authoritative field. A JSON number is a double, and a double\n   is not a currency.\n2. **An acknowledgement is not a settlement.** A provider that accepts a\n   submission has moved no money. Only a status poll or the T+1 statement\n   produces an outcome, and only an outcome posts to the ledger.",
+    "license": {
+      "name": "Proprietary"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000",
+      "description": "Local development"
+    },
+    {
+      "url": "https://api.staging.morapay.example",
+      "description": "Staging"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Authentication"
+    },
+    {
+      "name": "KYC"
+    },
+    {
+      "name": "Quoting"
+    },
+    {
+      "name": "Recipients"
+    },
+    {
+      "name": "Transfers"
+    },
+    {
+      "name": "Webhooks"
+    },
+    {
+      "name": "Back office"
+    },
+    {
+      "name": "Operations"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "adminBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Back-office tokens are signed with a different key from customer tokens. A customer token fails signature verification here, not merely authorisation."
+      }
+    },
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "message"
+              ]
+            }
+          },
+          "correlationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Create an account",
+        "description": "The account starts at PENDING_VERIFICATION and KYC tier 0. Every financial endpoint returns 403 until the email address is confirmed.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 200
+                  },
+                  "locale": {
+                    "type": "string",
+                    "enum": [
+                      "ru",
+                      "en",
+                      "fr"
+                    ],
+                    "default": "ru"
+                  },
+                  "residencyCountry": {
+                    "type": "string",
+                    "enum": [
+                      "RU",
+                      "BY",
+                      "NG",
+                      "GH",
+                      "CM",
+                      "BJ"
+                    ],
+                    "default": "RU"
+                  },
+                  "acceptedTerms": {
+                    "type": "boolean",
+                    "enum": [
+                      true
+                    ]
+                  }
+                },
+                "required": [
+                  "email",
+                  "password",
+                  "acceptedTerms"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": {
+                      "type": "string"
+                    },
+                    "refreshToken": {
+                      "type": "string"
+                    },
+                    "expiresInSeconds": {
+                      "type": "integer"
+                    },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "PENDING_VERIFICATION",
+                            "ACTIVE",
+                            "SUSPENDED",
+                            "CLOSED"
+                          ]
+                        },
+                        "kycTier": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 3
+                        },
+                        "locale": {
+                          "type": "string",
+                          "enum": [
+                            "ru",
+                            "en",
+                            "fr"
+                          ]
+                        },
+                        "emailVerified": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "email",
+                        "status",
+                        "kycTier",
+                        "locale",
+                        "emailVerified"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "accessToken",
+                    "refreshToken",
+                    "expiresInSeconds",
+                    "user"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Sign in",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": {
+                      "type": "string"
+                    },
+                    "refreshToken": {
+                      "type": "string"
+                    },
+                    "expiresInSeconds": {
+                      "type": "integer"
+                    },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "PENDING_VERIFICATION",
+                            "ACTIVE",
+                            "SUSPENDED",
+                            "CLOSED"
+                          ]
+                        },
+                        "kycTier": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 3
+                        },
+                        "locale": {
+                          "type": "string",
+                          "enum": [
+                            "ru",
+                            "en",
+                            "fr"
+                          ]
+                        },
+                        "emailVerified": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "email",
+                        "status",
+                        "kycTier",
+                        "locale",
+                        "emailVerified"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "accessToken",
+                    "refreshToken",
+                    "expiresInSeconds",
+                    "user"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Rotate a refresh token",
+        "description": "Refresh tokens rotate on every use. Presenting one that has already been used revokes the entire session family — we cannot distinguish replay from theft, and both are handled the same way.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 512
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rotated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": {
+                      "type": "string"
+                    },
+                    "refreshToken": {
+                      "type": "string"
+                    },
+                    "expiresInSeconds": {
+                      "type": "integer"
+                    },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "PENDING_VERIFICATION",
+                            "ACTIVE",
+                            "SUSPENDED",
+                            "CLOSED"
+                          ]
+                        },
+                        "kycTier": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 3
+                        },
+                        "locale": {
+                          "type": "string",
+                          "enum": [
+                            "ru",
+                            "en",
+                            "fr"
+                          ]
+                        },
+                        "emailVerified": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "email",
+                        "status",
+                        "kycTier",
+                        "locale",
+                        "emailVerified"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "accessToken",
+                    "refreshToken",
+                    "expiresInSeconds",
+                    "user"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/verify-email": {
+      "post": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "Confirm an email address",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 16,
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Verified",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "verified": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    }
+                  },
+                  "required": [
+                    "verified"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "Authentication"
+        ],
+        "summary": "The signed-in account and what it may do",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "PENDING_VERIFICATION",
+                        "ACTIVE",
+                        "SUSPENDED",
+                        "CLOSED"
+                      ]
+                    },
+                    "kycTier": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 3
+                    },
+                    "locale": {
+                      "type": "string",
+                      "enum": [
+                        "ru",
+                        "en",
+                        "fr"
+                      ]
+                    },
+                    "emailVerified": {
+                      "type": "boolean"
+                    },
+                    "residencyCountry": {
+                      "type": "string",
+                      "enum": [
+                        "RU",
+                        "BY",
+                        "NG",
+                        "GH",
+                        "ZA",
+                        "CM",
+                        "BJ"
+                      ]
+                    },
+                    "capabilities": {
+                      "type": "object",
+                      "properties": {
+                        "canQuote": {
+                          "type": "boolean"
+                        },
+                        "canTransfer": {
+                          "type": "boolean"
+                        },
+                        "nextKycTier": {
+                          "type": "integer",
+                          "nullable": true,
+                          "minimum": 0,
+                          "maximum": 3
+                        }
+                      },
+                      "required": [
+                        "canQuote",
+                        "canTransfer",
+                        "nextKycTier"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "email",
+                    "status",
+                    "kycTier",
+                    "locale",
+                    "emailVerified",
+                    "residencyCountry",
+                    "capabilities"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc/requirements/{tier}": {
+      "get": {
+        "tags": [
+          "KYC"
+        ],
+        "summary": "Documents and limits for a tier",
+        "description": "Returns the realistic document set for the account’s residency. For a foreign national in Russia that is a national passport plus a migration card and a registration — never a Russian internal passport.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "tier",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "tier": {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "enum": [
+                            0
+                          ]
+                        },
+                        {
+                          "type": "number",
+                          "enum": [
+                            1
+                          ]
+                        },
+                        {
+                          "type": "number",
+                          "enum": [
+                            2
+                          ]
+                        },
+                        {
+                          "type": "number",
+                          "enum": [
+                            3
+                          ]
+                        }
+                      ]
+                    },
+                    "residencyCountry": {
+                      "type": "string"
+                    },
+                    "requiredDocuments": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "PASSPORT",
+                          "MIGRATION_CARD",
+                          "RESIDENCE_REGISTRATION",
+                          "WORK_PERMIT",
+                          "PATENT",
+                          "STUDENT_VISA",
+                          "RESIDENCE_PERMIT",
+                          "NATIONAL_ID",
+                          "SELFIE",
+                          "PROOF_OF_ADDRESS",
+                          "SOURCE_OF_FUNDS"
+                        ]
+                      }
+                    },
+                    "alternatives": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "enum": [
+                            "PASSPORT",
+                            "MIGRATION_CARD",
+                            "RESIDENCE_REGISTRATION",
+                            "WORK_PERMIT",
+                            "PATENT",
+                            "STUDENT_VISA",
+                            "RESIDENCE_PERMIT",
+                            "NATIONAL_ID",
+                            "SELFIE",
+                            "PROOF_OF_ADDRESS",
+                            "SOURCE_OF_FUNDS"
+                          ]
+                        }
+                      }
+                    },
+                    "limits": {
+                      "type": "object",
+                      "properties": {
+                        "perTransfer": {
+                          "type": "string"
+                        },
+                        "daily": {
+                          "type": "string"
+                        },
+                        "monthly": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "perTransfer",
+                        "daily",
+                        "monthly",
+                        "currency"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "tier",
+                    "residencyCountry",
+                    "requiredDocuments",
+                    "alternatives",
+                    "limits"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc/submit": {
+      "post": {
+        "tags": [
+          "KYC"
+        ],
+        "summary": "Submit documents for a tier upgrade",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "targetTier": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "enum": [
+                          0
+                        ]
+                      },
+                      {
+                        "type": "number",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      {
+                        "type": "number",
+                        "enum": [
+                          2
+                        ]
+                      },
+                      {
+                        "type": "number",
+                        "enum": [
+                          3
+                        ]
+                      }
+                    ]
+                  },
+                  "person": {
+                    "type": "object",
+                    "properties": {
+                      "firstName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "lastName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100
+                      },
+                      "middleName": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "dateOfBirth": {
+                        "type": "string",
+                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                      },
+                      "nationality": {
+                        "type": "string",
+                        "minLength": 2,
+                        "maxLength": 2
+                      },
+                      "phone": {
+                        "type": "string",
+                        "minLength": 6,
+                        "maxLength": 20
+                      },
+                      "addressLine": {
+                        "type": "string",
+                        "maxLength": 200
+                      },
+                      "city": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "postcode": {
+                        "type": "string",
+                        "maxLength": 20
+                      },
+                      "bvn": {
+                        "type": "string",
+                        "pattern": "^\\d{11}$"
+                      },
+                      "ghanaCardNo": {
+                        "type": "string",
+                        "pattern": "^GHA-\\d{9}-\\d$"
+                      },
+                      "collectionWallet": {
+                        "type": "object",
+                        "properties": {
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^233\\d{9}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "TELECEL",
+                              "AIRTELTIGO"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "msisdn",
+                          "network"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "firstName",
+                      "lastName",
+                      "dateOfBirth",
+                      "nationality"
+                    ]
+                  },
+                  "documents": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "PASSPORT",
+                            "MIGRATION_CARD",
+                            "RESIDENCE_REGISTRATION",
+                            "WORK_PERMIT",
+                            "PATENT",
+                            "STUDENT_VISA",
+                            "RESIDENCE_PERMIT",
+                            "NATIONAL_ID",
+                            "SELFIE",
+                            "PROOF_OF_ADDRESS",
+                            "SOURCE_OF_FUNDS"
+                          ]
+                        },
+                        "storageKey": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 300
+                        },
+                        "issuingCountry": {
+                          "type": "string",
+                          "minLength": 2,
+                          "maxLength": 2
+                        },
+                        "documentNumber": {
+                          "type": "string",
+                          "maxLength": 60
+                        },
+                        "expiresAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "storageKey"
+                      ]
+                    },
+                    "minItems": 1,
+                    "maxItems": 10
+                  }
+                },
+                "required": [
+                  "targetTier",
+                  "person",
+                  "documents"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Submitted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/corridors": {
+      "get": {
+        "tags": [
+          "Quoting"
+        ],
+        "summary": "Available corridors, limits and fees",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "corridors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "sourceCountry": {
+                            "type": "string"
+                          },
+                          "sourceCurrency": {
+                            "type": "string"
+                          },
+                          "destinationCountry": {
+                            "type": "string"
+                          },
+                          "destinationCurrency": {
+                            "type": "string"
+                          },
+                          "payinMethods": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "SBP",
+                                "QR",
+                                "CARD",
+                                "VIRTUAL_ACCOUNT",
+                                "MOBILE_MONEY"
+                              ]
+                            }
+                          },
+                          "payoutMethods": {
+                            "type": "array",
+                            "items": {
+                              "type": "string",
+                              "enum": [
+                                "BANK_ACCOUNT",
+                                "MOBILE_MONEY"
+                              ]
+                            }
+                          },
+                          "minSend": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "string"
+                              },
+                              "currency": {
+                                "type": "string"
+                              },
+                              "minorUnits": {
+                                "type": "string"
+                              },
+                              "formatted": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "amount",
+                              "currency",
+                              "minorUnits",
+                              "formatted"
+                            ]
+                          },
+                          "maxSend": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "string"
+                              },
+                              "currency": {
+                                "type": "string"
+                              },
+                              "minorUnits": {
+                                "type": "string"
+                              },
+                              "formatted": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "amount",
+                              "currency",
+                              "minorUnits",
+                              "formatted"
+                            ]
+                          },
+                          "fixedFee": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "string"
+                              },
+                              "currency": {
+                                "type": "string"
+                              },
+                              "minorUnits": {
+                                "type": "string"
+                              },
+                              "formatted": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "amount",
+                              "currency",
+                              "minorUnits",
+                              "formatted"
+                            ]
+                          },
+                          "fxMarginBps": {
+                            "type": "integer"
+                          },
+                          "enabled": {
+                            "type": "boolean"
+                          },
+                          "open": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceCountry",
+                          "sourceCurrency",
+                          "destinationCountry",
+                          "destinationCurrency",
+                          "payinMethods",
+                          "payoutMethods",
+                          "minSend",
+                          "maxSend",
+                          "fixedFee",
+                          "fxMarginBps",
+                          "enabled",
+                          "open"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "corridors"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rates": {
+      "get": {
+        "tags": [
+          "Quoting"
+        ],
+        "summary": "Rate feed health",
+        "description": "`usable: false` means the observation is beyond the staleness threshold and quoting has halted for that pair. We do not serve a rate nobody stands behind.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rates": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "pair": {
+                            "type": "string"
+                          },
+                          "rate": {
+                            "type": "string"
+                          },
+                          "observedAt": {
+                            "type": "string"
+                          },
+                          "ageMs": {
+                            "type": "integer"
+                          },
+                          "usable": {
+                            "type": "boolean"
+                          },
+                          "source": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "pair",
+                          "rate",
+                          "observedAt",
+                          "ageMs",
+                          "usable",
+                          "source"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "rates"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/quotes": {
+      "post": {
+        "tags": [
+          "Quoting"
+        ],
+        "summary": "Quote a transfer",
+        "description": "Returns the full decomposition: mid-market rate, our margin in basis points and in money, the fixed fee, and what the recipient would receive at mid. Quotes are signed, single-use and short-lived.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "corridorId": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 20
+                  },
+                  "sendMinorUnits": {
+                    "type": "string",
+                    "pattern": "^\\d+$"
+                  }
+                },
+                "required": [
+                  "corridorId",
+                  "sendMinorUnits"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Quoted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "corridorId": {
+                      "type": "string"
+                    },
+                    "sendAmount": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "fixedFee": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "fxMargin": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "totalToPay": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "totalCost": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "recipientAmount": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "recipientAmountAtMid": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "midRate": {
+                      "type": "string"
+                    },
+                    "effectiveRate": {
+                      "type": "string"
+                    },
+                    "fxMarginBps": {
+                      "type": "integer"
+                    },
+                    "rateObservedAt": {
+                      "type": "string"
+                    },
+                    "quotedAt": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "expiresInSeconds": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "corridorId",
+                    "sendAmount",
+                    "fixedFee",
+                    "fxMargin",
+                    "totalToPay",
+                    "totalCost",
+                    "recipientAmount",
+                    "recipientAmountAtMid",
+                    "midRate",
+                    "effectiveRate",
+                    "fxMarginBps",
+                    "rateObservedAt",
+                    "quotedAt",
+                    "expiresAt",
+                    "expiresInSeconds"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipients/name-enquiry": {
+      "post": {
+        "tags": [
+          "Recipients"
+        ],
+        "summary": "Resolve the name the institution holds",
+        "description": "Called before the sender commits. Showing the resolved name back to the sender prevents the most common support case in this corridor: money sent to a mistyped account number, unrecoverable once settled.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "details": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "BANK_ACCOUNT"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "NG"
+                            ]
+                          },
+                          "accountNumber": {
+                            "type": "string",
+                            "pattern": "^\\d{10}$"
+                          },
+                          "bankCode": {
+                            "type": "string",
+                            "pattern": "^\\d{3}$"
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "accountNumber",
+                          "bankCode",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "BANK_ACCOUNT"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "ZA"
+                            ]
+                          },
+                          "accountNumber": {
+                            "type": "string",
+                            "pattern": "^\\d{9,11}$"
+                          },
+                          "bankCode": {
+                            "type": "string",
+                            "pattern": "^\\d{6}$"
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "accountNumber",
+                          "bankCode",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "GH"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^233\\d{9}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "TELECEL",
+                              "AIRTELTIGO"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "CM"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^237\\d{9}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "ORANGE"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "BJ"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^229\\d{8,10}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "MOOV",
+                              "CELTIIS"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "details"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Resolved or not",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "RESOLVED"
+                          ]
+                        },
+                        "resolvedName": {
+                          "type": "string"
+                        },
+                        "institution": {
+                          "type": "string"
+                        },
+                        "matchesDeclaredName": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "resolvedName",
+                        "institution",
+                        "matchesDeclaredName"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "NOT_FOUND"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "reason"
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "UNSUPPORTED"
+                          ]
+                        },
+                        "reason": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "reason"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipients": {
+      "post": {
+        "tags": [
+          "Recipients"
+        ],
+        "summary": "Save a recipient",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "details": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "BANK_ACCOUNT"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "NG"
+                            ]
+                          },
+                          "accountNumber": {
+                            "type": "string",
+                            "pattern": "^\\d{10}$"
+                          },
+                          "bankCode": {
+                            "type": "string",
+                            "pattern": "^\\d{3}$"
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "accountNumber",
+                          "bankCode",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "BANK_ACCOUNT"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "ZA"
+                            ]
+                          },
+                          "accountNumber": {
+                            "type": "string",
+                            "pattern": "^\\d{9,11}$"
+                          },
+                          "bankCode": {
+                            "type": "string",
+                            "pattern": "^\\d{6}$"
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "accountNumber",
+                          "bankCode",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "GH"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^233\\d{9}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "TELECEL",
+                              "AIRTELTIGO"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "CM"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^237\\d{9}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "ORANGE"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "BJ"
+                            ]
+                          },
+                          "msisdn": {
+                            "type": "string",
+                            "pattern": "^229\\d{8,10}$"
+                          },
+                          "network": {
+                            "type": "string",
+                            "enum": [
+                              "MTN",
+                              "MOOV",
+                              "CELTIIS"
+                            ]
+                          },
+                          "declaredName": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 120
+                          }
+                        },
+                        "required": [
+                          "method",
+                          "country",
+                          "msisdn",
+                          "network",
+                          "declaredName"
+                        ]
+                      }
+                    ]
+                  },
+                  "nickname": {
+                    "type": "string",
+                    "maxLength": 60
+                  }
+                },
+                "required": [
+                  "details"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "BANK_ACCOUNT",
+                        "MOBILE_MONEY"
+                      ]
+                    },
+                    "country": {
+                      "type": "string",
+                      "enum": [
+                        "RU",
+                        "BY",
+                        "NG",
+                        "GH",
+                        "ZA",
+                        "CM",
+                        "BJ"
+                      ]
+                    },
+                    "maskedAccount": {
+                      "type": "string"
+                    },
+                    "resolvedName": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "nickname": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "method",
+                    "country",
+                    "maskedAccount",
+                    "resolvedName",
+                    "nickname",
+                    "createdAt"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Recipients"
+        ],
+        "summary": "List saved recipients",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "recipients": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "BANK_ACCOUNT",
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "country": {
+                            "type": "string",
+                            "enum": [
+                              "RU",
+                              "BY",
+                              "NG",
+                              "GH",
+                              "ZA",
+                              "CM",
+                              "BJ"
+                            ]
+                          },
+                          "maskedAccount": {
+                            "type": "string"
+                          },
+                          "resolvedName": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "nickname": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "method",
+                          "country",
+                          "maskedAccount",
+                          "resolvedName",
+                          "nickname",
+                          "createdAt"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "recipients"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfers": {
+      "post": {
+        "tags": [
+          "Transfers"
+        ],
+        "summary": "Confirm a transfer from a quote",
+        "description": "Requires an `Idempotency-Key` header. Screening runs before the transfer can await payment; a hit routes it to the compliance queue and no code path bypasses that.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 8
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "quoteId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "recipientId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "payinMethod": {
+                    "type": "string",
+                    "enum": [
+                      "SBP",
+                      "QR",
+                      "CARD",
+                      "VIRTUAL_ACCOUNT",
+                      "MOBILE_MONEY"
+                    ]
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "FAMILY_SUPPORT",
+                      "EDUCATION",
+                      "MEDICAL",
+                      "GIFT",
+                      "OWN_ACCOUNT"
+                    ]
+                  },
+                  "confirmedRecipientName": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  }
+                },
+                "required": [
+                  "quoteId",
+                  "recipientId",
+                  "payinMethod",
+                  "purpose",
+                  "confirmedRecipientName"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "reference": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "QUOTED",
+                        "COMPLIANCE_PENDING",
+                        "ON_HOLD",
+                        "AWAITING_PAYIN",
+                        "PAYIN_CONFIRMED",
+                        "SETTLING",
+                        "PAYOUT_INITIATED",
+                        "PAYOUT_CONFIRMED",
+                        "COMPLETED",
+                        "REFUNDING",
+                        "REFUNDED",
+                        "FAILED"
+                      ]
+                    },
+                    "senderStatus": {
+                      "type": "string"
+                    },
+                    "corridorId": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "enum": [
+                        "FAMILY_SUPPORT",
+                        "EDUCATION",
+                        "MEDICAL",
+                        "GIFT",
+                        "OWN_ACCOUNT"
+                      ]
+                    },
+                    "sendAmount": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "fee": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "totalToPay": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "recipientAmount": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "recipient": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "maskedAccount": {
+                          "type": "string"
+                        },
+                        "resolvedName": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "country": {
+                          "type": "string"
+                        },
+                        "method": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "maskedAccount",
+                        "resolvedName",
+                        "country",
+                        "method"
+                      ]
+                    },
+                    "payinMethod": {
+                      "type": "string",
+                      "enum": [
+                        "SBP",
+                        "QR",
+                        "CARD",
+                        "VIRTUAL_ACCOUNT",
+                        "MOBILE_MONEY"
+                      ]
+                    },
+                    "payinInstructions": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "SBP"
+                              ]
+                            },
+                            "deepLink": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "deepLink",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "QR"
+                              ]
+                            },
+                            "payload": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "payload",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "VIRTUAL_ACCOUNT"
+                              ]
+                            },
+                            "accountNumber": {
+                              "type": "string"
+                            },
+                            "bankName": {
+                              "type": "string"
+                            },
+                            "reference": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "accountNumber",
+                            "bankName",
+                            "reference"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "CARD"
+                              ]
+                            },
+                            "redirectUrl": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "redirectUrl",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "MOBILE_MONEY"
+                              ]
+                            },
+                            "msisdn": {
+                              "type": "string"
+                            },
+                            "network": {
+                              "type": "string"
+                            },
+                            "ussdFallback": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "msisdn",
+                            "network",
+                            "ussdFallback",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "nullable": true
+                        }
+                      ]
+                    },
+                    "failureCode": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "failureReason": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "completedAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "timeline": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "event": {
+                            "type": "string"
+                          },
+                          "fromState": {
+                            "type": "string",
+                            "enum": [
+                              "DRAFT",
+                              "QUOTED",
+                              "COMPLIANCE_PENDING",
+                              "ON_HOLD",
+                              "AWAITING_PAYIN",
+                              "PAYIN_CONFIRMED",
+                              "SETTLING",
+                              "PAYOUT_INITIATED",
+                              "PAYOUT_CONFIRMED",
+                              "COMPLETED",
+                              "REFUNDING",
+                              "REFUNDED",
+                              "FAILED"
+                            ]
+                          },
+                          "toState": {
+                            "type": "string",
+                            "enum": [
+                              "DRAFT",
+                              "QUOTED",
+                              "COMPLIANCE_PENDING",
+                              "ON_HOLD",
+                              "AWAITING_PAYIN",
+                              "PAYIN_CONFIRMED",
+                              "SETTLING",
+                              "PAYOUT_INITIATED",
+                              "PAYOUT_CONFIRMED",
+                              "COMPLETED",
+                              "REFUNDING",
+                              "REFUNDED",
+                              "FAILED"
+                            ]
+                          },
+                          "senderStatus": {
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "event",
+                          "fromState",
+                          "toState",
+                          "senderStatus",
+                          "at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reference",
+                    "state",
+                    "senderStatus",
+                    "corridorId",
+                    "purpose",
+                    "sendAmount",
+                    "fee",
+                    "totalToPay",
+                    "recipientAmount",
+                    "recipient",
+                    "payinMethod",
+                    "payinInstructions",
+                    "failureCode",
+                    "failureReason",
+                    "createdAt",
+                    "updatedAt",
+                    "completedAt",
+                    "timeline"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Transfers"
+        ],
+        "summary": "List transfers",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "transfers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "reference": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string",
+                            "enum": [
+                              "DRAFT",
+                              "QUOTED",
+                              "COMPLIANCE_PENDING",
+                              "ON_HOLD",
+                              "AWAITING_PAYIN",
+                              "PAYIN_CONFIRMED",
+                              "SETTLING",
+                              "PAYOUT_INITIATED",
+                              "PAYOUT_CONFIRMED",
+                              "COMPLETED",
+                              "REFUNDING",
+                              "REFUNDED",
+                              "FAILED"
+                            ]
+                          },
+                          "senderStatus": {
+                            "type": "string"
+                          },
+                          "corridorId": {
+                            "type": "string"
+                          },
+                          "purpose": {
+                            "type": "string",
+                            "enum": [
+                              "FAMILY_SUPPORT",
+                              "EDUCATION",
+                              "MEDICAL",
+                              "GIFT",
+                              "OWN_ACCOUNT"
+                            ]
+                          },
+                          "sendAmount": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "string"
+                              },
+                              "currency": {
+                                "type": "string"
+                              },
+                              "minorUnits": {
+                                "type": "string"
+                              },
+                              "formatted": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "amount",
+                              "currency",
+                              "minorUnits",
+                              "formatted"
+                            ]
+                          },
+                          "fee": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "string"
+                              },
+                              "currency": {
+                                "type": "string"
+                              },
+                              "minorUnits": {
+                                "type": "string"
+                              },
+                              "formatted": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "amount",
+                              "currency",
+                              "minorUnits",
+                              "formatted"
+                            ]
+                          },
+                          "totalToPay": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "string"
+                              },
+                              "currency": {
+                                "type": "string"
+                              },
+                              "minorUnits": {
+                                "type": "string"
+                              },
+                              "formatted": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "amount",
+                              "currency",
+                              "minorUnits",
+                              "formatted"
+                            ]
+                          },
+                          "recipientAmount": {
+                            "type": "object",
+                            "properties": {
+                              "amount": {
+                                "type": "string"
+                              },
+                              "currency": {
+                                "type": "string"
+                              },
+                              "minorUnits": {
+                                "type": "string"
+                              },
+                              "formatted": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "amount",
+                              "currency",
+                              "minorUnits",
+                              "formatted"
+                            ]
+                          },
+                          "recipient": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "maskedAccount": {
+                                "type": "string"
+                              },
+                              "resolvedName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "country": {
+                                "type": "string"
+                              },
+                              "method": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "maskedAccount",
+                              "resolvedName",
+                              "country",
+                              "method"
+                            ]
+                          },
+                          "payinMethod": {
+                            "type": "string",
+                            "enum": [
+                              "SBP",
+                              "QR",
+                              "CARD",
+                              "VIRTUAL_ACCOUNT",
+                              "MOBILE_MONEY"
+                            ]
+                          },
+                          "payinInstructions": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "SBP"
+                                    ]
+                                  },
+                                  "deepLink": {
+                                    "type": "string"
+                                  },
+                                  "expiresAt": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "deepLink",
+                                  "expiresAt"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "QR"
+                                    ]
+                                  },
+                                  "payload": {
+                                    "type": "string"
+                                  },
+                                  "expiresAt": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "payload",
+                                  "expiresAt"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "VIRTUAL_ACCOUNT"
+                                    ]
+                                  },
+                                  "accountNumber": {
+                                    "type": "string"
+                                  },
+                                  "bankName": {
+                                    "type": "string"
+                                  },
+                                  "reference": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "accountNumber",
+                                  "bankName",
+                                  "reference"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "CARD"
+                                    ]
+                                  },
+                                  "redirectUrl": {
+                                    "type": "string"
+                                  },
+                                  "expiresAt": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "redirectUrl",
+                                  "expiresAt"
+                                ]
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "MOBILE_MONEY"
+                                    ]
+                                  },
+                                  "msisdn": {
+                                    "type": "string"
+                                  },
+                                  "network": {
+                                    "type": "string"
+                                  },
+                                  "ussdFallback": {
+                                    "type": "string"
+                                  },
+                                  "expiresAt": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "kind",
+                                  "msisdn",
+                                  "network",
+                                  "ussdFallback",
+                                  "expiresAt"
+                                ]
+                              },
+                              {
+                                "nullable": true
+                              }
+                            ]
+                          },
+                          "failureCode": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "failureReason": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          },
+                          "completedAt": {
+                            "type": "string",
+                            "nullable": true
+                          },
+                          "timeline": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "event": {
+                                  "type": "string"
+                                },
+                                "fromState": {
+                                  "type": "string",
+                                  "enum": [
+                                    "DRAFT",
+                                    "QUOTED",
+                                    "COMPLIANCE_PENDING",
+                                    "ON_HOLD",
+                                    "AWAITING_PAYIN",
+                                    "PAYIN_CONFIRMED",
+                                    "SETTLING",
+                                    "PAYOUT_INITIATED",
+                                    "PAYOUT_CONFIRMED",
+                                    "COMPLETED",
+                                    "REFUNDING",
+                                    "REFUNDED",
+                                    "FAILED"
+                                  ]
+                                },
+                                "toState": {
+                                  "type": "string",
+                                  "enum": [
+                                    "DRAFT",
+                                    "QUOTED",
+                                    "COMPLIANCE_PENDING",
+                                    "ON_HOLD",
+                                    "AWAITING_PAYIN",
+                                    "PAYIN_CONFIRMED",
+                                    "SETTLING",
+                                    "PAYOUT_INITIATED",
+                                    "PAYOUT_CONFIRMED",
+                                    "COMPLETED",
+                                    "REFUNDING",
+                                    "REFUNDED",
+                                    "FAILED"
+                                  ]
+                                },
+                                "senderStatus": {
+                                  "type": "string"
+                                },
+                                "at": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "event",
+                                "fromState",
+                                "toState",
+                                "senderStatus",
+                                "at"
+                              ]
+                            }
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "reference",
+                          "state",
+                          "senderStatus",
+                          "corridorId",
+                          "purpose",
+                          "sendAmount",
+                          "fee",
+                          "totalToPay",
+                          "recipientAmount",
+                          "recipient",
+                          "payinMethod",
+                          "payinInstructions",
+                          "failureCode",
+                          "failureReason",
+                          "createdAt",
+                          "updatedAt",
+                          "completedAt",
+                          "timeline"
+                        ]
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "transfers",
+                    "nextCursor"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfers/{id}": {
+      "get": {
+        "tags": [
+          "Transfers"
+        ],
+        "summary": "Transfer status and timeline",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "reference": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "QUOTED",
+                        "COMPLIANCE_PENDING",
+                        "ON_HOLD",
+                        "AWAITING_PAYIN",
+                        "PAYIN_CONFIRMED",
+                        "SETTLING",
+                        "PAYOUT_INITIATED",
+                        "PAYOUT_CONFIRMED",
+                        "COMPLETED",
+                        "REFUNDING",
+                        "REFUNDED",
+                        "FAILED"
+                      ]
+                    },
+                    "senderStatus": {
+                      "type": "string"
+                    },
+                    "corridorId": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "enum": [
+                        "FAMILY_SUPPORT",
+                        "EDUCATION",
+                        "MEDICAL",
+                        "GIFT",
+                        "OWN_ACCOUNT"
+                      ]
+                    },
+                    "sendAmount": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "fee": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "totalToPay": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "recipientAmount": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "recipient": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "maskedAccount": {
+                          "type": "string"
+                        },
+                        "resolvedName": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "country": {
+                          "type": "string"
+                        },
+                        "method": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "maskedAccount",
+                        "resolvedName",
+                        "country",
+                        "method"
+                      ]
+                    },
+                    "payinMethod": {
+                      "type": "string",
+                      "enum": [
+                        "SBP",
+                        "QR",
+                        "CARD",
+                        "VIRTUAL_ACCOUNT",
+                        "MOBILE_MONEY"
+                      ]
+                    },
+                    "payinInstructions": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "SBP"
+                              ]
+                            },
+                            "deepLink": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "deepLink",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "QR"
+                              ]
+                            },
+                            "payload": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "payload",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "VIRTUAL_ACCOUNT"
+                              ]
+                            },
+                            "accountNumber": {
+                              "type": "string"
+                            },
+                            "bankName": {
+                              "type": "string"
+                            },
+                            "reference": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "accountNumber",
+                            "bankName",
+                            "reference"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "CARD"
+                              ]
+                            },
+                            "redirectUrl": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "redirectUrl",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "MOBILE_MONEY"
+                              ]
+                            },
+                            "msisdn": {
+                              "type": "string"
+                            },
+                            "network": {
+                              "type": "string"
+                            },
+                            "ussdFallback": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "msisdn",
+                            "network",
+                            "ussdFallback",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "nullable": true
+                        }
+                      ]
+                    },
+                    "failureCode": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "failureReason": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "completedAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "timeline": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "event": {
+                            "type": "string"
+                          },
+                          "fromState": {
+                            "type": "string",
+                            "enum": [
+                              "DRAFT",
+                              "QUOTED",
+                              "COMPLIANCE_PENDING",
+                              "ON_HOLD",
+                              "AWAITING_PAYIN",
+                              "PAYIN_CONFIRMED",
+                              "SETTLING",
+                              "PAYOUT_INITIATED",
+                              "PAYOUT_CONFIRMED",
+                              "COMPLETED",
+                              "REFUNDING",
+                              "REFUNDED",
+                              "FAILED"
+                            ]
+                          },
+                          "toState": {
+                            "type": "string",
+                            "enum": [
+                              "DRAFT",
+                              "QUOTED",
+                              "COMPLIANCE_PENDING",
+                              "ON_HOLD",
+                              "AWAITING_PAYIN",
+                              "PAYIN_CONFIRMED",
+                              "SETTLING",
+                              "PAYOUT_INITIATED",
+                              "PAYOUT_CONFIRMED",
+                              "COMPLETED",
+                              "REFUNDING",
+                              "REFUNDED",
+                              "FAILED"
+                            ]
+                          },
+                          "senderStatus": {
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "event",
+                          "fromState",
+                          "toState",
+                          "senderStatus",
+                          "at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reference",
+                    "state",
+                    "senderStatus",
+                    "corridorId",
+                    "purpose",
+                    "sendAmount",
+                    "fee",
+                    "totalToPay",
+                    "recipientAmount",
+                    "recipient",
+                    "payinMethod",
+                    "payinInstructions",
+                    "failureCode",
+                    "failureReason",
+                    "createdAt",
+                    "updatedAt",
+                    "completedAt",
+                    "timeline"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/transfers/{id}/cancel": {
+      "post": {
+        "tags": [
+          "Transfers"
+        ],
+        "summary": "Cancel before payment",
+        "description": "Only available before we have the sender’s money. After that it is a refund.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "reference": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "DRAFT",
+                        "QUOTED",
+                        "COMPLIANCE_PENDING",
+                        "ON_HOLD",
+                        "AWAITING_PAYIN",
+                        "PAYIN_CONFIRMED",
+                        "SETTLING",
+                        "PAYOUT_INITIATED",
+                        "PAYOUT_CONFIRMED",
+                        "COMPLETED",
+                        "REFUNDING",
+                        "REFUNDED",
+                        "FAILED"
+                      ]
+                    },
+                    "senderStatus": {
+                      "type": "string"
+                    },
+                    "corridorId": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string",
+                      "enum": [
+                        "FAMILY_SUPPORT",
+                        "EDUCATION",
+                        "MEDICAL",
+                        "GIFT",
+                        "OWN_ACCOUNT"
+                      ]
+                    },
+                    "sendAmount": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "fee": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "totalToPay": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "recipientAmount": {
+                      "type": "object",
+                      "properties": {
+                        "amount": {
+                          "type": "string"
+                        },
+                        "currency": {
+                          "type": "string"
+                        },
+                        "minorUnits": {
+                          "type": "string"
+                        },
+                        "formatted": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "amount",
+                        "currency",
+                        "minorUnits",
+                        "formatted"
+                      ]
+                    },
+                    "recipient": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "maskedAccount": {
+                          "type": "string"
+                        },
+                        "resolvedName": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "country": {
+                          "type": "string"
+                        },
+                        "method": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "maskedAccount",
+                        "resolvedName",
+                        "country",
+                        "method"
+                      ]
+                    },
+                    "payinMethod": {
+                      "type": "string",
+                      "enum": [
+                        "SBP",
+                        "QR",
+                        "CARD",
+                        "VIRTUAL_ACCOUNT",
+                        "MOBILE_MONEY"
+                      ]
+                    },
+                    "payinInstructions": {
+                      "oneOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "SBP"
+                              ]
+                            },
+                            "deepLink": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "deepLink",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "QR"
+                              ]
+                            },
+                            "payload": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "payload",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "VIRTUAL_ACCOUNT"
+                              ]
+                            },
+                            "accountNumber": {
+                              "type": "string"
+                            },
+                            "bankName": {
+                              "type": "string"
+                            },
+                            "reference": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "accountNumber",
+                            "bankName",
+                            "reference"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "CARD"
+                              ]
+                            },
+                            "redirectUrl": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "redirectUrl",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "kind": {
+                              "type": "string",
+                              "enum": [
+                                "MOBILE_MONEY"
+                              ]
+                            },
+                            "msisdn": {
+                              "type": "string"
+                            },
+                            "network": {
+                              "type": "string"
+                            },
+                            "ussdFallback": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "msisdn",
+                            "network",
+                            "ussdFallback",
+                            "expiresAt"
+                          ]
+                        },
+                        {
+                          "nullable": true
+                        }
+                      ]
+                    },
+                    "failureCode": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "failureReason": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "completedAt": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "timeline": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "event": {
+                            "type": "string"
+                          },
+                          "fromState": {
+                            "type": "string",
+                            "enum": [
+                              "DRAFT",
+                              "QUOTED",
+                              "COMPLIANCE_PENDING",
+                              "ON_HOLD",
+                              "AWAITING_PAYIN",
+                              "PAYIN_CONFIRMED",
+                              "SETTLING",
+                              "PAYOUT_INITIATED",
+                              "PAYOUT_CONFIRMED",
+                              "COMPLETED",
+                              "REFUNDING",
+                              "REFUNDED",
+                              "FAILED"
+                            ]
+                          },
+                          "toState": {
+                            "type": "string",
+                            "enum": [
+                              "DRAFT",
+                              "QUOTED",
+                              "COMPLIANCE_PENDING",
+                              "ON_HOLD",
+                              "AWAITING_PAYIN",
+                              "PAYIN_CONFIRMED",
+                              "SETTLING",
+                              "PAYOUT_INITIATED",
+                              "PAYOUT_CONFIRMED",
+                              "COMPLETED",
+                              "REFUNDING",
+                              "REFUNDED",
+                              "FAILED"
+                            ]
+                          },
+                          "senderStatus": {
+                            "type": "string"
+                          },
+                          "at": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "event",
+                          "fromState",
+                          "toState",
+                          "senderStatus",
+                          "at"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "reference",
+                    "state",
+                    "senderStatus",
+                    "corridorId",
+                    "purpose",
+                    "sendAmount",
+                    "fee",
+                    "totalToPay",
+                    "recipientAmount",
+                    "recipient",
+                    "payinMethod",
+                    "payinInstructions",
+                    "failureCode",
+                    "failureReason",
+                    "createdAt",
+                    "updatedAt",
+                    "completedAt",
+                    "timeline"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks/{providerId}/callback": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "Provider callback",
+        "description": "Verifies an HMAC-SHA256 signature over `timestamp + \".\" + raw_body` in constant time, rejects anything outside a 300-second window, deduplicates by event id, and enqueues a status poll. It writes nothing financial: a forged or replayed callback achieves nothing beyond a poll we would have made anyway.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "providerId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "x-signature",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "x-timestamp",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted or a duplicate. Empty body."
+          },
+          "401": {
+            "description": "Stale, forged, malformed, or an unknown provider"
+          }
+        }
+      }
+    },
+    "/admin/auth/login": {
+      "post": {
+        "tags": [
+          "Back office"
+        ],
+        "summary": "Staff sign in",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": {
+                      "type": "string"
+                    },
+                    "refreshToken": {
+                      "type": "string"
+                    },
+                    "expiresInSeconds": {
+                      "type": "integer"
+                    },
+                    "staff": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "roles": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": [
+                              "SUPPORT",
+                              "COMPLIANCE_OFFICER",
+                              "TREASURY_OPERATOR",
+                              "ADMIN"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "email",
+                        "displayName",
+                        "roles"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "accessToken",
+                    "refreshToken",
+                    "expiresInSeconds",
+                    "staff"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/compliance/cases": {
+      "get": {
+        "tags": [
+          "Back office"
+        ],
+        "summary": "Compliance review queue",
+        "description": "Requires one of: COMPLIANCE_OFFICER, SUPPORT, ADMIN.",
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/transfers": {
+      "get": {
+        "tags": [
+          "Back office"
+        ],
+        "summary": "Operational transfer search",
+        "description": "Requires one of: SUPPORT, COMPLIANCE_OFFICER, ADMIN, TREASURY_OPERATOR.",
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/treasury/positions": {
+      "get": {
+        "tags": [
+          "Back office"
+        ],
+        "summary": "Float positions and open FX exposure",
+        "description": "Requires one of: TREASURY_OPERATOR, ADMIN.",
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/treasury/prefunding": {
+      "get": {
+        "tags": [
+          "Back office"
+        ],
+        "summary": "Prefunding requests and approvals",
+        "description": "Requires one of: TREASURY_OPERATOR, ADMIN.",
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/reconciliation/runs": {
+      "get": {
+        "tags": [
+          "Back office"
+        ],
+        "summary": "Reconciliation runs and breaks",
+        "description": "Requires one of: TREASURY_OPERATOR, ADMIN, SUPPORT.",
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/reports/volumes": {
+      "get": {
+        "tags": [
+          "Back office"
+        ],
+        "summary": "Volume by corridor",
+        "description": "Requires one of: ADMIN, COMPLIANCE_OFFICER, TREASURY_OPERATOR.",
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/audit": {
+      "get": {
+        "tags": [
+          "Back office"
+        ],
+        "summary": "Audit trail",
+        "description": "Requires one of: ADMIN, COMPLIANCE_OFFICER.",
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/audit/verify": {
+      "get": {
+        "tags": [
+          "Back office"
+        ],
+        "summary": "Verify the audit hash chain",
+        "description": "Requires one of: ADMIN, COMPLIANCE_OFFICER.",
+        "security": [
+          {
+            "adminBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "The request is not valid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication required or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — unverified email, insufficient role, or a limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A domain rule refused the request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "Liveness, and whether live funds are enabled",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "liveFundsEnabled": {
+                      "type": "boolean"
+                    },
+                    "environment": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "liveFundsEnabled",
+                    "environment"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ledger": {
+      "get": {
+        "tags": [
+          "Operations"
+        ],
+        "summary": "The ledger invariant",
+        "description": "Debits minus credits, per currency, across every account. Anything other than zero means money has been created or destroyed — stop the world.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  }
+}

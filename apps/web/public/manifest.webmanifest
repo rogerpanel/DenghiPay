@@ -1,0 +1,32 @@
+{
+  "name": "MoraPay — send money home",
+  "short_name": "MoraPay",
+  "description": "Cross-border remittances from Russia and Belarus to Nigeria and Ghana.",
+  "start_url": "/home",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#f5a623",
+  "lang": "ru",
+  "dir": "ltr",
+  "categories": ["finance"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    { "name": "Send money", "url": "/send" },
+    { "name": "Transfers", "url": "/transfers" }
+  ]
+}

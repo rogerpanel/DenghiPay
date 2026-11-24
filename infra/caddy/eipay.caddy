@@ -1,0 +1,51 @@
+# eipay, served next to the MoraPay front ends. Imported by the Caddyfile only
+# when the deploy script runs with EIPAY=1, which copies this file into the
+# runtime sites directory; otherwise there is no such site at all.
+#
+#   EIPAY_HOSTNAME=eipay.62.238.23.185.sslip.io   (or the real domain later)
+#
+# Access during integration testing is limited to the named testers: the app
+# holds live provider keys (Paycrest has no sandbox), so an open URL would let
+# anyone move real money through it before the go-live checklist in
+# docs/EIPAY_INTEGRATION.md is met.
+#
+# How the gate works. A tester signs in once with EIPAY_TEST_USER and the
+# password whose hash is EIPAY_TEST_PASSWORD_HASH. That response, and only a
+# response to a request that passed the password check, sets an HttpOnly cookie
+# carrying EIPAY_TEST_GATE_TOKEN; every later request with that cookie passes.
+# Basic authentication alone was not enough: requests the browser does not
+# attach cached credentials to — the app's service worker among them — got a
+# 401 and the sign-in box came back every few clicks (24 Nov).
+#
+# One path stays open because the provider calling it cannot log in: the Smile
+# ID callback, which checks Smile ID's own signature (and fails closed while
+# Smile ID is not configured). The web app manifest is fetched by browsers
+# without credentials and is public by nature.
+#
+# The nTZS webhook stays behind the gate. Tanzania goes through Paycrest during
+# testing, and that route accepts unsigned calls whenever NTZS_WEBHOOK_SECRET is
+# unset (seen on the server, 24 Nov), so opening it would let anyone post fake
+# settlement events. Open it only together with nTZS and its secret.
+
+{$EIPAY_HOSTNAME} {
+	import common
+
+	# Not for search engines while it is under test.
+	header X-Robots-Tag "noindex, nofollow"
+
+	@gated {
+		not path /api/kyc/smile-id/callback /manifest.json /manifest.webmanifest
+		not header Cookie *eipay_tester={$EIPAY_TEST_GATE_TOKEN}*
+	}
+	# In a route, directives run in the order written: the cookie is set only
+	# after basic_auth has let the request through. A refused request gets a
+	# 401 and nothing else.
+	route @gated {
+		basic_auth {
+			{$EIPAY_TEST_USER} {$EIPAY_TEST_PASSWORD_HASH}
+		}
+		header Set-Cookie "eipay_tester={$EIPAY_TEST_GATE_TOKEN}; Path=/; Max-Age=1209600; Secure; HttpOnly; SameSite=Lax"
+	}
+
+	reverse_proxy eipay:3000
+}
