@@ -148,8 +148,8 @@ match it. Counsel's view on custody needs the corrected version.
   this one. A rebranding item, missing from their rebranding guide.
 - **UGX amounts carry two decimals.** The Uganda receipt reads UGX 2,136.96,
   as Paycrest's currency list said (2 decimals; the ISO standard and mobile
-  money use 0). The recipient was paid; whether MTN rounded or truncated is
-  not visible. Confirm with Paycrest in writing, as asked earlier.
+  money use 0). MTN's SMS to the recipient read UGX 2,137, so the provider
+  rounded up. Ask Paycrest to confirm the rule in writing, as asked earlier.
 - **KYC limits fall as verification rises.** The code defaults
   (`app/lib/kyc-tier-limits.ts`) give USD 10 a month with no verification and
   USD 0.50, 1 and 2 for tiers 1–3, so verifying a phone number lowers a user's
@@ -214,10 +214,13 @@ Consequences for this integration:
   operating entity, every beneficial owner with their real address, the people
   operating the account, the countries served, and the login email. A change of
   owner, operator or contact is an update owed to Paycrest under 3.2(c).
-- **Recipients see the Sender Business as the payer.** The first naira payout
-  (24 Nov) arrived as "Cogel Sarl" from Nombank MFB, the liquidity provider's
-  bank. Whichever entity holds the Paycrest account is the name on every
-  recipient's bank statement.
+- **Who the recipient sees as the payer depends on the provider, not on us.**
+  The first naira payout (24 Nov) arrived as "Cogel Sarl" via Nombank MFB:
+  that provider passed the Sender Business's name. The Ugandan payout arrived
+  by SMS as "VERTECH BUSINESS SOLUTIONS LIMITED", the provider's own MTN
+  disbursement account, with an empty "Reason". eipay cannot set either; ask
+  Paycrest whether providers can carry the sender's brand or a reference in
+  the narration, per corridor.
 - **Anything already run through this account is COGEL SARL's liability**
   (5.1). The Order History tab shows whether the developers' public copy used
   it; if it did, that copy must stop using it now, independently of payment.
