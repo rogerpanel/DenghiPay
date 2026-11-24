@@ -9,17 +9,20 @@
 # (Paycrest has no sandbox), so an open URL would let anyone move real money
 # through it before the go-live checklist in docs/EIPAY_INTEGRATION.md is met.
 #
-# Two paths stay open because the provider calling them cannot log in, and each
-# route checks the provider's own signature: the nTZS webhook and the Smile ID
-# callback. The deploy script refuses to start eipay with nTZS configured and no
-# NTZS_WEBHOOK_SECRET, because that route skips its check when the secret is
-# missing.
+# One path stays open because the provider calling it cannot log in: the Smile
+# ID callback, which checks Smile ID's own signature (and fails closed while
+# Smile ID is not configured).
+#
+# The nTZS webhook stays behind the gate. Tanzania goes through Paycrest during
+# testing, and that route accepts unsigned calls whenever NTZS_WEBHOOK_SECRET is
+# unset (seen on the server, 24 Nov), so opening it would let anyone post fake
+# settlement events. Open it only together with nTZS and its secret.
 
 {$EIPAY_HOSTNAME} {
 	import common
 
 	@tester {
-		not path /api/webhooks/ntzs /api/kyc/smile-id/callback
+		not path /api/kyc/smile-id/callback
 	}
 	basic_auth @tester {
 		{$EIPAY_TEST_USER} {$EIPAY_TEST_PASSWORD_HASH}

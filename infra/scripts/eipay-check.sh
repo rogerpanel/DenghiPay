@@ -18,7 +18,6 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
-COMPOSE="docker compose -f infra/compose/server.yml --profile tls --profile eipay"
 
 PUBLIC_HOST="${PUBLIC_HOST:-$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')}"
 HOST="${EIPAY_HOSTNAME:-eipay.${PUBLIC_HOST}.sslip.io}"
@@ -45,7 +44,11 @@ log "eipay commit    $(git -C "$EIPAY_SRC" rev-parse --short HEAD 2>/dev/null ||
 log ""
 
 # 1. Running, and the MoraPay services still healthy next to it.
-state="$($COMPOSE ps --format '{{.Service}} {{.State}}' 2>/dev/null)"
+# Asked of Docker directly: `docker compose ps` needs the deploy script's
+# environment (POSTGRES_PASSWORD, the origins) to read the compose file, and
+# without it prints nothing, which reported a healthy stack as all stopped.
+state="$(docker ps --filter label=com.docker.compose.project=morapay \
+  --format '{{.Label "com.docker.compose.service"}} {{.State}}' 2>/dev/null)"
 for s in eipay caddy api web admin postgres redis; do
   if echo "$state" | grep -qx "$s running"; then ok "service $s running"; else bad "service $s not running"; fi
 done
@@ -75,26 +78,39 @@ fi
 for cur in NGN KES UGX TZS; do
   body="$(curl -s -m 25 "${AUTH[@]}" "$BASE/api/v1/rates?token=USDT&amount=10&currency=${cur}&network=polygon")"
   if echo "$body" | grep -q '"success":true'; then
-    rate="$(echo "$body" | grep -oE '"(rate|data)":[^,}]*' | head -1)"
+    rate="$(echo "$body" | grep -oE '"rate":"?[0-9.]+' | head -1)"
     ok "rate USDT→${cur} on polygon quoted (${rate})"
   else
     bad "rate USDT→${cur} on polygon: $(echo "$body" | head -c 160)"
   fi
 done
 
-# 4. Callback paths: reachable by the provider without the gate, and
-#    rejecting a call that carries no valid signature.
-for path in /api/webhooks/ntzs /api/kyc/smile-id/callback; do
-  hdrs="$(curl -s -o /dev/null -D - -m 10 -X POST -H 'content-type: application/json' --data '{}' "$BASE$path")"
-  code="$(echo "$hdrs" | awk 'NR==1{print $2}')"
-  if echo "$hdrs" | grep -qi '^www-authenticate: basic'; then
-    bad "$path is behind the testers' gate; the provider could not reach it"
-  elif [ "$code" -ge 400 ] 2>/dev/null && [ "$code" -lt 500 ]; then
-    ok "$path open to the provider and rejects an unsigned call (${code})"
-  else
-    bad "$path answered ${code} to an unsigned call"
-  fi
-done
+# 4. Callback paths.
+post_unsigned() {
+  curl -s -o /dev/null -D - -m 10 -X POST -H 'content-type: application/json' --data '{}' "$BASE$1"
+}
+#    Smile ID's callback: reachable without the gate, refusing an unsigned call.
+#    A 5xx means Smile ID is not configured yet: it fails closed, which is safe.
+hdrs="$(post_unsigned /api/kyc/smile-id/callback)"
+code="$(echo "$hdrs" | tr -d '\r' | awk 'NR==1{print $2}')"
+if echo "$hdrs" | grep -qi '^www-authenticate: basic'; then
+  bad "Smile ID callback is behind the testers' gate; Smile ID could not reach it"
+elif [ "${code:-0}" -ge 400 ] 2>/dev/null; then
+  ok "Smile ID callback open to the provider and refuses an unsigned call (${code}$([ "$code" -ge 500 ] && echo ', not configured yet'))"
+else
+  bad "Smile ID callback answered ${code:-nothing} to an unsigned call"
+fi
+#    nTZS webhook: unused while Tanzania goes through Paycrest, and it accepts
+#    unsigned calls without NTZS_WEBHOOK_SECRET, so it must not be open.
+hdrs="$(post_unsigned /api/webhooks/ntzs)"
+code="$(echo "$hdrs" | tr -d '\r' | awk 'NR==1{print $2}')"
+if echo "$hdrs" | grep -qi '^www-authenticate: basic'; then
+  ok "nTZS webhook is behind the testers' gate"
+elif [ "${code:-0}" -ge 400 ] 2>/dev/null; then
+  ok "nTZS webhook refuses an unsigned call (${code})"
+else
+  bad "nTZS webhook answered ${code:-nothing} to an unsigned call from outside"
+fi
 
 log ""
 log "result          ${pass} passed, ${fail} failed"

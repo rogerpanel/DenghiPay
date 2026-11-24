@@ -75,8 +75,9 @@ match it. Counsel's view on custody needs the corrected version.
   upstream project and its licence, and confirm they can assign what the
   Agreement says the Company buys.
 - **nTZS webhook fails open.** `app/api/webhooks/ntzs/route.ts` skips the
-  signature check when `NTZS_WEBHOOK_SECRET` is unset. The deploy script
-  refuses that configuration.
+  signature check when `NTZS_WEBHOOK_SECRET` is unset; on the server it
+  answered 200 to an unsigned empty call (24 Nov). The deploy script refuses
+  nTZS without its secret, and the route stays behind the testers' gate.
 - **KYC limits in `.env.example`** are test values: USD 10 a month with no KYC
   (tier 0), and USD 0.5 / 1 / 2 for tiers 1–3. Production values come from
   counsel.
@@ -229,10 +230,15 @@ When the real domain exists: point it at the server, put it in
 ## 4. The testers' gate
 
 Everything at the eipay address asks for the testers' login (Caddy basic
-authentication, `infra/caddy/eipay.caddy`), except the two callbacks the
-providers call — the nTZS webhook and the Smile ID callback — which check the
-provider's own signature. eipay's own port is bound to the server's loopback,
-so the gate cannot be walked around.
+authentication, `infra/caddy/eipay.caddy`), except the Smile ID callback, which
+checks Smile ID's own signature. The nTZS webhook stays behind the gate while
+Tanzania goes through Paycrest, because it accepts unsigned calls when nTZS is
+not configured. eipay's own port is bound to the server's loopback, so the gate
+cannot be walked around.
+
+The testers' password is drawn from letters and digits that cannot be misread
+from a screen (no 0/O, 1/l/I), in groups of five, because the Hetzner console
+cannot copy text and it is read off by eye.
 
 The gate comes off with a reviewed change to `infra/caddy/eipay.caddy` that
 cites the signed checklist in §6, not with an environment variable.

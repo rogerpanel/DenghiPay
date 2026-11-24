@@ -205,8 +205,8 @@ if [ "$EIPAY" = "1" ]; then
   if [ "$(eipay_val NEXT_PUBLIC_GUEST_REFUND_ADDRESS | tr 'A-F' 'a-f')" = "0x2b4fb6f7255def56d985fb01134ab1431efbd3be" ]; then
     echo "✗ NEXT_PUBLIC_GUEST_REFUND_ADDRESS is eipay's built-in default. Set the Company's own wallet address." >&2; exit 1
   fi
-  # The nTZS webhook skips its signature check when this is unset, and that
-  # path is outside the testers' gate.
+  # The nTZS webhook skips its signature check when this is unset. It is behind
+  # the testers' gate today; this keeps it safe if that ever changes.
   if [ -n "$(eipay_val NTZS_API_KEY)" ] && [ -z "$(eipay_val NTZS_WEBHOOK_SECRET)" ]; then
     echo "✗ NTZS_API_KEY is set without NTZS_WEBHOOK_SECRET: the webhook would accept unsigned calls." >&2; exit 1
   fi
@@ -216,7 +216,10 @@ if [ "$EIPAY" = "1" ]; then
   # as a bcrypt hash; the password itself is printed once and never stored.
   if ! grep -qE '^EIPAY_TEST_PASSWORD_HASH=' .env; then
     command -v openssl >/dev/null 2>&1 || { echo "✗ openssl is required" >&2; exit 1; }
-    EIPAY_TEST_PASSWORD="$(openssl rand -base64 24 | tr -d '\n=+/' | cut -c1-24)"
+    # Read off the console screen by eye (it cannot copy), so no characters that
+    # look alike — 0/O, 1/l/I, 5/S, 2/Z, 8/B — and in groups of five.
+    EIPAY_TEST_PASSWORD="$(openssl rand -base64 96 | tr -dc 'abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRTUVWXY34679' \
+      | cut -c1-20 | sed -E 's/(.{5})(.{5})(.{5})(.{5})/\1-\2-\3-\4/')"
     hash="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$EIPAY_TEST_PASSWORD")"
     { echo ""; echo "# eipay testers' gate (server-deploy.sh). Remove both lines to issue a new password."
       echo "EIPAY_TEST_USER=tester"
