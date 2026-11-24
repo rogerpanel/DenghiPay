@@ -200,6 +200,27 @@ if [ "$EIPAY" = "1" ]; then
     case "$v" in ""|*your*|*YOUR*|*PLACEHOLDER*|*"<"*|"0x...") missing="$missing $k" ;; esac
   done
   [ -z "$missing" ] || { echo "✗ $EIPAY_ENV_FILE has no real value for:$missing" >&2; exit 1; }
+
+  # eipay only checks these when money moves, so a malformed one surfaced on
+  # the first transfer as a sign-in loop (24 Nov). Checked here instead. Never
+  # printed: only its length is.
+  #   - MetaMask exports a private key without the 0x eipay requires; add it.
+  sponsor="$(eipay_val SPONSOR_EVM_WALLET_PRIVATE_KEY | tr -d '[:space:]')"
+  if [[ "$sponsor" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    eipay_set SPONSOR_EVM_WALLET_PRIVATE_KEY "0x${sponsor}"
+    echo "  added the missing 0x to SPONSOR_EVM_WALLET_PRIVATE_KEY"
+  elif [[ "$sponsor" =~ ^0x[0-9a-fA-F]{64}$ ]]; then
+    eipay_set SPONSOR_EVM_WALLET_PRIVATE_KEY "$sponsor"
+  else
+    echo "✗ SPONSOR_EVM_WALLET_PRIVATE_KEY must be 0x followed by 64 characters 0-9/a-f;" >&2
+    echo "  it has ${#sponsor} characters. Copy it again from the wallet (Show private key)." >&2
+    exit 1
+  fi
+  unset sponsor
+  refund="$(eipay_val NEXT_PUBLIC_GUEST_REFUND_ADDRESS | tr -d '[:space:]')"
+  [[ "$refund" =~ ^0x[0-9a-fA-F]{40}$ ]] || {
+    echo "✗ NEXT_PUBLIC_GUEST_REFUND_ADDRESS must be a wallet address: 0x followed by 40 characters (it has ${#refund})." >&2
+    exit 1; }
   # Without this, eipay refunds failed guest orders to an address hard-coded in
   # its source, which belongs to nobody we can name.
   if [ "$(eipay_val NEXT_PUBLIC_GUEST_REFUND_ADDRESS | tr 'A-F' 'a-f')" = "0x2b4fb6f7255def56d985fb01134ab1431efbd3be" ]; then
