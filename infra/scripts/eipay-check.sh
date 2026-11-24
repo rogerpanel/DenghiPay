@@ -61,10 +61,27 @@ fi
 # 2. HTTPS and the testers' gate.
 code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' "$BASE/")"
 [ "$code" = "401" ] && ok "no login → 401 (gate in place, certificate trusted)" || bad "no login → ${code}, expected 401"
-code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' -u "${USER_NAME}:wrong-password" "$BASE/")"
-[ "$code" = "401" ] && ok "wrong password → 401" || bad "wrong password → ${code}, expected 401"
-code="$(curl -s -o /dev/null -m 20 -w '%{http_code}' "${AUTH[@]}" "$BASE/")"
+hdrs="$(curl -s -o /dev/null -D - -m 10 -u "${USER_NAME}:wrong-password" "$BASE/" | tr -d '\r')"
+code="$(echo "$hdrs" | awk 'NR==1{print $2}')"
+if [ "$code" = "401" ] && ! echo "$hdrs" | grep -qi '^set-cookie: eipay_tester='; then
+  ok "wrong password → 401, and no gate cookie"
+else
+  bad "wrong password → ${code}$(echo "$hdrs" | grep -qi '^set-cookie: eipay_tester=' && echo ', WITH the gate cookie')"
+fi
+hdrs="$(curl -s -o /dev/null -D - -m 20 "${AUTH[@]}" "$BASE/" | tr -d '\r')"
+code="$(echo "$hdrs" | awk 'NR==1{print $2}')"
+gate="$(echo "$hdrs" | grep -i '^set-cookie: eipay_tester=' | sed -E 's/^[^:]*: (eipay_tester=[^;]*).*/\1/' | head -1)"
 [ "$code" = "200" ] && ok "tester login → home page 200" || bad "tester login → ${code}, expected 200"
+# Once signed in, the browser carries the gate cookie instead of the password,
+# so the sign-in box does not come back (infra/caddy/eipay.caddy).
+if [ -n "$gate" ]; then
+  code="$(curl -s -o /dev/null -m 20 -w '%{http_code}' -b "$gate" "$BASE/")"
+  [ "$code" = "200" ] && ok "gate cookie alone → 200 (no repeated sign-in)" || bad "gate cookie alone → ${code}, expected 200"
+else
+  bad "tester login set no gate cookie; the sign-in box will keep coming back"
+fi
+code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' -b 'eipay_tester=0000' "$BASE/")"
+[ "$code" = "401" ] && ok "forged gate cookie → 401" || bad "forged gate cookie → ${code}, expected 401"
 code="$(curl -s -o /dev/null -m 10 -w '%{http_code}' "http://${HOST}/")"
 case "$code" in 301|308) ok "plain HTTP redirects to HTTPS (${code})" ;; *) bad "plain HTTP → ${code}, expected a redirect" ;; esac
 code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://${PUBLIC_HOST}:${EIPAY_LOCAL_PORT:-3002}/" 2>/dev/null)"

@@ -214,23 +214,28 @@ if [ "$EIPAY" = "1" ]; then
 
   # The testers' gate. One shared login, generated once, kept in MoraPay's .env
   # as a bcrypt hash; the password itself is printed once and never stored.
-  if ! grep -qE '^EIPAY_TEST_PASSWORD_HASH=' .env; then
+  # The gate token is the value of the cookie a signed-in tester receives
+  # (infra/caddy/eipay.caddy); it is replaced whenever the password is.
+  if ! grep -qE '^EIPAY_TEST_PASSWORD_HASH=' .env || ! grep -qE '^EIPAY_TEST_GATE_TOKEN=' .env; then
+    sed -i '/^EIPAY_TEST_/d' .env
     command -v openssl >/dev/null 2>&1 || { echo "✗ openssl is required" >&2; exit 1; }
     # Read off the console screen by eye (it cannot copy), so no characters that
     # look alike — 0/O, 1/l/I, 5/S, 2/Z, 8/B — and in groups of five.
     EIPAY_TEST_PASSWORD="$(openssl rand -base64 96 | tr -dc 'abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRTUVWXY34679' \
       | cut -c1-20 | sed -E 's/(.{5})(.{5})(.{5})(.{5})/\1-\2-\3-\4/')"
     hash="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "$EIPAY_TEST_PASSWORD")"
-    { echo ""; echo "# eipay testers' gate (server-deploy.sh). Remove both lines to issue a new password."
+    { echo ""; echo "# eipay testers' gate (server-deploy.sh). Remove the EIPAY_TEST_* lines to issue a new password."
       echo "EIPAY_TEST_USER=tester"
-      echo "EIPAY_TEST_PASSWORD_HASH='${hash}'"; } >> .env
+      echo "EIPAY_TEST_PASSWORD_HASH='${hash}'"
+      echo "EIPAY_TEST_GATE_TOKEN=$(openssl rand -hex 32)"; } >> .env
   fi
   EIPAY_TEST_USER="$(grep -E '^EIPAY_TEST_USER=' .env | tail -1 | cut -d= -f2- || true)"
   EIPAY_TEST_PASSWORD_HASH="$(grep -E '^EIPAY_TEST_PASSWORD_HASH=' .env | tail -1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'$//" || true)"
-  if [ -z "$EIPAY_TEST_USER" ] || [ -z "$EIPAY_TEST_PASSWORD_HASH" ]; then
-    echo "✗ the testers' login in .env is incomplete. Delete both EIPAY_TEST_* lines and re-run." >&2; exit 1
+  EIPAY_TEST_GATE_TOKEN="$(grep -E '^EIPAY_TEST_GATE_TOKEN=' .env | tail -1 | cut -d= -f2- || true)"
+  if [ -z "$EIPAY_TEST_USER" ] || [ -z "$EIPAY_TEST_PASSWORD_HASH" ] || [ "${#EIPAY_TEST_GATE_TOKEN}" -ne 64 ]; then
+    echo "✗ the testers' login in .env is incomplete. Delete the EIPAY_TEST_* lines and re-run." >&2; exit 1
   fi
-  export EIPAY_HOSTNAME EIPAY_ENV_FILE EIPAY_TEST_USER EIPAY_TEST_PASSWORD_HASH
+  export EIPAY_HOSTNAME EIPAY_ENV_FILE EIPAY_TEST_USER EIPAY_TEST_PASSWORD_HASH EIPAY_TEST_GATE_TOKEN
 
   cp infra/caddy/eipay.caddy .caddy-sites/
   COMPOSE="$COMPOSE --profile eipay"

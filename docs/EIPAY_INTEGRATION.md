@@ -236,6 +236,13 @@ Tanzania goes through Paycrest, because it accepts unsigned calls when nTZS is
 not configured. eipay's own port is bound to the server's loopback, so the gate
 cannot be walked around.
 
+A tester signs in once; that response sets an HttpOnly, Secure cookie holding a
+random gate token (`EIPAY_TEST_GATE_TOKEN`), valid 14 days, and requests with it
+pass without asking again. Password-only basic authentication made the sign-in
+box return every few clicks, because some requests (the app's service worker
+among them) go out without the browser's cached credentials. The cookie is set
+only on a response to a request that passed the password check.
+
 The testers' password is drawn from letters and digits that cannot be misread
 from a screen (no 0/O, 1/l/I), in groups of five, because the Hetzner console
 cannot copy text and it is read off by eye.
