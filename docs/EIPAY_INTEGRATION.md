@@ -101,6 +101,18 @@ match it. Counsel's view on custody needs the corrected version.
   first transfer, 24 Nov), so it has to stay unrestricted. A separate
   server-only key would let the public one be locked to the domain. On the
   free plan without a card the exposure is quota, not money.
+- **A new user's first transfer always fails: gas limit too low.** For a wallet
+  not yet linked to the delegation contract, `app/lib/bundler/executeSponsored.ts`
+  sends one EIP-7702 transaction that both links the wallet and runs the
+  transfer, with a fixed `RE_DELEGATE_GAS` of 120,000. The authorization,
+  signature check and calldata leave too little for the batch: on the server's
+  first transfer (Polygon, 24 Nov, tx `0xdcc6a165…a521bffe`) the USDT `approve`
+  ran out of gas with 23,046 forwarded and the batch reverted ("Call
+  reverted"), before Paycrest's `createOrder` was reached. The authorization
+  itself persisted, so the second attempt takes the already-linked path, whose
+  limit is 500,000. Each new user thus pays (in sponsor gas) for a failed
+  first try and sees an error. Fix: use the same limit as the execute path, or
+  estimate it.
 - **KYC limits fall as verification rises.** The code defaults
   (`app/lib/kyc-tier-limits.ts`) give USD 10 a month with no verification and
   USD 0.50, 1 and 2 for tiers 1–3, so verifying a phone number lowers a user's
