@@ -96,6 +96,15 @@ fi
 
 # The two origins are derived every run, so moving to a domain is one variable.
 if [ "$TLS" = "1" ]; then
+  # The Caddyfile's global `email` line has no value without this, which Caddy
+  # rejects, so the certificate never arrives. Given once, remembered in .env.
+  ACME_EMAIL="${ACME_EMAIL:-$(grep -E '^ACME_EMAIL=' .env | tail -1 | cut -d= -f2-)}"
+  if [ -z "$ACME_EMAIL" ]; then
+    echo "✗ TLS=1 needs an address for certificate notices, once:" >&2
+    echo "    ACME_EMAIL=you@example.com TLS=1 infra/scripts/server-deploy.sh" >&2
+    exit 1
+  fi
+  grep -qE '^ACME_EMAIL=' .env || printf '\nACME_EMAIL=%s\n' "$ACME_EMAIL" >> .env
   # Default to sslip.io names for this server's address. Override both when a
   # real domain exists — nothing else in the deployment needs to change.
   PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME:-${PUBLIC_HOST}.sslip.io}"
