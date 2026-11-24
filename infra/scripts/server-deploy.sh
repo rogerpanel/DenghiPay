@@ -428,11 +428,16 @@ if [ "$TLS" = "1" ]; then
 
   Served over HTTPS with a Let's Encrypt certificate, renewed automatically.
   The app can now be installed to a home screen and the offline shell works.
+EOF
+  case "$PUBLIC_HOSTNAME" in
+    *sslip.io) cat <<EOF
 
   The hostname contains the IP, so it changes if the server does — right for a
   demonstration, wrong for a pilot. Point a real domain here and re-run with
   PUBLIC_HOSTNAME and ADMIN_HOSTNAME set; nothing else changes.
 EOF
+    ;;
+  esac
 else
   cat <<EOF
 

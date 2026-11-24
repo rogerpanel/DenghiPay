@@ -320,6 +320,10 @@ the eipay URLs into `eipay.env` and adds the `www` redirect for a bare domain.
 Add `https://eipay.money` to Privy's allowed origins first; the old sslip.io
 names stop being served.
 
+Done 24 Nov: `eipay-check.sh` against `https://eipay.money` at 16:50 UTC, 21
+passed, 0 failed; the tester's wallet and its balance carried over unchanged
+(Privy keys the wallet to the user, not to the address).
+
 ## 4. The testers' gate
 
 Everything at the eipay address asks for the testers' login (Caddy basic
