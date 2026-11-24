@@ -391,6 +391,19 @@ Fill in from 5.1 and 5.2 only. A row with no evidence is not a pass.
 Acceptance of Milestone 2, and so the balance payment, is the Clients'
 decision under the Agreement; this report is the evidence for it.
 
+**24 Nov 2026.** eipay runs on Company infrastructure at `https://eipay.money`
+on Company-held accounts; the automatic checks pass 21 of 21; live payouts to
+Nigeria (bank) and Uganda (MTN) completed and were confirmed by the
+recipients. KES and TZS payouts were quoted live by Paycrest through eipay but
+not yet sent; they use the same code path as the two that passed. The
+cross-border remit and KYC tiers 2–3 wait on Smile ID onboarding, which is the
+one external dependency outstanding. On that evidence the Lead Engineer
+recommends acceptance of Milestone 2 and the balance payment, with the
+developers' closing items (old keys revoked in writing, eipay.myludus.me
+taken down, upstream licence and component list) and the findings in §1
+carried forward as the Company's own work. The signed report is a PDF kept
+outside this repository, because it names the parties.
+
 ## 6. Go-live checklist (before the gate comes off)
 
 Each item needs a name and a date.
