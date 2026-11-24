@@ -114,7 +114,7 @@ match it. Counsel's view on custody needs the corrected version.
   itself persisted, so the second attempt takes the already-linked path, whose
   limit is 500,000. Each new user thus pays (in sponsor gas) for a failed
   first try and sees an error. Fix: use the same limit as the execute path, or
-  estimate it. **Applied in our build** (`infra/eipay-patches/apply.sh`, run
+  estimate it. **Applied in our build** (`infra/eipay-patches/apply.mjs`, run
   by the image build on top of their unmodified checkout) and reported to the
   developers; the patch reports "already fixed" once their repository has it.
 - **Cross-border remit (fiat → fiat) is routed through Base, hard-coded.** The

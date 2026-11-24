@@ -45,8 +45,8 @@ RUN if ls -a | grep -E '^\.env' | grep -vqx '.env.example'; then \
 # Our fixes to their code, kept in this repository (infra/eipay-patches) and
 # passed in as a second build context, so their checkout stays untouched and
 # every change is reviewable here. The build stops if one no longer applies.
-COPY --from=eipay_patches apply.sh /tmp/eipay-patches/apply.sh
-RUN sh /tmp/eipay-patches/apply.sh
+COPY --from=eipay_patches . /tmp/eipay-patches/
+RUN node /tmp/eipay-patches/apply.mjs
 ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=3072
 # A fingerprint of the public (NEXT_PUBLIC_*) values, from the deploy script.
