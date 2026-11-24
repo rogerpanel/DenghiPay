@@ -94,6 +94,15 @@ match it. Counsel's view on custody needs the corrected version.
   is a developer's personal wallet and that no refund has been sent to it. The
   deploy script refuses to run without the Company's own address. A customer's
   refund landing in a Company wallet is also custody (§1.1).
+- **One RPC key for browser and server.** `NEXT_PUBLIC_ALCHEMY_API_KEY` ships in
+  the browser bundle and is also what the server's sponsored-transaction route
+  uses. Restricting it to the eipay domain at Alchemy, as a browser key should
+  be, makes the server's calls fail ("Unspecified origin not on whitelist", the
+  first transfer, 24 Nov), so it has to stay unrestricted. A separate
+  server-only key would let the public one be locked to the domain. On the
+  free plan without a card the exposure is quota, not money.
+- **Balances on Lisk** are read through Lisk's public RPC, which often fails;
+  the wallet then warns that its total may be too low. Cosmetic.
 - **Amounts as JavaScript numbers.** Fine inside eipay, but none of that code
   can be lifted into MoraPay's adapters (CLAUDE.md rule 12).
 - `rogerpanel/eipay-client` and `rogerpanel/eipay-api` (Vite, NestJS,
