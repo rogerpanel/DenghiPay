@@ -20,7 +20,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
 PUBLIC_HOST="${PUBLIC_HOST:-$(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || hostname -I | awk '{print $1}')}"
+# The names the deploy script remembered in .env, else its sslip.io defaults.
+remembered() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+EIPAY_HOSTNAME="${EIPAY_HOSTNAME:-$(remembered EIPAY_HOSTNAME)}"
+PUBLIC_HOSTNAME="${PUBLIC_HOSTNAME:-$(remembered PUBLIC_HOSTNAME)}"
 HOST="${EIPAY_HOSTNAME:-eipay.${PUBLIC_HOST}.sslip.io}"
+MORAPAY_HOST="${PUBLIC_HOSTNAME:-${PUBLIC_HOST}.sslip.io}"
 BASE="https://${HOST}"
 USER_NAME="$(grep -E '^EIPAY_TEST_USER=' .env 2>/dev/null | tail -1 | cut -d= -f2-)"
 [ -n "$USER_NAME" ] || { echo "✗ no EIPAY_TEST_USER in .env; deploy with EIPAY=1 first" >&2; exit 1; }
@@ -52,7 +57,7 @@ state="$(docker ps --filter label=com.docker.compose.project=morapay \
 for s in eipay caddy api web admin postgres redis; do
   if echo "$state" | grep -qx "$s running"; then ok "service $s running"; else bad "service $s not running"; fi
 done
-if curl -s -m 8 "https://${PUBLIC_HOST}.sslip.io/api/health/ledger" | grep -q '"balanced":true'; then
+if curl -s -m 8 "https://${MORAPAY_HOST}/api/health/ledger" | grep -q '"balanced":true'; then
   ok "MoraPay ledger still balanced"
 else
   bad "MoraPay ledger health not confirmed"

@@ -293,9 +293,32 @@ named testers. To issue a new one, delete the two `EIPAY_TEST_*` lines from
 A run without `EIPAY=1` takes eipay off the public address again (MoraPay is
 unaffected either way).
 
-When the real domain exists: point it at the server, put it in
-`NEXT_PUBLIC_APP_URL`/`APP_URL` and Privy, and run with
-`EIPAY_HOSTNAME=<domain>` added.
+**The domain (eipay.money, bought 24 Nov, DNS at Cloudflare).** Layout:
+
+| Name                | Serves                    | Cloudflare DNS record       |
+| ------------------- | ------------------------- | --------------------------- |
+| `eipay.money`       | eipay (testers' gate)     | A → 62.238.23.185, DNS only |
+| `www.eipay.money`   | redirect to `eipay.money` | A → 62.238.23.185, DNS only |
+| `app.eipay.money`   | MoraPay sender app        | A → 62.238.23.185, DNS only |
+| `admin.eipay.money` | MoraPay back office       | A → 62.238.23.185, DNS only |
+
+"DNS only" (grey cloud) so Let's Encrypt reaches Caddy directly. Proxying
+through Cloudflare can come later with SSL/TLS mode "Full (strict)". Until
+the domain sends mail, two TXT records stop anyone sending mail as it:
+`@` → `v=spf1 -all`, and `_dmarc` → `v=DMARC1; p=reject;`.
+
+Then, once:
+
+```
+TLS=1 EIPAY=1 PUBLIC_HOSTNAME=app.eipay.money ADMIN_HOSTNAME=admin.eipay.money EIPAY_HOSTNAME=eipay.money infra/scripts/server-deploy.sh
+```
+
+The script remembers these in `.env` (`TLS`, `EIPAY` and the three names), so
+every later deploy is a plain `infra/scripts/server-deploy.sh`; a value given
+again replaces the remembered one, and `EIPAY=0` takes eipay down. It writes
+the eipay URLs into `eipay.env` and adds the `www` redirect for a bare domain.
+Add `https://eipay.money` to Privy's allowed origins first; the old sslip.io
+names stop being served.
 
 ## 4. The testers' gate
 

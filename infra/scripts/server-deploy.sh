@@ -17,6 +17,29 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
+# ------------------------------------------------------ remembered settings
+#
+# How this server is deployed — TLS, eipay, and the names it answers to — is
+# remembered in .env the first time it is given, so a plain
+#   infra/scripts/server-deploy.sh
+# redeploys the same way. Forgetting `export TLS=1 EIPAY=1` used to take eipay
+# off the public address and HTTPS off MoraPay. A value given on the command
+# line replaces the remembered one; TLS=0 or EIPAY=0 switches it off for good.
+DEPLOY_SETTINGS="TLS EIPAY PUBLIC_HOSTNAME ADMIN_HOSTNAME EIPAY_HOSTNAME"
+remembered() { [ -f .env ] && grep -E "^$1=" .env | tail -1 | cut -d= -f2- || true; }
+for k in $DEPLOY_SETTINGS; do
+  if [ -n "${!k:-}" ]; then
+    if [ -f .env ] && [ "$(remembered "$k")" != "${!k}" ]; then
+      sed -i "/^$k=/d" .env
+      printf '%s=%s\n' "$k" "${!k}" >> .env
+      echo "  remembering $k=${!k} in .env"
+    fi
+  else
+    v="$(remembered "$k")"
+    [ -z "$v" ] || { printf -v "$k" '%s' "$v"; export "$k"; }
+  fi
+done
+
 COMPOSE="docker compose -f infra/compose/server.yml"
 WEB_PORT="${WEB_PUBLIC_PORT:-80}"
 ADMIN_PORT="${ADMIN_PUBLIC_PORT:-8080}"
@@ -92,6 +115,9 @@ if [ ! -f .env ]; then
   } >> .env
   chmod 600 .env
   echo "   .env written, mode 600. It is gitignored; keep it that way."
+  for k in $DEPLOY_SETTINGS; do
+    [ -z "${!k:-}" ] || printf '%s=%s\n' "$k" "${!k}" >> .env
+  done
 fi
 
 # The two origins are derived every run, so moving to a domain is one variable.
@@ -259,6 +285,12 @@ if [ "$EIPAY" = "1" ]; then
   export EIPAY_HOSTNAME EIPAY_ENV_FILE EIPAY_TEST_USER EIPAY_TEST_PASSWORD_HASH EIPAY_TEST_GATE_TOKEN
 
   cp infra/caddy/eipay.caddy .caddy-sites/
+  # On a bare domain (eipay.money), also answer on www. and send it to the bare
+  # name. Needs a DNS record for www too; without one, only that redirect fails.
+  if [[ "$EIPAY_HOSTNAME" =~ ^[a-z0-9-]+\.[a-z]+$ ]]; then
+    printf 'www.%s {\n\tredir https://%s{uri} permanent\n}\n' "$EIPAY_HOSTNAME" "$EIPAY_HOSTNAME" \
+      > .caddy-sites/eipay-www.caddy
+  fi
   COMPOSE="$COMPOSE --profile eipay"
 
   echo "→ building eipay from $EIPAY_SRC ($(git -C "$EIPAY_SRC" rev-parse --short HEAD))"
