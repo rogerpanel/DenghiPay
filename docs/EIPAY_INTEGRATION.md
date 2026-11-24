@@ -66,8 +66,10 @@ match it. Counsel's view on custody needs the corrected version.
   in the DR Congo under the Clients' ownership, is the entity Paycrest verified
   (see §1.3), and that the legal pages are optional extras. The pages, the
   Paycrest verification and every service account must name the same operating
-  entity; which one that is (COGEL SARL or LLC "Expat Groupe") is the Clients'
-  decision, with counsel.
+  entity. **Decided 24 Nov:** COGEL SARL is the legal operator in the
+  service accounts and verifications; "Expat Groupe" may be the brand. The
+  legal pages must then say so ("Expat Groupe is a trading name of COGEL
+  SARL"), so a customer can tell which company they contract with.
 - **Licence.** `LICENSE` says "proprietary, copyright eipay", while the Terms
   say eipay "was developed using an open-source codebase", and the README's
   wording and contribution links (Paycrest's contribution guide and developer
@@ -139,6 +141,15 @@ match it. Counsel's view on custody needs the corrected version.
   rail in between. Like MoraPay's own corridors (`LIVE_CORRIDOR_AUTHORISATIONS`),
   each remit corridor should open to customers only with the authorisation it
   rests on and counsel's written view; testers may verify the mechanics.
+- **Receipts advertise the developers' site.** The PDF receipt
+  (`app/components/PDFReceipt.tsx`) prints "eipay.app" and a fixed QR image
+  (`public/images/eipay-qr-code.png`) inviting the customer to "make more
+  transactions on eipay"; the site is the developers' own deployment, not
+  this one. A rebranding item, missing from their rebranding guide.
+- **UGX amounts carry two decimals.** The Uganda receipt reads UGX 2,136.96,
+  as Paycrest's currency list said (2 decimals; the ISO standard and mobile
+  money use 0). The recipient was paid; whether MTN rounded or truncated is
+  not visible. Confirm with Paycrest in writing, as asked earlier.
 - **KYC limits fall as verification rises.** The code defaults
   (`app/lib/kyc-tier-limits.ts`) give USD 10 a month with no verification and
   USD 0.50, 1 and 2 for tiers 1–3, so verifying a phone number lowers a user's
@@ -338,7 +349,7 @@ accepts and fund them from the account Clause 6.4 names.
 | 3   | Recipient name check, a Nigerian bank account  | account name returned                         |                                                       |                                                                                                                                                                                                                            |
 | 4   | Off-ramp USDT → NGN                            | recipient paid                                | Pass (second attempt; first hit the gas defect, §1.2) | 2 USDT on Polygon → ₦2,886.38 credited to a GTBank account, 24 Nov 16:21 EAT, 19 s; bank receipt (NIP session …736909009, sender shown as COGEL SARL, originating bank Nombank MFB); Paycrest order id and tx hash: to add |
 | 5   | Off-ramp → KES (M-Pesa)                        | recipient paid                                |                                                       | order id, tx hash                                                                                                                                                                                                          |
-| 6   | Off-ramp → UGX (MTN or Airtel)                 | recipient paid                                |                                                       | order id, tx hash                                                                                                                                                                                                          |
+| 6   | Off-ramp → UGX (MTN or Airtel)                 | recipient paid                                | Pass                                                  | 0.5 USDT on Polygon → UGX 2,136.96 to an MTN Mobile Money number, 24 Nov 17:56 EAT, 93 s, receipt of the recipient confirmed by them; tx `0x8141186c…7e15709b`; Paycrest order id: to add                                  |
 | 7   | Off-ramp → TZS (Tigo, Airtel or Halopesa)      | recipient paid                                |                                                       | order id, tx hash                                                                                                                                                                                                          |
 | 8   | Order that cannot be fulfilled (wrong account) | refunded to the sender's wallet               |                                                       | order id, refund tx                                                                                                                                                                                                        |
 | 9   | Transaction history after a reload             | all of the above listed with the right status |                                                       | screenshot                                                                                                                                                                                                                 |
