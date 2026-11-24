@@ -271,6 +271,7 @@ if [ "$EIPAY" = "1" ]; then
   DOCKER_BUILDKIT=1 docker build -f infra/docker/eipay.Dockerfile \
     --secret id=eipay_env,src="$EIPAY_ENV_FILE" \
     --build-arg EIPAY_PUBLIC_FINGERPRINT="$public_fp" \
+    --build-context eipay_patches=infra/eipay-patches \
     -t morapay-eipay:local "$EIPAY_SRC"
 fi
 

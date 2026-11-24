@@ -7,6 +7,7 @@
 #
 #   docker build -f infra/docker/eipay.Dockerfile \
 #     --secret id=eipay_env,src=/root/DenghiPay/eipay.env \
+#     --build-context eipay_patches=infra/eipay-patches \
 #     -t morapay-eipay:local /root/DenghiPay/eipay
 #
 # infra/scripts/server-deploy.sh does this when run with EIPAY=1.
@@ -41,6 +42,11 @@ COPY . .
 RUN if ls -a | grep -E '^\.env' | grep -vqx '.env.example'; then \
       echo 'refusing: the eipay checkout contains an .env file' >&2; exit 1; \
     fi
+# Our fixes to their code, kept in this repository (infra/eipay-patches) and
+# passed in as a second build context, so their checkout stays untouched and
+# every change is reviewable here. The build stops if one no longer applies.
+COPY --from=eipay_patches apply.sh /tmp/eipay-patches/apply.sh
+RUN sh /tmp/eipay-patches/apply.sh
 ENV NODE_ENV=production
 ENV NODE_OPTIONS=--max-old-space-size=3072
 # A fingerprint of the public (NEXT_PUBLIC_*) values, from the deploy script.

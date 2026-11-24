@@ -112,7 +112,9 @@ match it. Counsel's view on custody needs the corrected version.
   itself persisted, so the second attempt takes the already-linked path, whose
   limit is 500,000. Each new user thus pays (in sponsor gas) for a failed
   first try and sees an error. Fix: use the same limit as the execute path, or
-  estimate it.
+  estimate it. **Applied in our build** (`infra/eipay-patches/apply.sh`, run
+  by the image build on top of their unmodified checkout) and reported to the
+  developers; the patch reports "already fixed" once their repository has it.
 - **KYC limits fall as verification rises.** The code defaults
   (`app/lib/kyc-tier-limits.ts`) give USD 10 a month with no verification and
   USD 0.50, 1 and 2 for tiers 1–3, so verifying a phone number lowers a user's
@@ -177,6 +179,10 @@ Consequences for this integration:
   operating entity, every beneficial owner with their real address, the people
   operating the account, the countries served, and the login email. A change of
   owner, operator or contact is an update owed to Paycrest under 3.2(c).
+- **Recipients see the Sender Business as the payer.** The first naira payout
+  (24 Nov) arrived as "Cogel Sarl" from Nombank MFB, the liquidity provider's
+  bank. Whichever entity holds the Paycrest account is the name on every
+  recipient's bank statement.
 - **Anything already run through this account is COGEL SARL's liability**
   (5.1). The Order History tab shows whether the developers' public copy used
   it; if it did, that copy must stop using it now, independently of payment.
@@ -301,18 +307,18 @@ Done by a named tester in the browser, each with the evidence noted. The
 off-ramps are real payouts; keep them to the smallest amount each corridor
 accepts and fund them from the account Clause 6.4 names.
 
-| #   | Check                                          | Expected                                      | Result | Evidence                   |
-| --- | ---------------------------------------------- | --------------------------------------------- | ------ | -------------------------- |
-| 1   | Sign in with email (Privy embedded wallet)     | wallet address shown                          |        |                            |
-| 2   | KYC tier 1 (phone OTP)                         | tier 1 shown                                  |        |                            |
-| 3   | Recipient name check, a Nigerian bank account  | account name returned                         |        |                            |
-| 4   | Off-ramp USDT → NGN                            | recipient paid                                |        | Paycrest order id, tx hash |
-| 5   | Off-ramp → KES (M-Pesa)                        | recipient paid                                |        | order id, tx hash          |
-| 6   | Off-ramp → UGX (MTN or Airtel)                 | recipient paid                                |        | order id, tx hash          |
-| 7   | Off-ramp → TZS (Tigo, Airtel or Halopesa)      | recipient paid                                |        | order id, tx hash          |
-| 8   | Order that cannot be fulfilled (wrong account) | refunded to the sender's wallet               |        | order id, refund tx        |
-| 9   | Transaction history after a reload             | all of the above listed with the right status |        | screenshot                 |
-| 10  | Status reaches its end with the browser closed | final status on return                        |        | order id                   |
+| #   | Check                                          | Expected                                      | Result                                                | Evidence                                                                                                                                                                                                                   |
+| --- | ---------------------------------------------- | --------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Sign in with email (Privy embedded wallet)     | wallet address shown                          | Pass                                                  | wallet `0xb908…b66D`, 24 Nov                                                                                                                                                                                               |
+| 2   | KYC tier 1 (phone OTP)                         | tier 1 shown                                  |                                                       |                                                                                                                                                                                                                            |
+| 3   | Recipient name check, a Nigerian bank account  | account name returned                         |                                                       |                                                                                                                                                                                                                            |
+| 4   | Off-ramp USDT → NGN                            | recipient paid                                | Pass (second attempt; first hit the gas defect, §1.2) | 2 USDT on Polygon → ₦2,886.38 credited to a GTBank account, 24 Nov 16:21 EAT, 19 s; bank receipt (NIP session …736909009, sender shown as COGEL SARL, originating bank Nombank MFB); Paycrest order id and tx hash: to add |
+| 5   | Off-ramp → KES (M-Pesa)                        | recipient paid                                |                                                       | order id, tx hash                                                                                                                                                                                                          |
+| 6   | Off-ramp → UGX (MTN or Airtel)                 | recipient paid                                |                                                       | order id, tx hash                                                                                                                                                                                                          |
+| 7   | Off-ramp → TZS (Tigo, Airtel or Halopesa)      | recipient paid                                |                                                       | order id, tx hash                                                                                                                                                                                                          |
+| 8   | Order that cannot be fulfilled (wrong account) | refunded to the sender's wallet               |                                                       | order id, refund tx                                                                                                                                                                                                        |
+| 9   | Transaction history after a reload             | all of the above listed with the right status |                                                       | screenshot                                                                                                                                                                                                                 |
+| 10  | Status reaches its end with the browser closed | final status on return                        |                                                       | order id                                                                                                                                                                                                                   |
 
 ### 5.3 Verdict
 
